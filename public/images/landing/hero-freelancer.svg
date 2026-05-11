@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Freelancer illustration</title>
+  <desc id="desc">Abstract illustration of a professional working on a laptop with soft gradients.</desc>
+  <defs>
+    <linearGradient id="bg" x1="120" y1="40" x2="840" y2="680" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0f766e"/>
+      <stop offset="0.45" stop-color="#14b8a6"/>
+      <stop offset="1" stop-color="#115e59"/>
+    </linearGradient>
+    <linearGradient id="blob" x1="200" y1="120" x2="760" y2="620" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ccfbf1" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#99f6e4" stop-opacity="0.35"/>
+    </linearGradient>
+    <filter id="blur" x="-40" y="-40" width="1040" height="800" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="28"/>
+    </filter>
+  </defs>
+  <rect width="960" height="720" rx="48" fill="url(#bg)"/>
+  <circle cx="720" cy="160" r="140" fill="url(#blob)" filter="url(#blur)" opacity="0.75"/>
+  <circle cx="220" cy="560" r="180" fill="#134e4a" opacity="0.35" filter="url(#blur)"/>
+  <rect x="140" y="170" width="520" height="360" rx="36" fill="#0b1220" opacity="0.35"/>
+  <rect x="170" y="210" width="460" height="280" rx="24" fill="#e2e8f0"/>
+  <rect x="200" y="240" width="160" height="18" rx="9" fill="#94a3b8"/>
+  <rect x="200" y="276" width="320" height="14" rx="7" fill="#cbd5e1"/>
+  <rect x="200" y="312" width="280" height="14" rx="7" fill="#cbd5e1"/>
+  <rect x="200" y="348" width="360" height="14" rx="7" fill="#cbd5e1"/>
+  <circle cx="430" cy="430" r="120" fill="#f8fafc"/>
+  <path d="M390 410c18-46 56-74 110-74 68 0 110 44 110 112 0 62-38 108-108 108-58 0-98-28-116-74 38 22 82 34 130 34 58 0 94-30 94-78 0-46-34-74-90-74-46 0-84 24-108 58z" fill="#0f766e"/>
+  <rect x="560" y="260" width="240" height="160" rx="22" fill="#ffffff" opacity="0.92"/>
+  <rect x="590" y="296" width="180" height="14" rx="7" fill="#e2e8f0"/>
+  <rect x="590" y="328" width="140" height="14" rx="7" fill="#e2e8f0"/>
+  <rect x="590" y="360" width="100" height="28" rx="10" fill="#14b8a6"/>
+</svg>

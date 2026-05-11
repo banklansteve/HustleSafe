@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="960" y2="720">
+      <stop stop-color="#f8fafc"/>
+      <stop offset="0.5" stop-color="#ecfdf5"/>
+      <stop offset="1" stop-color="#f1f5f9"/>
+    </linearGradient>
+    <linearGradient id="desk" x1="120" y1="520" x2="840" y2="620">
+      <stop stop-color="#e2e8f0"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="24"/>
+    </filter>
+  </defs>
+  <rect width="960" height="720" rx="48" fill="url(#sky)"/>
+  <circle cx="760" cy="140" r="120" fill="#99f6e4" opacity="0.35" filter="url(#soft)"/>
+  <circle cx="160" cy="580" r="100" fill="#5eead4" opacity="0.25" filter="url(#soft)"/>
+  <rect x="140" y="420" width="680" height="24" rx="12" fill="url(#desk)"/>
+  <rect x="220" y="280" width="420" height="260" rx="24" fill="#ffffff" stroke="#e2e8f0" stroke-width="4"/>
+  <rect x="260" y="320" width="340" height="200" rx="12" fill="#f8fafc"/>
+  <rect x="280" y="340" width="120" height="10" rx="5" fill="#cbd5e1"/>
+  <rect x="280" y="368" width="280" height="8" rx="4" fill="#e2e8f0"/>
+  <rect x="280" y="392" width="240" height="8" rx="4" fill="#e2e8f0"/>
+  <circle cx="640" cy="220" r="88" fill="#ccfbf1" stroke="#14b8a6" stroke-width="4"/>
+  <path d="M620 200h40v40l-20 16-20-16z" fill="#0f766e"/>
+  <rect x="600" y="260" width="80" height="100" rx="12" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+  <!-- tools -->
+  <g transform="translate(680 480)">
+    <rect x="0" y="0" width="56" height="12" rx="4" fill="#64748b" transform="rotate(-35 28 6)"/>
+    <circle cx="12" cy="40" r="14" fill="#f59e0b" opacity="0.9"/>
+    <path d="M48 24 L72 8 L88 28 L64 44 Z" fill="#0d9488"/>
+  </g>
+  <g transform="translate(180 440)" opacity="0.9">
+    <rect width="48" height="64" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="3"/>
+    <path d="M12 16h24M12 28h24M12 40h16" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>
