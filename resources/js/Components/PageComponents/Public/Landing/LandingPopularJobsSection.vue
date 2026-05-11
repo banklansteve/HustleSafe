@@ -2,7 +2,7 @@
     <section
         id="popular-jobs"
         ref="target"
-        class="relative scroll-mt-24 overflow-hidden bg-slate-50 py-16 sm:py-20 lg:py-24"
+        class="relative scroll-mt-24 overflow-hidden bg-slate-50 py-14 sm:py-20 lg:py-24"
         aria-labelledby="popular-jobs-heading"
         data-landing-section="popular-jobs"
     >
@@ -20,7 +20,7 @@
                     </p>
                     <h2
                         id="popular-jobs-heading"
-                        class="font-display mt-2 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl lg:text-5xl"
+                        class="font-display mt-4 text-3xl font-extrabold tracking-[0.03em] text-slate-900 sm:text-4xl lg:text-5xl"
                     >
                         {{ block.title }}
                     </h2>
@@ -32,7 +32,7 @@
                     v-if="canRegister"
                     :href="route('register', { intent: 'hire' })"
                     class="inline-flex items-center justify-center rounded-2xl bg-primary-600 px-6 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-primary-900/15 ring-1 ring-secondary-400/25 transition hover:-translate-y-0.5 hover:bg-primary-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-primary-300"
-                    @click="trackLanding('cta_click', { section: 'popular_jobs', id: 'post_mission' })"
+                    @click="trackLanding('cta_click', { section: 'popular_jobs', id: 'post_quest' })"
                 >
                     {{ block.cta }}
                 </Link>

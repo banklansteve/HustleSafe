@@ -2,9 +2,9 @@
 
 return [
     'meta' => [
-        'title' => 'HustleSafe — Hire Nigerian freelancers with escrow protection',
-        'description' => 'Secure missions & offers for Nigerian teams — verified talent, escrow protection, pay only when satisfied. Funds stay held until you approve delivery.',
-        'keywords' => 'freelance Nigeria, escrow Nigeria, hire freelancers Lagos, verified freelancers, missions and offers, side hustle marketplace, Naira escrow, remote work Nigeria',
+        'title' => 'HustleSafe — Secure quests, verified talent, escrow protection',
+        'description' => 'Secure quests for freelancers — verified talent, escrow protection, pay only when satisfied. Nigerian marketplace with funds held until you approve.',
+        'keywords' => 'freelance Nigeria, escrow Nigeria, hire freelancers Lagos, verified freelancers, quests and offers, side hustle marketplace, remote work Nigeria',
     ],
 
     'nav' => [
@@ -20,10 +20,10 @@ return [
     ],
 
     'hero' => [
-        'headline' => 'Secure missions & offers for Naija hustlers',
-        'subhead' => 'Verified talent, escrow protection — pay only when satisfied.',
-        'mission_offer_definition' => 'Clients post Missions (scoped briefs). Freelancers respond with Offers. Escrow holds funds until you approve.',
-        'cta_hire' => 'Start a Mission',
+        'headline' => 'Secure quests for freelancers',
+        'subhead' => 'Verified talent, escrow protection, pay only when satisfied.',
+        'lead' => 'Built for Nigeria — clients post quests, talent sends offers, payments stay protected.',
+        'cta_hire' => 'Start a Quest',
         'cta_earn' => 'Create an Offer',
         'badge' => 'Escrow-first marketplace · Nigeria',
         'image_alt' => 'Professionals collaborating — HustleSafe marketplace banner',
@@ -36,8 +36,8 @@ return [
         'freelancers_title' => 'For freelancers',
         'clients_steps' => [
             [
-                'title' => 'Post a mission & fund escrow',
-                'body' => 'Describe the mission, agree milestones, and lock funds in escrow — so talent knows you are serious.',
+                'title' => 'Post a quest & fund escrow',
+                'body' => 'Describe the quest, agree milestones, and lock funds in escrow — so talent knows you are serious.',
             ],
             [
                 'title' => 'Choose verified talent',
@@ -54,7 +54,7 @@ return [
                 'body' => 'Complete verification and showcase work buyers can trust fast.',
             ],
             [
-                'title' => 'Win missions with strong offers',
+                'title' => 'Win quests with strong offers',
                 'body' => 'Submit offers that match the brief — start only when scope and escrow funding are clear.',
             ],
             [
@@ -74,9 +74,9 @@ return [
         'disputes_title' => 'Dispute resolution',
         'disputes_body' => 'If something goes sideways, open a case with evidence. We review timelines, chats, and delivery to reach a fair outcome.',
         'microflow_title' => 'How escrow works (quick)',
-        'microflow_subtitle' => 'Funds move step‑by‑step so approvals stay obvious — especially on ₦ milestones.',
+        'microflow_subtitle' => 'Funds move step‑by‑step so approvals stay obvious — especially on milestone releases.',
         'microflow_steps' => [
-            'Buyer funds milestone into escrow',
+            'Client funds milestone into escrow',
             'Freelancer delivers the agreed work',
             'Buyer reviews within the window',
             'Funds release to freelancer after approval',
@@ -90,7 +90,7 @@ return [
 
     'categories' => [
         'title' => 'Popular categories',
-        'subtitle' => 'Find specialists for the missions Nigerian teams run every week.',
+        'subtitle' => 'Find specialists for the quests Nigerian teams run every week.',
         'browse' => 'Browse freelancers',
         'items' => [
             ['name' => 'Design & Brand', 'hint' => 'Logos, UI, decks'],
@@ -104,9 +104,9 @@ return [
 
     'popular_jobs' => [
         'kicker' => 'Proof, not promises',
-        'title' => 'Missions & offers that delivered',
+        'title' => 'Quests & offers that delivered',
         'subtitle' => 'Recently completed work with excellent reviews — proof from verified Safe Hustlers.',
-        'cta' => 'Start a mission',
+        'cta' => 'Start a Quest',
         'items' => [
             [
                 'title' => 'Fintech landing page + analytics wiring',
@@ -142,7 +142,7 @@ return [
                 'role' => 'Product lead, fintech startup',
             ],
             [
-                'quote' => '₦80,000 landing page job split into two releases — I slept better knowing funds were already committed.',
+                'quote' => 'Landing page split into two releases — I slept better knowing funds were already committed.',
                 'name' => 'Ibrahim K.',
                 'role' => 'Freelance developer',
             ],
@@ -174,7 +174,7 @@ return [
             ],
             [
                 'q' => 'What fees should I expect?',
-                'a' => 'Marketplace fees depend on project type and payment rail — example: a ₦100,000 milestone might include a modest platform fee plus payment processing. Exact fees appear before you confirm funding.',
+                'a' => 'Marketplace fees depend on project type and payment rail — platform and processing fees are shown clearly before you confirm funding each milestone.',
             ],
             [
                 'q' => 'How do you verify freelancers?',
@@ -186,7 +186,7 @@ return [
             ],
             [
                 'q' => 'What currencies do you support?',
-                'a' => 'Pricing is shown in Nigerian Naira (₦) for local clarity; settlement rails may vary by partner integrations as we expand.',
+                'a' => 'Pricing is displayed in your chosen marketplace currency for clarity; available settlement rails depend on partner integrations as we expand.',
             ],
             [
                 'q' => 'How fast are payouts?',
@@ -197,6 +197,16 @@ return [
                 'a' => 'Open a dispute with files, briefs, and chat history. We review both sides and align with the milestone contract.',
             ],
         ],
+    ],
+
+    'newsletter' => [
+        'kicker' => 'Field notes',
+        'title' => 'Notes worth opening',
+        'subtitle' => 'Sign up for quick updates on landing work, how escrow keeps your money safe, and getting paid when you approve — right in your inbox.',
+        'placeholder' => 'you@example.com',
+        'button' => 'Join the list',
+        'hint' => 'No spam. Unsubscribe anytime.',
+        'success' => 'You’re on the list — welcome aboard.',
     ],
 
     'footer' => [

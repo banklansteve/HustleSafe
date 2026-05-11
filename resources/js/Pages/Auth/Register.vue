@@ -8,10 +8,12 @@
     >
         <Head title="Create account" />
 
-        <div class="rounded-3xl bg-white p-6 shadow-xl shadow-slate-300/40 ring-1 ring-slate-200/90 sm:p-10">
+        <div
+            class="rounded-[1.75rem] bg-white p-7 shadow-xl shadow-slate-300/40 ring-1 ring-slate-200/90 sm:p-12 lg:min-h-[min(36rem,72vh)] lg:p-14 xl:rounded-[2rem] xl:p-16"
+        >
             <div class="flex items-center justify-between gap-4">
                 <div>
-                    <h1 class="font-display text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+                    <h1 class="font-display text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">
                         Create your account
                     </h1>
                     <p class="mt-1 text-sm text-slate-600">
@@ -37,7 +39,18 @@
                 </div>
             </div>
 
-            <form class="mt-8" @submit.prevent="submit">
+            <div class="mt-6 space-y-4 sm:mt-8">
+                <GoogleSignInButton auth-screen="register" label="Sign up with Google" />
+                <div class="relative flex items-center py-1">
+                    <div class="grow border-t border-slate-200" />
+                    <span class="mx-4 shrink text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Or continue with email
+                    </span>
+                    <div class="grow border-t border-slate-200" />
+                </div>
+            </div>
+
+            <form class="mt-6 sm:mt-7" @submit.prevent="submit">
                 <Transition name="fade-slide" mode="out-in">
                     <!-- Step 1 -->
                     <div v-if="step === 1" key="s1" class="space-y-5">
@@ -84,7 +97,7 @@
                                     Safe Hustler
                                 </span>
                                 <span class="mt-2 text-sm leading-snug text-slate-600">
-                                    I deliver work, hit milestones, and withdraw in ₦ safely.
+                                    I deliver work, hit milestones, and withdraw payouts safely.
                                 </span>
                             </button>
                         </div>
@@ -309,6 +322,7 @@
 </template>
 
 <script setup>
+import GoogleSignInButton from '@/Components/Auth/GoogleSignInButton.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';

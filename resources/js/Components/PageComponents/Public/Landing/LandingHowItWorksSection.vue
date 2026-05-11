@@ -2,7 +2,7 @@
     <section
         id="how-it-works"
         ref="target"
-        class="relative scroll-mt-24 bg-slate-50 py-16 sm:py-20 lg:py-24"
+        class="relative scroll-mt-24 bg-slate-50 py-14 sm:py-20 lg:py-24"
         aria-labelledby="how-heading"
         data-landing-section="how-it-works"
     >
@@ -12,7 +12,7 @@
                 class="max-w-3xl transition duration-700"
                 :class="isVisible ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'"
             >
-                <h2 id="how-heading" class="font-display text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
+                <h2 id="how-heading" class="font-display text-3xl font-extrabold tracking-[0.03em] text-slate-900 sm:text-4xl lg:text-5xl">
                     {{ block.title }}
                 </h2>
                 <p class="mt-4 text-lg text-slate-600 sm:text-xl">
@@ -20,9 +20,9 @@
                 </p>
             </div>
 
-            <div class="mt-14 grid gap-10 lg:grid-cols-2 lg:gap-12">
+            <div class="mt-10 grid gap-8 sm:mt-14 sm:gap-10 lg:grid-cols-2 lg:gap-12">
                 <article
-                    class="rounded-3xl bg-white p-6 shadow-lg shadow-slate-200/60 ring-1 ring-slate-100 transition duration-700 sm:p-8"
+                    class="rounded-3xl bg-white p-5 shadow-lg shadow-slate-200/60 ring-1 ring-slate-100 transition duration-700 sm:p-8"
                     :class="isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'"
                     :style="{ transitionDelay: isVisible ? '80ms' : '0ms' }"
                 >

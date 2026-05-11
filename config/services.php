@@ -41,4 +41,11 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI', env('APP_URL').'/auth/google/callback'),
     ],
 
+    /*
+    | OpenStreetMap Nominatim (free geocoding). Include contact in User-Agent per policy.
+    */
+    'nominatim' => [
+        'user_agent' => env('NOMINATIM_USER_AGENT', env('APP_NAME', 'Laravel').' ('.env('APP_URL', 'http://localhost').')'),
+    ],
+
 ];

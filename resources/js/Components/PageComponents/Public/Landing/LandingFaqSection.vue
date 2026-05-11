@@ -1,13 +1,13 @@
 <template>
     <section
         id="faq"
-        class="scroll-mt-24 bg-slate-50 py-16 sm:py-20 lg:py-24"
+        class="scroll-mt-24 bg-slate-50 py-14 sm:py-20 lg:py-24"
         aria-labelledby="faq-heading"
         data-landing-section="faq"
     >
         <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
             <div class="text-center">
-                <h2 id="faq-heading" class="font-display text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
+                <h2 id="faq-heading" class="font-display text-3xl font-extrabold tracking-[0.03em] text-slate-900 sm:text-4xl lg:text-5xl">
                     {{ block.title }}
                 </h2>
                 <p class="mx-auto mt-4 max-w-2xl text-lg text-slate-600 sm:text-xl">

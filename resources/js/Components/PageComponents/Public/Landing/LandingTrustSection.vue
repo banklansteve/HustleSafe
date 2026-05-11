@@ -2,7 +2,7 @@
     <section
         id="trust"
         ref="target"
-        class="relative scroll-mt-24 overflow-hidden bg-white py-16 sm:py-20 lg:py-24"
+        class="relative scroll-mt-24 overflow-hidden bg-white py-14 sm:py-20 lg:py-24"
         aria-labelledby="trust-heading"
         data-landing-section="trust"
     >
@@ -11,7 +11,7 @@
 
         <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div class="max-w-3xl">
-                <h2 id="trust-heading" class="font-display text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
+                <h2 id="trust-heading" class="font-display text-3xl font-extrabold tracking-[0.03em] text-slate-900 sm:text-4xl lg:text-5xl">
                     {{ block.title }}
                 </h2>
                 <p class="mt-4 text-lg text-slate-600 sm:text-xl">

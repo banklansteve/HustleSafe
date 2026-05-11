@@ -2,15 +2,17 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Mail\WelcomeVerifyEmail;
 use Database\Factories\UserFactory;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
@@ -31,6 +33,9 @@ class User extends Authenticatable
         'date_of_birth',
         'company_name',
         'address_line',
+        'latitude',
+        'longitude',
+        'geocoded_at',
         'local_government',
         'state',
         'account_type',
@@ -80,6 +85,9 @@ class User extends Authenticatable
             'hourly_rate_max' => 'decimal:2',
             'last_active_at' => 'datetime',
             'suspended_at' => 'datetime',
+            'geocoded_at' => 'datetime',
+            'latitude' => 'float',
+            'longitude' => 'float',
         ];
     }
 
@@ -170,5 +178,13 @@ class User extends Authenticatable
         }
 
         return $candidate;
+    }
+
+    /**
+     * Send a single welcome email that includes the email verification link.
+     */
+    public function sendEmailVerificationNotification(): void
+    {
+        Mail::to($this->getEmailForVerification())->send(new WelcomeVerifyEmail($this));
     }
 }

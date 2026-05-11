@@ -34,6 +34,7 @@ class LandingController extends Controller
                 'popular_jobs' => __('landing.popular_jobs'),
                 'testimonials' => __('landing.testimonials'),
                 'faq' => __('landing.faq'),
+                'newsletter' => __('landing.newsletter'),
                 'footer' => __('landing.footer'),
             ],
             'canLogin' => Route::has('login'),

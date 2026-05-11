@@ -42,6 +42,7 @@
                 />
                 <LandingTestimonialsSection :block="copy.testimonials" />
                 <LandingFaqSection :block="copy.faq" />
+                <LandingNewsletterSection :block="copy.newsletter" />
                 <LandingFooter :block="copy.footer" />
             </main>
         </MarketingLayout>
@@ -57,6 +58,7 @@ import LandingFooter from '@/Components/PageComponents/Public/Landing/LandingFoo
 import LandingHeroSection from '@/Components/PageComponents/Public/Landing/LandingHeroSection.vue';
 import LandingHowItWorksSection from '@/Components/PageComponents/Public/Landing/LandingHowItWorksSection.vue';
 import LandingNavbar from '@/Components/PageComponents/Public/Landing/LandingNavbar.vue';
+import LandingNewsletterSection from '@/Components/PageComponents/Public/Landing/LandingNewsletterSection.vue';
 import LandingPopularJobsSection from '@/Components/PageComponents/Public/Landing/LandingPopularJobsSection.vue';
 import LandingTestimonialsSection from '@/Components/PageComponents/Public/Landing/LandingTestimonialsSection.vue';
 import LandingTrustSection from '@/Components/PageComponents/Public/Landing/LandingTrustSection.vue';

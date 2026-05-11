@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -14,12 +15,17 @@ use Symfony\Component\HttpFoundation\Response;
 class GoogleAuthController extends Controller
 {
     /**
-     * Redirect the user to Google OAuth (only when configured).
+     * Redirect the user to Google OAuth, or back to login/register with a message when not configured.
+     *
+     * @param  Request  $request  Optional query `return` = login|register chooses the fallback route.
      */
-    public function redirect(): RedirectResponse|Response
+    public function redirect(Request $request): RedirectResponse|Response
     {
         if (! config('services.google.client_id') || ! config('services.google.client_secret')) {
-            abort(503, __('Google sign-in is not configured.'));
+            $return = $request->query('return');
+            $route = $return === 'register' ? 'register' : 'login';
+
+            return redirect()->route($route)->with('status', __('auth.google_unavailable'));
         }
 
         return Socialite::driver('google')->redirect();

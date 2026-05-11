@@ -2,7 +2,7 @@
     <section
         id="categories"
         ref="target"
-        class="relative scroll-mt-24 overflow-hidden bg-slate-50 py-16 sm:py-20 lg:py-24"
+        class="relative scroll-mt-24 overflow-hidden bg-slate-50 py-14 sm:py-20 lg:py-24"
         aria-labelledby="categories-heading"
         data-landing-section="categories"
     >
@@ -12,7 +12,7 @@
         <div class="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                 <div class="max-w-3xl">
-                    <h2 id="categories-heading" class="font-display text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
+                    <h2 id="categories-heading" class="font-display text-3xl font-extrabold tracking-[0.03em] text-slate-900 sm:text-4xl lg:text-5xl">
                         {{ block.title }}
                     </h2>
                     <p class="mt-4 text-lg text-slate-600 sm:text-xl">

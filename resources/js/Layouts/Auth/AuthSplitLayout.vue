@@ -62,10 +62,12 @@
 
             <!-- Form panel -->
             <main
-                class="flex min-h-screen flex-col justify-center px-4 py-12 sm:px-8 lg:px-12 xl:px-16"
+                class="flex min-h-screen flex-col justify-start px-4 pb-10 pt-8 sm:justify-center sm:px-8 sm:py-12 lg:justify-center lg:px-14 lg:py-14 xl:px-20 2xl:px-24"
             >
-                <div class="mx-auto w-full max-w-md animate-fade-in-up">
-                    <div class="mb-8 lg:hidden">
+                <div
+                    class="mx-auto w-full max-w-md animate-fade-in-up sm:max-w-lg lg:max-w-xl xl:max-w-[30rem]"
+                >
+                    <div class="mb-6 lg:mb-8 lg:hidden">
                         <Link
                             href="/"
                             class="inline-flex items-center gap-2 rounded-lg text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
@@ -79,20 +81,22 @@
                         </Link>
                     </div>
 
-                    <!-- Mobile illustration -->
-                    <div class="mb-8 flex justify-center lg:hidden">
-                        <div class="rounded-3xl bg-white p-3 shadow-lg shadow-slate-300/50 ring-1 ring-slate-200">
+                    <slot />
+
+                    <!-- Mobile: illustration below the form card so the card is in view first -->
+                    <div class="mt-8 flex justify-center pb-2 lg:hidden">
+                        <div
+                            class="rounded-2xl bg-white/80 p-3 shadow-md shadow-slate-300/40 ring-1 ring-slate-200/80 backdrop-blur-sm"
+                        >
                             <img
                                 :src="illustrationSrc"
                                 :alt="illustrationAlt"
-                                class="max-h-44 w-auto object-contain"
+                                class="mx-auto max-h-36 w-auto max-w-[min(100%,280px)] object-contain opacity-90"
                                 loading="lazy"
                                 decoding="async"
                             />
                         </div>
                     </div>
-
-                    <slot />
                 </div>
             </main>
         </div>
