@@ -21,13 +21,13 @@
                     </p>
                 </div>
                 <div class="hidden text-right text-xs font-semibold uppercase tracking-wider text-slate-400 sm:block">
-                    Step {{ step }} / 5
+                    Step {{ step }} / {{ maxStep }}
                 </div>
             </div>
 
             <div class="mt-6 flex gap-1.5 sm:mt-8">
                 <div
-                    v-for="s in 5"
+                    v-for="s in maxStep"
                     :key="s"
                     class="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"
                     :aria-current="step === s ? 'step' : undefined"
@@ -220,39 +220,58 @@
                             />
                             <InputError class="mt-2" :message="fieldError('address_line')" />
                         </div>
+                        <div>
+                            <InputLabel for="city" value="City / town" />
+                            <TextInput
+                                id="city"
+                                v-model="form.city"
+                                type="text"
+                                class="mt-2 block w-full rounded-xl border-slate-200 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                placeholder="e.g. Ikeja, Port Harcourt, Wuse"
+                                autocomplete="address-level2"
+                            />
+                            <InputError class="mt-2" :message="fieldError('city')" />
+                        </div>
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div>
-                                <InputLabel for="state" value="State" />
+                                <InputLabel for="state_id" value="State" />
                                 <select
-                                    id="state"
-                                    v-model="form.state"
+                                    id="state_id"
+                                    v-model.number="form.state_id"
                                     class="mt-2 block w-full rounded-xl border-slate-200 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                    @change="form.local_government_id = ''"
                                 >
-                                    <option disabled value="">
+                                    <option disabled :value="0">
                                         Select state
                                     </option>
-                                    <option v-for="st in states" :key="st" :value="st">
-                                        {{ st }}
+                                    <option v-for="st in locations" :key="st.id" :value="st.id">
+                                        {{ st.name }}
                                     </option>
                                 </select>
-                                <InputError class="mt-2" :message="fieldError('state')" />
+                                <InputError class="mt-2" :message="fieldError('state_id')" />
                             </div>
                             <div>
-                                <InputLabel for="local_government" value="Local government (LGA)" />
-                                <TextInput
-                                    id="local_government"
-                                    v-model="form.local_government"
-                                    type="text"
+                                <InputLabel for="local_government_id" value="Local government (LGA)" />
+                                <select
+                                    id="local_government_id"
+                                    v-model.number="form.local_government_id"
                                     class="mt-2 block w-full rounded-xl border-slate-200 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                                    placeholder="e.g. Ikeja"
-                                />
-                                <InputError class="mt-2" :message="fieldError('local_government')" />
+                                    :disabled="!form.state_id"
+                                >
+                                    <option disabled :value="0">
+                                        {{ form.state_id ? 'Select LGA' : 'Choose a state first' }}
+                                    </option>
+                                    <option v-for="lg in lgaOptions" :key="lg.id" :value="lg.id">
+                                        {{ lg.name }}
+                                    </option>
+                                </select>
+                                <InputError class="mt-2" :message="fieldError('local_government_id')" />
                             </div>
                         </div>
                     </div>
 
                     <!-- Step 5 -->
-                    <div v-else key="s5" class="space-y-4">
+                    <div v-else-if="step === 5" key="s5" class="space-y-4">
                         <div>
                             <InputLabel for="password" value="Password" />
                             <TextInput
@@ -276,6 +295,46 @@
                             <InputError class="mt-2" :message="fieldError('password_confirmation')" />
                         </div>
                     </div>
+
+                    <!-- Step 6 — Safe Hustler work categories -->
+                    <div v-else key="s6" class="space-y-5">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-800">
+                                What kind of quests should we match you with?
+                            </p>
+                            <p class="mt-2 text-sm font-medium leading-relaxed text-slate-600">
+                                Pick every subcategory you are strong in — you can refine this later in your profile.
+                            </p>
+                        </div>
+                        <InputError :message="fieldError('quest_category_ids')" />
+                        <div class="max-h-[min(28rem,55vh)] space-y-5 overflow-y-auto pr-1">
+                            <div
+                                v-for="parent in questCategories"
+                                :key="parent.id"
+                                class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4 sm:p-5"
+                            >
+                                <p class="font-display text-sm font-bold text-slate-900">
+                                    {{ parent.name }}
+                                </p>
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                        v-for="child in parent.children"
+                                        :key="child.id"
+                                        type="button"
+                                        class="rounded-full border px-3 py-2 text-xs font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 sm:text-sm"
+                                        :class="
+                                            form.quest_category_ids.includes(child.id)
+                                                ? 'border-primary-600 bg-primary-600 text-white shadow-md shadow-primary-900/20'
+                                                : 'border-slate-200 bg-white text-slate-700 hover:border-primary-300'
+                                        "
+                                        @click="toggleCategory(child.id)"
+                                    >
+                                        {{ child.name }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </Transition>
 
                 <div class="mt-10 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
@@ -289,21 +348,23 @@
                     </button>
                     <div class="flex flex-1 justify-end gap-3">
                         <button
-                            v-if="step < 5"
+                            v-if="showContinue"
                             type="button"
                             class="inline-flex w-full items-center justify-center rounded-xl bg-primary-700 px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-primary-900/25 transition hover:bg-primary-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-primary-300 sm:w-auto"
                             @click="nextStep"
                         >
                             Continue
                         </button>
-                        <PrimaryButton
-                            v-else
-                            class="w-full justify-center rounded-2xl px-6 py-4 text-sm font-bold normal-case tracking-normal sm:w-auto sm:min-w-[200px]"
-                            :class="{ 'opacity-60': form.processing }"
+                        <button
+                            v-if="showCreateAccount"
+                            type="button"
+                            class="inline-flex w-full items-center justify-center rounded-2xl border border-transparent bg-primary-700 px-6 py-4 text-sm font-bold text-white shadow-lg shadow-primary-900/25 transition hover:bg-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 sm:w-auto sm:min-w-[200px]"
+                            :class="{ 'cursor-not-allowed opacity-60': form.processing }"
                             :disabled="form.processing"
+                            @click="submit"
                         >
                             Create account
-                        </PrimaryButton>
+                        </button>
                     </div>
                 </div>
 
@@ -325,10 +386,8 @@
 import GoogleSignInButton from '@/Components/Auth/GoogleSignInButton.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import AuthSplitLayout from '@/Layouts/Auth/AuthSplitLayout.vue';
-import { NIGERIA_STATES } from '@/constants/nigeriaStates.js';
 import { FaRegBuilding } from '@kalimahapps/vue-icons/fa';
 import { SparklesIcon } from '@heroicons/vue/24/solid';
 import { useVuelidate } from '@vuelidate/core';
@@ -336,7 +395,16 @@ import { email, helpers, maxLength, minLength, required } from '@vuelidate/valid
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
-const states = NIGERIA_STATES;
+const props = defineProps({
+    locations: {
+        type: Array,
+        default: () => [],
+    },
+    questCategories: {
+        type: Array,
+        default: () => [],
+    },
+});
 
 const step = ref(1);
 
@@ -350,32 +418,126 @@ const form = useForm({
     email: '',
     phone: '',
     address_line: '',
-    local_government: '',
-    state: '',
+    city: '',
+    state_id: 0,
+    local_government_id: 0,
+    quest_category_ids: [],
     password: '',
     password_confirmation: '',
 });
 
+const maxStep = computed(() => (form.account_type === 'hustler' ? 6 : 5));
+
+const showContinue = computed(() => {
+    if (step.value < 5) {
+        return true;
+    }
+    if (step.value === 5 && form.account_type === 'hustler') {
+        return true;
+    }
+
+    return false;
+});
+
+const showCreateAccount = computed(() => {
+    if (step.value === 5 && form.account_type === 'sponsor') {
+        return true;
+    }
+    if (step.value === 6) {
+        return true;
+    }
+
+    return false;
+});
+
+const lgaOptions = computed(() => {
+    const st = props.locations.find((s) => s.id === form.state_id);
+
+    return st?.local_governments ?? [];
+});
+
 const phonePattern = helpers.regex(/^[0-9+\-\s()]+$/);
 
+const requiredField = (fieldName) =>
+    helpers.withMessage(`The ${fieldName} field is required.`, required);
+
 const rules = computed(() => ({
-    account_type: { required },
-    first_name: { required, maxLength: maxLength(120) },
-    last_name: { required, maxLength: maxLength(120) },
+    account_type: { required: requiredField('account type') },
+    first_name: {
+        required: requiredField('first name'),
+        maxLength: helpers.withMessage(
+            'The first name may not be greater than 120 characters.',
+            maxLength(120),
+        ),
+    },
+    last_name: {
+        required: requiredField('last name'),
+        maxLength: helpers.withMessage(
+            'The last name may not be greater than 120 characters.',
+            maxLength(120),
+        ),
+    },
     gender: {},
     date_of_birth: {},
-    company_name: { maxLength: maxLength(255) },
-    email: { required, email },
-    phone: { required, phonePattern },
-    address_line: { required, maxLength: maxLength(500) },
-    local_government: { required, maxLength: maxLength(120) },
-    state: { required, maxLength: maxLength(120) },
-    password: { required, minLength: minLength(8) },
+    company_name: {
+        maxLength: helpers.withMessage(
+            'The company name may not be greater than 255 characters.',
+            maxLength(255),
+        ),
+    },
+    email: {
+        required: requiredField('email address'),
+        email: helpers.withMessage('The email must be a valid email address.', email),
+    },
+    phone: {
+        required: requiredField('phone number'),
+        phonePattern: helpers.withMessage('Use a valid phone number.', phonePattern),
+    },
+    address_line: {
+        required: requiredField('address'),
+        maxLength: helpers.withMessage(
+            'The address may not be greater than 500 characters.',
+            maxLength(500),
+        ),
+    },
+    city: {
+        required: requiredField('city / town'),
+        maxLength: helpers.withMessage(
+            'The city may not be greater than 160 characters.',
+            maxLength(160),
+        ),
+    },
+    state_id: {
+        validState: helpers.withMessage(
+            'Please select a state.',
+            (value) => value !== '' && value !== null && Number(value) >= 1,
+        ),
+    },
+    local_government_id: {
+        validLga: helpers.withMessage(
+            'Please select a local government area.',
+            (value) => value !== '' && value !== null && Number(value) >= 1,
+        ),
+    },
+    password: {
+        required: requiredField('password'),
+        minLength: helpers.withMessage(
+            'The password must be at least 8 characters.',
+            minLength(8),
+        ),
+    },
     password_confirmation: {
-        required,
+        required: requiredField('password confirmation'),
         sameAsPassword: helpers.withMessage(
-            'Passwords must match.',
+            'The password confirmation does not match.',
             (value) => value === form.password,
+        ),
+    },
+    quest_category_ids: {
+        minPicked: helpers.withMessage(
+            'Pick at least one work category.',
+            () => form.account_type !== 'hustler'
+                || (Array.isArray(form.quest_category_ids) && form.quest_category_ids.length >= 1),
         ),
     },
 }));
@@ -396,8 +558,9 @@ async function validateStep(current) {
         1: ['account_type'],
         2: ['first_name', 'last_name'],
         3: ['email', 'phone'],
-        4: ['address_line', 'local_government', 'state'],
+        4: ['address_line', 'city', 'state_id', 'local_government_id'],
         5: ['password', 'password_confirmation'],
+        6: ['quest_category_ids'],
     };
     const keys = fieldsByStep[current] ?? [];
     let ok = true;
@@ -418,6 +581,11 @@ async function nextStep() {
     }
     if (step.value < 5) {
         step.value += 1;
+
+        return;
+    }
+    if (step.value === 5 && form.account_type === 'hustler') {
+        step.value = 6;
     }
 }
 
@@ -427,18 +595,47 @@ function prevStep() {
     }
 }
 
+function toggleCategory(id) {
+    const list = form.quest_category_ids;
+    const i = list.indexOf(id);
+    if (i === -1) {
+        list.push(id);
+    } else {
+        list.splice(i, 1);
+    }
+}
+
 async function submit() {
+    if (form.account_type === 'hustler' && step.value < 6) {
+        const ok5 = await validateStep(5);
+        if (!ok5) {
+            return;
+        }
+        step.value = 6;
+
+        return;
+    }
+
     const ok = await v$.value.$validate();
     if (!ok) {
         return;
     }
     form
-        .transform((data) => ({
-            ...data,
-            gender: data.gender === '' ? null : data.gender,
-            date_of_birth: data.date_of_birth === '' ? null : data.date_of_birth,
-            company_name: data.company_name === '' ? null : data.company_name,
-        }))
+        .transform((data) => {
+            const payload = {
+                ...data,
+                gender: data.gender === '' ? null : data.gender,
+                date_of_birth: data.date_of_birth === '' ? null : data.date_of_birth,
+                company_name: data.company_name === '' ? null : data.company_name,
+                state_id: Number(data.state_id) || null,
+                local_government_id: Number(data.local_government_id) || null,
+            };
+            if (payload.account_type === 'sponsor') {
+                delete payload.quest_category_ids;
+            }
+
+            return payload;
+        })
         .post(route('register'), {
             onFinish: () => form.reset('password', 'password_confirmation'),
         });

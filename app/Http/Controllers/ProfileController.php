@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ProfileUpdateRequest;
+use App\Services\TrustScoreOrchestrator;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,6 +37,8 @@ class ProfileController extends Controller
         }
 
         $request->user()->save();
+
+        app(TrustScoreOrchestrator::class)->recalculate($request->user()->fresh());
 
         return Redirect::route('profile.edit');
     }

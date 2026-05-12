@@ -5,8 +5,12 @@ namespace App\Models;
 use App\Mail\WelcomeVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Mail;
@@ -33,11 +37,12 @@ class User extends Authenticatable implements MustVerifyEmail
         'date_of_birth',
         'company_name',
         'address_line',
+        'city',
+        'state_id',
+        'local_government_id',
         'latitude',
         'longitude',
         'geocoded_at',
-        'local_government',
-        'state',
         'account_type',
         'role_id',
         'profession',
@@ -48,7 +53,6 @@ class User extends Authenticatable implements MustVerifyEmail
         'years_experience',
         'availability',
         'verification_tier',
-        'trust_score',
         'response_time_hours',
         'job_title',
         'company_size',
@@ -60,6 +64,24 @@ class User extends Authenticatable implements MustVerifyEmail
         'google_id',
         'avatar_url',
         'password',
+    ];
+
+    protected $with = [
+        'role',
+        'trustMetrics',
+    ];
+
+    /**
+     * @var list<string>
+     */
+    protected $appends = [
+        'trust_score',
+        'client_trust_score',
+        'profile_completion_percent',
+        'avg_rating_as_freelancer',
+        'avg_rating_as_client',
+        'ratings_count_as_freelancer',
+        'ratings_count_as_client',
     ];
 
     /**
@@ -99,8 +121,109 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->belongsTo(Role::class);
     }
 
+    /**
+     * @return BelongsTo<State, $this>
+     */
+    public function stateModel(): BelongsTo
+    {
+        return $this->belongsTo(State::class, 'state_id');
+    }
+
+    /**
+     * @return BelongsTo<LocalGovernment, $this>
+     */
+    public function localGovernmentModel(): BelongsTo
+    {
+        return $this->belongsTo(LocalGovernment::class, 'local_government_id');
+    }
+
+    /**
+     * @return HasOne<UserTrustMetric, $this>
+     */
+    public function trustMetrics(): HasOne
+    {
+        return $this->hasOne(UserTrustMetric::class);
+    }
+
+    /**
+     * @return HasMany<UserVerification, $this>
+     */
+    public function userVerifications(): HasMany
+    {
+        return $this->hasMany(UserVerification::class);
+    }
+
+    /**
+     * @return HasOne<FreelancerBusinessProfile, $this>
+     */
+    public function freelancerBusinessProfile(): HasOne
+    {
+        return $this->hasOne(FreelancerBusinessProfile::class);
+    }
+
+    /**
+     * @return HasMany<FreelancerCredential, $this>
+     */
+    public function freelancerCredentials(): HasMany
+    {
+        return $this->hasMany(FreelancerCredential::class)->orderBy('display_order')->orderBy('id');
+    }
+
+    /**
+     * @return HasMany<Quest, $this>
+     */
+    public function questsAsClient(): HasMany
+    {
+        return $this->hasMany(Quest::class, 'client_id');
+    }
+
+    /**
+     * @return HasMany<Quest, $this>
+     */
+    public function questsAsFreelancer(): HasMany
+    {
+        return $this->hasMany(Quest::class, 'freelancer_id');
+    }
+
+    /**
+     * @return HasMany<Review, $this>
+     */
+    public function reviewsWritten(): HasMany
+    {
+        return $this->hasMany(Review::class, 'reviewer_id');
+    }
+
+    /**
+     * @return HasMany<Review, $this>
+     */
+    public function reviewsReceived(): HasMany
+    {
+        return $this->hasMany(Review::class, 'reviewee_id');
+    }
+
+    /**
+     * Quest subcategories this freelancer wants to work in (leaf categories only).
+     *
+     * @return BelongsToMany<QuestCategory, $this>
+     */
+    public function questCategoryPreferences(): BelongsToMany
+    {
+        return $this->belongsToMany(QuestCategory::class, 'freelancer_quest_category')->withTimestamps();
+    }
+
     protected static function booted(): void
     {
+        static::created(function (User $user): void {
+            UserTrustMetric::query()->firstOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'freelancer_trust_score' => 0,
+                    'client_trust_score' => 50,
+                    'profile_completion_percent' => 0,
+                ]
+            );
+        });
+
         static::creating(function (User $user): void {
             if (empty($user->uid)) {
                 $user->uid = static::generateUniqueUid();
@@ -186,5 +309,40 @@ class User extends Authenticatable implements MustVerifyEmail
     public function sendEmailVerificationNotification(): void
     {
         Mail::to($this->getEmailForVerification())->send(new WelcomeVerifyEmail($this));
+    }
+
+    protected function trustScore(): Attribute
+    {
+        return Attribute::get(fn () => (int) ($this->trustMetrics?->freelancer_trust_score ?? 0));
+    }
+
+    protected function clientTrustScore(): Attribute
+    {
+        return Attribute::get(fn () => (int) ($this->trustMetrics?->client_trust_score ?? 0));
+    }
+
+    protected function profileCompletionPercent(): Attribute
+    {
+        return Attribute::get(fn () => (int) ($this->trustMetrics?->profile_completion_percent ?? 0));
+    }
+
+    protected function avgRatingAsFreelancer(): Attribute
+    {
+        return Attribute::get(fn () => $this->trustMetrics?->avg_rating_as_freelancer);
+    }
+
+    protected function avgRatingAsClient(): Attribute
+    {
+        return Attribute::get(fn () => $this->trustMetrics?->avg_rating_as_client);
+    }
+
+    protected function ratingsCountAsFreelancer(): Attribute
+    {
+        return Attribute::get(fn () => (int) ($this->trustMetrics?->ratings_count_as_freelancer ?? 0));
+    }
+
+    protected function ratingsCountAsClient(): Attribute
+    {
+        return Attribute::get(fn () => (int) ($this->trustMetrics?->ratings_count_as_client ?? 0));
     }
 }

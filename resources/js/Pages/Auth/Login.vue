@@ -45,7 +45,6 @@
                         v-model="form.email"
                         type="email"
                         class="mt-2 block w-full rounded-xl border-slate-200 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                        required
                         autofocus
                         autocomplete="username"
                     />
@@ -59,7 +58,6 @@
                         v-model="form.password"
                         type="password"
                         class="mt-2 block w-full rounded-xl border-slate-200 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                        required
                         autocomplete="current-password"
                     />
                     <InputError class="mt-2" :message="form.errors.password" />

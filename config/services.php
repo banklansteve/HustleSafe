@@ -48,4 +48,9 @@ return [
         'user_agent' => env('NOMINATIM_USER_AGENT', env('APP_NAME', 'Laravel').' ('.env('APP_URL', 'http://localhost').')'),
     ],
 
+    'cac' => [
+        'verify_url' => env('CAC_VERIFY_URL'),
+        'token' => env('CAC_VERIFY_TOKEN'),
+    ],
+
 ];

@@ -11,7 +11,7 @@ class ForceHttps
     /**
      * Redirect HTTP to HTTPS when running in production.
      *
-     * @param  \Closure(Request): Response  $next
+     * @param  Closure(Request): Response  $next
      */
     public function handle(Request $request, Closure $next): Response
     {

@@ -14,7 +14,7 @@ class UserObserver
 
     public function updated(User $user): void
     {
-        if ($user->wasChanged(['address_line', 'local_government', 'state'])) {
+        if ($user->wasChanged(['address_line', 'city', 'state_id', 'local_government_id'])) {
             app(GeocodeUserAddress::class)($user);
         }
     }

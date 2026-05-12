@@ -14,10 +14,13 @@ class GeocodeUserAddress
 {
     public function __invoke(User $user): void
     {
+        $user->loadMissing(['stateModel', 'localGovernmentModel']);
+
         $parts = array_filter([
             $user->address_line,
-            $user->local_government,
-            $user->state,
+            $user->city,
+            $user->localGovernmentModel?->name,
+            $user->stateModel?->name,
             'Nigeria',
         ], fn (?string $p) => $p !== null && trim($p) !== '');
 

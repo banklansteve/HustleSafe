@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Route;
 
 class SitemapController extends Controller
 {
@@ -12,11 +13,11 @@ class SitemapController extends Controller
             ['loc' => url('/'), 'changefreq' => 'weekly', 'priority' => '1.0'],
         ];
 
-        if (\Illuminate\Support\Facades\Route::has('login')) {
+        if (Route::has('login')) {
             $urls[] = ['loc' => url('/login'), 'changefreq' => 'monthly', 'priority' => '0.6'];
         }
 
-        if (\Illuminate\Support\Facades\Route::has('register')) {
+        if (Route::has('register')) {
             $urls[] = ['loc' => url('/register'), 'changefreq' => 'monthly', 'priority' => '0.6'];
         }
 
