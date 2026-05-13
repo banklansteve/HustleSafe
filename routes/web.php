@@ -1,16 +1,36 @@
 <?php
 
+use App\Enums\CredentialType;
+use App\Http\Controllers\AccountDeactivateController;
+use App\Http\Controllers\AccountDeleteUserController;
+use App\Http\Controllers\AccountHubController;
+use App\Http\Controllers\AccountPresenceController;
+use App\Http\Controllers\AccountQuestCategoriesController;
+use App\Http\Controllers\AccountSecurityController;
+use App\Http\Controllers\AccountUpdateController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardListController;
 use App\Http\Controllers\DashboardTrustGuideController;
-use App\Http\Controllers\QuestCreatePlaceholderController;
-use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\FreelancerCredentialController;
+use App\Http\Controllers\FreelancerCredentialVisibilityController;
+use App\Http\Controllers\FreelancerPortfolioController;
+use App\Http\Controllers\FreelancerPortfoliosDirectoryController;
+use App\Http\Controllers\FreelancerReviewsDirectoryController;
 use App\Http\Controllers\Public\LandingController;
 use App\Http\Controllers\Public\NewsletterController;
 use App\Http\Controllers\Public\PublicFreelancerProfileController;
+use App\Http\Controllers\QuestBookmarkController;
+use App\Http\Controllers\QuestController;
 use App\Http\Controllers\QuestExploreController;
+use App\Http\Controllers\QuestFieldProfileController;
+use App\Http\Controllers\QuestFileController;
+use App\Http\Controllers\QuestInviteController;
+use App\Http\Controllers\QuestOfferController;
+use App\Http\Controllers\QuestWizardController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SitemapController;
+use App\Http\Controllers\UserFollowController;
+use App\Http\Controllers\UserFreelancerSearchController;
 use App\Http\Controllers\UserVerificationController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,14 +42,67 @@ Route::post('/newsletter', [NewsletterController::class, 'store'])
 
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 
+Route::get('/freelancers/{slug}/reviews', FreelancerReviewsDirectoryController::class)->name('freelancers.public.reviews');
+Route::get('/freelancers/{slug}/portfolios', FreelancerPortfoliosDirectoryController::class)->name('freelancers.public.portfolios');
 Route::get('/freelancers/{slug}', PublicFreelancerProfileController::class)->name('freelancers.public');
+
+Route::get('/portfolio', [FreelancerPortfolioController::class, 'index'])->name('portfolio.index');
 
 Route::get('/dashboard', DashboardController::class)->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/account', [AccountHubController::class, 'show'])->name('account.show');
+    Route::patch('/account/details', [AccountUpdateController::class, 'details'])->name('account.details');
+    Route::patch('/account/visibility', [AccountUpdateController::class, 'visibility'])->name('account.visibility');
+    Route::patch('/account/credentials/{freelancerCredential}', FreelancerCredentialVisibilityController::class)
+        ->whereNumber('freelancerCredential')
+        ->name('account.credentials.visibility');
+    Route::post('/account/deactivate', AccountDeactivateController::class)
+        ->middleware('throttle:6,1')
+        ->name('account.deactivate');
+    Route::post('/users/{slug}/follow', [UserFollowController::class, 'toggle'])
+        ->middleware('throttle:60,1')
+        ->name('users.follow.toggle');
+
+    Route::patch('/account/presence', AccountPresenceController::class)->name('account.presence');
+
+    Route::get('/account/security', [AccountSecurityController::class, 'edit'])->name('account.security.edit');
+    Route::post('/account/security/avatar', [AccountSecurityController::class, 'updateAvatar'])
+        ->middleware('throttle:20,1')
+        ->name('account.security.avatar');
+    Route::delete('/account', AccountDeleteUserController::class)->name('account.destroy');
+    Route::redirect('/profile', '/account/security');
+
     Route::get('/dashboard/lists/{list}', [DashboardListController::class, 'show'])->name('dashboard.lists.show');
     Route::get('/dashboard/guides/trust', DashboardTrustGuideController::class)->name('dashboard.trust-guide');
-    Route::get('/quests/create', QuestCreatePlaceholderController::class)->name('quests.create');
+
+    Route::get('/quests/explore', QuestExploreController::class)->name('quests.explore');
+    Route::get('/quests', [QuestController::class, 'index'])->name('quests.index');
+    Route::get('/quests/create', [QuestController::class, 'create'])->name('quests.create');
+    Route::post('/quests', [QuestController::class, 'store'])->name('quests.store');
+    Route::get('/taggable-freelancers', UserFreelancerSearchController::class)->name('users.freelancers.search');
+    Route::get('/quests/field-profile', QuestFieldProfileController::class)->name('quests.field-profile');
+    Route::post('/quests/wizard/validate-step', [QuestWizardController::class, 'validateStep'])
+        ->middleware('throttle:60,1')
+        ->name('quests.wizard.validate-step');
+    Route::post('/quests/{quest}/offers', [QuestOfferController::class, 'store'])
+        ->middleware('freelancer')
+        ->name('quests.offers.store');
+    Route::post('/quests/{quest}/files', [QuestFileController::class, 'store'])->name('quests.files.store');
+    Route::delete('/quests/{quest}/files/{file}', [QuestFileController::class, 'destroy'])
+        ->whereNumber('file')
+        ->name('quests.files.destroy');
+    Route::post('/quests/{quest}/invites', [QuestInviteController::class, 'store'])->name('quests.invites.store');
+    Route::delete('/quests/{quest}/invites/{freelancer}', [QuestInviteController::class, 'destroy'])
+        ->whereNumber('freelancer')
+        ->name('quests.invites.destroy');
+    Route::get('/quests/{quest}/freelancers/search', [QuestController::class, 'searchFreelancers'])->name('quests.freelancers.search');
+    Route::post('/quests/{quest}/bookmark', [QuestBookmarkController::class, 'store'])->name('quests.bookmark.store');
+    Route::delete('/quests/{quest}/bookmark', [QuestBookmarkController::class, 'destroy'])->name('quests.bookmark.destroy');
+    Route::patch('/quests/{quest}', [QuestController::class, 'update'])->name('quests.update');
+    Route::delete('/quests/{quest}', [QuestController::class, 'destroy'])->name('quests.destroy');
+    Route::get('/quests/{quest}', [QuestController::class, 'show'])->name('quests.show');
+
     Route::post('/reviews', [ReviewController::class, 'store'])
         ->middleware('throttle:15,1')
         ->name('reviews.store');
@@ -42,13 +115,46 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('throttle:20,1')
         ->name('verifications.store');
 
-    Route::get('/quests/explore', QuestExploreController::class)->name('quests.explore');
+    Route::post('/portfolio/{portfolio}/favorite', [FreelancerPortfolioController::class, 'favorite'])
+        ->name('portfolio.favorite');
+
+    Route::patch('/account/quest-categories', [AccountQuestCategoriesController::class, 'update'])
+        ->middleware('freelancer')
+        ->name('account.quest-categories.update');
+
+    Route::middleware('freelancer')->group(function () {
+        $credentialTypes = array_map(fn (CredentialType $t) => $t->value, CredentialType::cases());
+
+        Route::get('/account/credentials/create', function () {
+            return redirect()->route('account.credentials.create', ['type' => CredentialType::Insurance->value]);
+        });
+
+        Route::get('/account/credentials', [FreelancerCredentialController::class, 'index'])->name('account.credentials.index');
+        Route::get('/account/credentials/{type}/create', [FreelancerCredentialController::class, 'create'])
+            ->whereIn('type', $credentialTypes)
+            ->name('account.credentials.create');
+        Route::post('/account/credentials/{type}', [FreelancerCredentialController::class, 'store'])
+            ->whereIn('type', $credentialTypes)
+            ->name('account.credentials.store');
+        Route::get('/account/credentials/{freelancerCredential}/edit', [FreelancerCredentialController::class, 'edit'])
+            ->whereNumber('freelancerCredential')
+            ->name('account.credentials.edit');
+        Route::put('/account/credentials/{freelancerCredential}', [FreelancerCredentialController::class, 'update'])
+            ->whereNumber('freelancerCredential')
+            ->name('account.credentials.update');
+        Route::delete('/account/credentials/{freelancerCredential}', [FreelancerCredentialController::class, 'destroy'])
+            ->whereNumber('freelancerCredential')
+            ->name('account.credentials.destroy');
+
+        Route::get('/portfolio/manage', [FreelancerPortfolioController::class, 'manage'])->name('portfolio.manage');
+        Route::get('/portfolio/create', [FreelancerPortfolioController::class, 'create'])->name('portfolio.create');
+        Route::post('/portfolio', [FreelancerPortfolioController::class, 'store'])->name('portfolio.store');
+        Route::get('/portfolio/{portfolio}/edit', [FreelancerPortfolioController::class, 'edit'])->name('portfolio.edit');
+        Route::put('/portfolio/{portfolio}', [FreelancerPortfolioController::class, 'update'])->name('portfolio.update');
+        Route::delete('/portfolio/{portfolio}', [FreelancerPortfolioController::class, 'destroy'])->name('portfolio.destroy');
+    });
 });
 
-Route::middleware('auth')->group(function () {
-    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-});
+Route::get('/portfolio/{portfolio}', [FreelancerPortfolioController::class, 'show'])->name('portfolio.show');
 
 require __DIR__.'/auth.php';

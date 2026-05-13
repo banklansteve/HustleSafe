@@ -95,6 +95,47 @@
                     </Link>
                 </p>
             </form>
+
+            <details class="mt-10 rounded-2xl border border-slate-200 bg-slate-50/90 px-5 py-4 ring-1 ring-slate-100">
+                <summary class="cursor-pointer list-none text-sm font-bold text-slate-800 [&::-webkit-details-marker]:hidden">
+                    Reactivate a deactivated account
+                </summary>
+                <p class="mt-3 text-sm font-medium leading-relaxed text-slate-600">
+                    If you previously deactivated your account, sign in here with your email and password to restore access immediately.
+                </p>
+                <form class="mt-5 space-y-4" @submit.prevent="reactivateForm.post(route('account.reactivate'))">
+                    <div>
+                        <InputLabel for="reactivate-email" value="Email" />
+                        <TextInput
+                            id="reactivate-email"
+                            v-model="reactivateForm.email"
+                            type="email"
+                            class="mt-2 block w-full rounded-xl border-slate-200 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                            autocomplete="username"
+                        />
+                        <InputError class="mt-2" :message="reactivateForm.errors.email" />
+                    </div>
+                    <div>
+                        <InputLabel for="reactivate-password" value="Password" />
+                        <TextInput
+                            id="reactivate-password"
+                            v-model="reactivateForm.password"
+                            type="password"
+                            class="mt-2 block w-full rounded-xl border-slate-200 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                            autocomplete="current-password"
+                        />
+                        <InputError class="mt-2" :message="reactivateForm.errors.password" />
+                    </div>
+                    <PrimaryButton
+                        type="submit"
+                        class="w-full justify-center rounded-2xl px-4 py-3.5 text-sm font-bold normal-case"
+                        :class="{ 'opacity-60': reactivateForm.processing }"
+                        :disabled="reactivateForm.processing"
+                    >
+                        Reactivate and sign in
+                    </PrimaryButton>
+                </form>
+            </details>
         </div>
     </AuthSplitLayout>
 </template>
@@ -124,6 +165,11 @@ const form = useForm({
     email: '',
     password: '',
     remember: false,
+});
+
+const reactivateForm = useForm({
+    email: '',
+    password: '',
 });
 
 function submit() {

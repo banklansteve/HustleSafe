@@ -24,6 +24,8 @@ class StoreReviewRequest extends FormRequest
             'comment' => ['nullable', 'string', 'max:8000'],
             'tags' => ['nullable', 'array', 'max:12'],
             'tags.*' => ['string', 'max:48'],
+            'attachments' => ['nullable', 'array', 'max:3'],
+            'attachments.*' => ['file', 'max:5120', 'mimes:jpg,jpeg,png,webp,pdf'],
         ];
     }
 }

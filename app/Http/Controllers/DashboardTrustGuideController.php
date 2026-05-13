@@ -66,13 +66,13 @@ class DashboardTrustGuideController extends Controller
                     [
                         'title' => __('Complete your profile'),
                         'body' => __('Headline, bio, rates, and city help sponsors understand you — and help us rank the right quests for you.'),
-                        'href' => route('profile.edit'),
+                        'href' => route('account.security.edit'),
                         'cta' => __('Edit profile'),
                     ],
                     [
                         'title' => __('Quest categories & subcategories'),
                         'body' => __('Pick the services you actually deliver. Better categories mean better matches and fewer wasted pitches.'),
-                        'href' => route('profile.edit'),
+                        'href' => route('account.security.edit'),
                         'cta' => __('Update categories'),
                     ],
                 ],
@@ -111,7 +111,7 @@ class DashboardTrustGuideController extends Controller
                     [
                         'title' => __('Keep billing details current'),
                         'body' => __('Accurate contacts reduce delays when milestones need approval or clarification.'),
-                        'href' => route('profile.edit'),
+                        'href' => route('account.security.edit'),
                         'cta' => __('Account settings'),
                     ],
                 ],

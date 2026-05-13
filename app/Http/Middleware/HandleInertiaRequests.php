@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\FreelancerWorkspaceReadinessService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -34,6 +35,19 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            'freelancerWorkspace' => static function () use ($request) {
+                $user = $request->user();
+                if ($user === null || $user->role?->slug !== 'freelancer') {
+                    return null;
+                }
+
+                return app(FreelancerWorkspaceReadinessService::class)->toInertiaProps($user);
+            },
+            'unreadNotificationsCount' => static function () use ($request) {
+                $user = $request->user();
+
+                return $user === null ? 0 : $user->unreadNotifications()->count();
+            },
             'flash' => [
                 'newsletter' => fn () => $request->session()->get('newsletter'),
                 'success' => fn () => $request->session()->get('success'),

@@ -6,6 +6,7 @@ use App\Enums\ReviewStatus;
 use App\Enums\ReviewType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Review extends Model
 {
@@ -57,6 +58,14 @@ class Review extends Model
     public function reviewee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewee_id');
+    }
+
+    /**
+     * @return HasMany<ReviewAttachment, $this>
+     */
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(ReviewAttachment::class);
     }
 
     public function isEditable(): bool

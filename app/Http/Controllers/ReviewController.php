@@ -9,6 +9,7 @@ use App\Http\Requests\Review\UpdateReviewRequest;
 use App\Models\ActivityLog;
 use App\Models\Quest;
 use App\Models\Review;
+use App\Models\ReviewAttachment;
 use App\Services\ReviewEligibilityService;
 use App\Services\TrustScoreOrchestrator;
 use Illuminate\Http\RedirectResponse;
@@ -66,7 +67,7 @@ class ReviewController extends Controller
         $hours = (int) config('scoring.reviews.edit_window_hours', 72);
 
         $review = DB::transaction(function () use ($request, $quest, $user, $reviewee, $type, $rating, $party, $hours) {
-            return Review::query()->create([
+            $model = Review::query()->create([
                 'quest_id' => $quest->id,
                 'reviewer_id' => $user->id,
                 'reviewee_id' => $reviewee->id,
@@ -79,6 +80,23 @@ class ReviewController extends Controller
                 'status' => ReviewStatus::Published,
                 'edit_window_ends_at' => now()->addHours($hours),
             ]);
+
+            $dir = 'reviews/'.$model->id;
+            foreach ($request->file('attachments', []) as $file) {
+                if (! $file->isValid()) {
+                    continue;
+                }
+                $stored = $file->store($dir, 'public');
+                ReviewAttachment::query()->create([
+                    'review_id' => $model->id,
+                    'path' => $stored,
+                    'original_name' => $file->getClientOriginalName(),
+                    'mime_type' => $file->getClientMimeType() ?? 'application/octet-stream',
+                    'size_bytes' => $file->getSize() ?: 0,
+                ]);
+            }
+
+            return $model;
         });
 
         $this->trustScores->recalculate($reviewee->fresh());

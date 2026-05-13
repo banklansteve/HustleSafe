@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Enums\QuestStatus;
+use App\Enums\QuestVisibility;
 use App\Models\Quest;
 use App\Models\User;
+use App\Models\UserFollow;
 use Illuminate\Support\Collection;
 
 /**
@@ -28,6 +30,7 @@ class QuestMatchingService
 
         $quests = Quest::query()
             ->where('status', QuestStatus::Open)
+            ->where('visibility', QuestVisibility::Public)
             ->whereNull('freelancer_id')
             ->with(['questCategory:id,parent_id,name', 'stateModel:id,name', 'client:id,first_name,name'])
             ->latest('created_at')
@@ -48,6 +51,8 @@ class QuestMatchingService
 
             $budgetScore = $this->budgetFitScore($quest, $freelancer, $reasons);
             $raw += $budgetScore;
+
+            $raw += $this->clientFollowBoost($quest, $freelancer, $reasons);
 
             $match = (int) round(min(100, max(0, $raw)));
 
@@ -182,6 +187,31 @@ class QuestMatchingService
         return 2;
     }
 
+    /**
+     * Sponsors who follow a freelancer get their open quests boosted for that freelancer.
+     *
+     * @param  list<string>  $reasons
+     */
+    protected function clientFollowBoost(Quest $quest, User $freelancer, array &$reasons): float
+    {
+        if ($quest->client_id === null) {
+            return 0;
+        }
+
+        $follows = UserFollow::query()
+            ->where('follower_id', $quest->client_id)
+            ->where('following_id', $freelancer->id)
+            ->exists();
+
+        if (! $follows) {
+            return 0;
+        }
+
+        $reasons[] = __('This sponsor follows you — your match is prioritised.');
+
+        return 24;
+    }
+
     protected function haversineKm(float $lat1, float $lng1, float $lat2, float $lng2): float
     {
         $earth = 6371;
@@ -199,6 +229,7 @@ class QuestMatchingService
     {
         $quests = Quest::query()
             ->where('status', QuestStatus::Open)
+            ->where('visibility', QuestVisibility::Public)
             ->whereNull('freelancer_id')
             ->with(['questCategory:id,parent_id,name', 'stateModel:id,name', 'client:id,first_name,name'])
             ->latest('created_at')

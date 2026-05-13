@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
 class FreelancerCredential extends Model
 {
@@ -38,5 +39,14 @@ class FreelancerCredential extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (FreelancerCredential $credential): void {
+            if ($credential->document_path) {
+                Storage::disk('public')->delete($credential->document_path);
+            }
+        });
     }
 }

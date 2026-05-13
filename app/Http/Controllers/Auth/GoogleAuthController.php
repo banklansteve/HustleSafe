@@ -76,6 +76,13 @@ class GoogleAuthController extends Controller
             ]);
         }
 
+        if ($user->isDeactivated()) {
+            return redirect()->route('login')->with(
+                'status',
+                __('Your account is deactivated. Use "Reactivate account" on the login page with your email and password.')
+            );
+        }
+
         Auth::login($user, true);
 
         return redirect()->intended(route('dashboard', absolute: false));

@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\PortfolioStatus;
 use App\Enums\QuestStatus;
 use App\Models\ActivityLog;
 use App\Models\LoginEvent;
+use App\Models\Portfolio;
 use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Models\User;
@@ -120,6 +122,21 @@ class DashboardController extends Controller
                 'updated_at' => $q->updated_at?->timezone('Africa/Lagos')->toIso8601String(),
                 'payout_display' => $this->formatNgnFromMinor((int) $q->paid_out_minor),
             ]),
+            'portfolioSnapshot' => Portfolio::query()
+                ->where('user_id', $user->id)
+                ->where('status', PortfolioStatus::Published)
+                ->where('admin_hidden', false)
+                ->latest('published_at')
+                ->take(4)
+                ->get()
+                ->map(fn (Portfolio $p) => [
+                    'slug' => $p->slug,
+                    'title' => $p->title,
+                    'cover_url' => $p->coverUrl(),
+                    'favorites_count' => (int) $p->favorites_count,
+                ])
+                ->values()
+                ->all(),
             ...$this->sharedPanels($user),
         ]);
     }
@@ -471,6 +488,12 @@ class DashboardController extends Controller
     {
         return [
             [
+                'label' => __('Your portfolio'),
+                'description' => __('Showcase completed work — drafts stay private until you publish.'),
+                'href' => route('portfolio.manage'),
+                'icon' => 'photo',
+            ],
+            [
                 'label' => __('Explore quests & send offers'),
                 'description' => __('Open briefs matched to your skills and location.'),
                 'href' => route('quests.explore'),
@@ -485,7 +508,7 @@ class DashboardController extends Controller
             [
                 'label' => __('Categories & subcategories'),
                 'description' => __('Fine-tune what you want to be hired for.'),
-                'href' => route('profile.edit'),
+                'href' => route('account.security.edit'),
                 'icon' => 'squares',
             ],
             [
@@ -508,14 +531,14 @@ class DashboardController extends Controller
         if (($user->quest_category_preferences_count ?? 0) < 2) {
             $out[] = [
                 'label' => __('Add more quest categories'),
-                'href' => route('profile.edit'),
+                'href' => route('account.security.edit'),
             ];
         }
 
         if (($user->profile_completion_percent ?? 0) < 85) {
             $out[] = [
                 'label' => __('Complete your profile'),
-                'href' => route('profile.edit'),
+                'href' => route('account.security.edit'),
             ];
         }
 
@@ -554,7 +577,7 @@ class DashboardController extends Controller
             [
                 'label' => __('Account & billing contacts'),
                 'description' => __('Keep approvals and notifications routed correctly.'),
-                'href' => route('profile.edit'),
+                'href' => route('account.security.edit'),
                 'icon' => 'cog',
             ],
         ];
@@ -570,7 +593,7 @@ class DashboardController extends Controller
         if (($user->profile_completion_percent ?? 0) < 85) {
             $out[] = [
                 'label' => __('Complete sponsor profile'),
-                'href' => route('profile.edit'),
+                'href' => route('account.security.edit'),
             ];
         }
 
@@ -593,5 +616,4 @@ class DashboardController extends Controller
 
         return '₦'.number_format($naira, 0);
     }
-
 }

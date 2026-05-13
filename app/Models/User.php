@@ -60,9 +60,12 @@ class User extends Authenticatable implements MustVerifyEmail
         'locale',
         'onboarding_step',
         'last_active_at',
+        'freelancer_last_setup_reminder_at',
         'suspended_at',
         'google_id',
         'avatar_url',
+        'public_profile_settings',
+        'hide_online_presence',
         'password',
     ];
 
@@ -106,10 +109,14 @@ class User extends Authenticatable implements MustVerifyEmail
             'hourly_rate_min' => 'decimal:2',
             'hourly_rate_max' => 'decimal:2',
             'last_active_at' => 'datetime',
+            'freelancer_last_setup_reminder_at' => 'datetime',
             'suspended_at' => 'datetime',
+            'deactivated_at' => 'datetime',
             'geocoded_at' => 'datetime',
             'latitude' => 'float',
             'longitude' => 'float',
+            'public_profile_settings' => 'array',
+            'hide_online_presence' => 'boolean',
         ];
     }
 
@@ -170,6 +177,63 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * @return HasMany<Portfolio, $this>
+     */
+    public function portfolios(): HasMany
+    {
+        return $this->hasMany(Portfolio::class);
+    }
+
+    /**
+     * Portfolios this user has favourited.
+     *
+     * @return BelongsToMany<Portfolio, $this>
+     */
+    public function favoritedPortfolios(): BelongsToMany
+    {
+        return $this->belongsToMany(Portfolio::class, 'portfolio_favorites')->withTimestamps();
+    }
+
+    /**
+     * Users following this user (this user is the talent).
+     *
+     * @return BelongsToMany<User, $this>
+     */
+    public function followers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'user_follows', 'following_id', 'follower_id')->withTimestamps();
+    }
+
+    /**
+     * Users this user follows.
+     *
+     * @return BelongsToMany<User, $this>
+     */
+    public function followingUsers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'user_follows', 'follower_id', 'following_id')->withTimestamps();
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    public function effectivePublicProfileSettings(): array
+    {
+        /** @var array<string, bool> $defaults */
+        $defaults = match ($this->role?->slug) {
+            'freelancer' => config('profile.public_defaults', []),
+            default => config('profile.client_public_defaults', config('profile.public_defaults', [])),
+        };
+
+        return array_merge($defaults, $this->public_profile_settings ?? []);
+    }
+
+    public function isDeactivated(): bool
+    {
+        return $this->deactivated_at !== null;
+    }
+
+    /**
      * @return HasMany<Quest, $this>
      */
     public function questsAsClient(): HasMany
@@ -209,6 +273,14 @@ class User extends Authenticatable implements MustVerifyEmail
     public function questCategoryPreferences(): BelongsToMany
     {
         return $this->belongsToMany(QuestCategory::class, 'freelancer_quest_category')->withTimestamps();
+    }
+
+    /**
+     * @return HasMany<QuestOffer, $this>
+     */
+    public function questOffers(): HasMany
+    {
+        return $this->hasMany(QuestOffer::class, 'freelancer_id');
     }
 
     protected static function booted(): void

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountReactivateController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
@@ -13,6 +14,9 @@ use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
+    Route::post('account/reactivate', AccountReactivateController::class)
+        ->middleware('throttle:10,1')
+        ->name('account.reactivate');
     Route::get('auth/google', [GoogleAuthController::class, 'redirect'])
         ->name('google.redirect');
 

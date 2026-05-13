@@ -1,5 +1,6 @@
 <template>
     <section
+        id="testimonials"
         class="relative overflow-hidden bg-gradient-to-b from-slate-50 via-white to-slate-50/90 py-12 sm:py-16 lg:py-24"
         aria-labelledby="testimonials-heading"
         data-landing-section="testimonials"

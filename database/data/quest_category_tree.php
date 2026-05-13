@@ -2,6 +2,8 @@
 
 /**
  * Parent categories + subcategories for quests & freelancer preferences.
+ *
+ * Subcategories are rows in `quest_categories` with `parent_id` pointing at the parent.
  * Extend by appending to this array — QuestCategorySeeder replants from scratch in dev.
  */
 return [
@@ -125,6 +127,18 @@ return [
         ['name' => 'Grant writing', 'slug' => 'grant-writing'],
         ['name' => 'Community programs & outreach', 'slug' => 'community-outreach'],
         ['name' => 'Monitoring & evaluation', 'slug' => 'monitoring-evaluation'],
+    ]],
+    ['name' => 'Gaming & interactive media', 'slug' => 'gaming-interactive', 'children' => [
+        ['name' => 'Game design & economy docs', 'slug' => 'game-design-economy'],
+        ['name' => 'Unity / Unreal implementation support', 'slug' => 'unity-unreal-support'],
+        ['name' => 'Live ops & community moderation', 'slug' => 'liveops-community'],
+        ['name' => 'Narrative & quest writing', 'slug' => 'game-narrative'],
+    ]],
+    ['name' => 'Research & decision support', 'slug' => 'research-decision', 'children' => [
+        ['name' => 'Survey design & enumerator briefings', 'slug' => 'survey-enumerator'],
+        ['name' => 'Policy memos & stakeholder packs', 'slug' => 'policy-memos'],
+        ['name' => 'Dashboards & insight decks', 'slug' => 'insight-decks'],
+        ['name' => 'Competitive intelligence scans', 'slug' => 'competitive-intel'],
     ]],
     ['name' => 'Other / multi-disciplinary', 'slug' => 'other-multidisciplinary', 'children' => [
         ['name' => 'General consulting', 'slug' => 'general-consulting'],

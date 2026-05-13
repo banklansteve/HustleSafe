@@ -72,7 +72,7 @@ const showingNavigationDropdown = ref(false);
 
                                     <template #content>
                                         <DropdownLink
-                                            :href="route('profile.edit')"
+                                            :href="route('account.security.edit')"
                                         >
                                             Profile
                                         </DropdownLink>
@@ -164,7 +164,7 @@ const showingNavigationDropdown = ref(false);
                         </div>
 
                         <div class="mt-3 space-y-1">
-                            <ResponsiveNavLink :href="route('profile.edit')">
+                            <ResponsiveNavLink :href="route('account.security.edit')">
                                 Profile
                             </ResponsiveNavLink>
                             <ResponsiveNavLink

@@ -82,8 +82,8 @@
                     >
                         <span class="font-bold">Tip:</span>
                         add quest categories in your profile so we can rank better matches for you.
-                        <Link :href="route('profile.edit')" class="ml-1 font-bold text-amber-900 underline decoration-amber-400 underline-offset-2">
-                            Open profile
+                        <Link :href="route('account.show')" class="ml-1 font-bold text-amber-900 underline decoration-amber-400 underline-offset-2">
+                            Open account
                         </Link>
                     </div>
 
@@ -93,6 +93,56 @@
                         :six="incomeCharts.six"
                         :twelve="incomeCharts.twelve"
                     />
+
+                    <div
+                        v-if="portfolioSnapshot.length"
+                        class="rounded-xl border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/50 to-primary-50/40 p-5 shadow-sm ring-1 ring-slate-100 sm:p-6"
+                    >
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h3 class="font-display text-base font-bold text-slate-900">
+                                    Portfolio spotlight
+                                </h3>
+                                <p class="mt-1 text-xs font-medium text-slate-600">
+                                    Live pieces visitors can explore in the gallery.
+                                </p>
+                            </div>
+                            <Link
+                                :href="route('portfolio.manage')"
+                                class="text-xs font-bold text-primary-700 hover:text-primary-800"
+                            >
+                                Manage →
+                            </Link>
+                        </div>
+                        <div class="mt-4 flex gap-3 overflow-x-auto pb-1 pt-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                            <Link
+                                v-for="item in portfolioSnapshot"
+                                :key="item.slug"
+                                :href="route('portfolio.show', item.slug)"
+                                class="group w-36 shrink-0 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-100 transition hover:border-primary-200 hover:shadow-md sm:w-40"
+                            >
+                                <div class="relative aspect-[4/3] bg-slate-100">
+                                    <img
+                                        v-if="item.cover_url"
+                                        :src="item.cover_url"
+                                        :alt="item.title"
+                                        class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                                    />
+                                    <div v-else class="flex h-full items-center justify-center text-[10px] font-bold text-slate-400">
+                                        No cover
+                                    </div>
+                                </div>
+                                <div class="p-2.5">
+                                    <p class="line-clamp-2 text-xs font-bold text-slate-900">
+                                        {{ item.title }}
+                                    </p>
+                                    <p class="mt-1 text-[10px] font-semibold text-slate-500">
+                                        {{ item.favorites_count }} likes
+                                    </p>
+                                </div>
+                            </Link>
+                        </div>
+                    </div>
 
                     <!-- Top matches -->
                     <div class="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-6">
@@ -524,6 +574,10 @@ defineProps({
     notifications: {
         type: Array,
         required: true,
+    },
+    portfolioSnapshot: {
+        type: Array,
+        default: () => [],
     },
 });
 

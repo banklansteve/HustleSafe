@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -70,6 +71,15 @@ class LoginRequest extends FormRequest
 
             throw ValidationException::withMessages([
                 'email' => trans('auth.failed'),
+            ]);
+        }
+
+        $user = User::query()->find(Auth::id());
+        if ($user !== null && $user->deactivated_at !== null) {
+            Auth::logout();
+
+            throw ValidationException::withMessages([
+                'email' => __('This account is deactivated. Use “Reactivate account” on the login page or contact support.'),
             ]);
         }
 

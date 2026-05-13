@@ -8,6 +8,14 @@ return [
     ],
 
     'nav' => [
+        'home' => 'Home',
+        'dashboard' => 'Dashboard',
+        'quests' => 'Quests',
+        'new_quest' => 'New quest',
+        'my_offers' => 'My offers',
+        'portfolios' => 'Portfolios',
+        'portfolio' => 'Portfolio',
+        'account' => 'Account',
         'how_it_works' => 'How it works',
         'trust' => 'Trust & escrow',
         'categories' => 'Categories',
@@ -219,7 +227,9 @@ return [
             ['label' => 'Trust & escrow', 'href' => '#trust'],
             ['label' => 'Categories', 'href' => '#categories'],
             ['label' => 'Spotlight', 'href' => '#popular-jobs'],
+            ['label' => 'Stories', 'href' => '#testimonials'],
             ['label' => 'FAQ', 'href' => '#faq'],
+            ['label' => 'Newsletter', 'href' => '#newsletter'],
         ],
         'links_company' => [
             ['label' => 'About', 'href' => '#'],
