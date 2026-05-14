@@ -18,33 +18,39 @@ class QuestExploreController extends Controller
         $user = $request->user();
         $user->loadMissing(['role', 'questCategoryPreferences']);
 
-        if ($user->role?->slug !== 'freelancer') {
+        if (! in_array($user->role?->slug, ['freelancer', 'client'], true)) {
             return redirect()->route('dashboard');
         }
 
-        $rows = app(QuestMatchingService::class)->rankedOpenQuestsForFreelancer($user, 48);
+        $rows = app(QuestMatchingService::class)->discoveryFeedForExplore($user, 48);
 
         $quests = $rows->map(function (array $row) use ($user, $workspace) {
             $q = $row['quest'];
+            $cat = $q->questCategory;
+            $parent = $cat?->parent;
 
             return [
                 'id' => $q->id,
                 'uuid' => $q->uuid,
+                'slug' => $q->slug,
                 'title' => $q->title,
                 'match_score' => $row['match_score'],
                 'reasons' => array_slice($row['reasons'], 0, 3),
                 'budget_minor' => (int) ($q->budget_amount_minor ?? 0),
-                'category' => $q->questCategory?->name,
+                'cover_url' => $q->displayCoverUrl(),
+                'category' => $cat?->name,
+                'parent_category' => $parent?->name,
                 'state' => $q->stateModel?->name,
                 'city' => $q->city,
                 'posted_at' => $q->created_at?->timezone('Africa/Lagos')->toIso8601String(),
-                'category_match' => $workspace->matchesQuestCategory($user, $q),
+                'category_match' => $user->role?->slug === 'freelancer' && $workspace->matchesQuestCategory($user, $q),
             ];
         })->values()->all();
 
         return Inertia::render('Quests/Explore', [
             'quests' => $quests,
             'workspace' => $workspace->toInertiaProps($user),
+            'explore_mode' => $user->role?->slug === 'client' ? 'client' : 'freelancer',
         ]);
     }
 }

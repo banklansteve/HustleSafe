@@ -12,7 +12,7 @@
                 "
                 :disabled="busy"
                 :aria-pressed="following"
-                :aria-label="following ? 'Unfollow this freelancer' : 'Follow this freelancer'"
+                :aria-label="following ? 'Unfollow' : 'Follow'"
                 @click="onClick"
             >
                 <ReLoader4Line v-if="busy" class="h-5 w-5 animate-spin text-rose-500" />
@@ -21,16 +21,17 @@
                 <span>{{ following ? 'Following' : 'Follow' }}</span>
             </button>
         </div>
-        <p class="text-center text-[11px] font-bold uppercase tracking-wide text-teal-100/85">
-            {{ followersLabel }} followers
-        </p>
+        <div class="max-w-[14rem] text-center text-[10px] font-bold uppercase leading-tight tracking-wide text-teal-100/90">
+            <p>{{ followersDetail }} followers</p>
+            <p class="mt-1 text-teal-100/80">{{ followingDetail }} following</p>
+        </div>
     </div>
 </template>
 
 <script setup>
 import PortfolioHeartBurst from '@/Components/Portfolio/PortfolioHeartBurst.vue';
 import { xsrfToken } from '@/utils/csrfHeader';
-import { formatCompactCount } from '@/utils/formatCompactCount';
+import { formatCompactCountWithFull } from '@/utils/formatCompactCount';
 import { HeartIcon, UserPlusIcon } from '@heroicons/vue/24/outline';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { router } from '@inertiajs/vue3';
@@ -50,6 +51,10 @@ const props = defineProps({
         type: Number,
         default: 0,
     },
+    initialFollowingCount: {
+        type: Number,
+        default: 0,
+    },
     isAuthenticated: {
         type: Boolean,
         default: false,
@@ -62,6 +67,7 @@ const props = defineProps({
 
 const following = ref(props.initialFollowing);
 const followersCount = ref(Number(props.initialFollowersCount) || 0);
+const followingCount = ref(Number(props.initialFollowingCount) || 0);
 const busy = ref(false);
 const burstKey = ref(0);
 
@@ -77,8 +83,15 @@ watch(
         followersCount.value = Number(v) || 0;
     },
 );
+watch(
+    () => props.initialFollowingCount,
+    (v) => {
+        followingCount.value = Number(v) || 0;
+    },
+);
 
-const followersLabel = computed(() => formatCompactCount(followersCount.value));
+const followersDetail = computed(() => formatCompactCountWithFull(followersCount.value));
+const followingDetail = computed(() => formatCompactCountWithFull(followingCount.value));
 
 async function onClick() {
     if (busy.value || !props.viewerCanFollow) {
@@ -104,6 +117,7 @@ async function onClick() {
         const was = following.value;
         following.value = !!data.following;
         followersCount.value = Number(data.followers_count) || 0;
+        followingCount.value = Number(data.following_count) || followingCount.value;
         if (!was && following.value) {
             burstKey.value += 1;
         }

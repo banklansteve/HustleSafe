@@ -30,10 +30,15 @@ class UserFollowedNotification extends Notification
         $name = $this->follower->first_name ?: $this->follower->name ?: __('Someone');
 
         return [
+            'headline' => __('New follower'),
+            'title' => __('New follower'),
             'message' => __(':name started following you.', ['name' => $name]),
             'follower_id' => $this->follower->id,
             'follower_slug' => $this->follower->slug,
             'type' => 'user_followed',
+            'href' => $this->follower->slug
+                ? route('freelancers.public', $this->follower->slug, absolute: false)
+                : null,
         ];
     }
 }

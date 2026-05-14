@@ -126,10 +126,10 @@ class DashboardTrustGuideController extends Controller
                         'cta' => __('Create a quest'),
                     ],
                     [
-                        'title' => __('Respond to offers promptly'),
+                        'title' => __('Respond to proposals promptly'),
                         'body' => __('Timely replies keep good freelancers engaged and improve how the community rates the experience.'),
-                        'href' => route('dashboard.lists.show', ['list' => 'client-offers-inbox']),
-                        'cta' => __('View offers'),
+                        'href' => route('dashboard.lists.show', ['list' => 'client-proposals-inbox']),
+                        'cta' => __('View proposals'),
                     ],
                 ],
             ],

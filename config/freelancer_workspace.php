@@ -17,6 +17,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | High-value quests (minor units, kobo)
+    |--------------------------------------------------------------------------
+    |
+    | Document ID can be approved while a live selfie+ID check is still pending.
+    | Quests at or above this budget (or quotes at/above it) require an approved
+    | "live presence" submission. Default ≈ ₦200,000.
+    |
+    */
+    'high_value_quest_budget_minor' => (int) env('FREELANCER_HIGH_VALUE_QUEST_BUDGET_MINOR', 80_000_000),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Minimum trust profile completion (%) before sending proposals
+    |--------------------------------------------------------------------------
+    */
+    'min_profile_completion_for_proposals' => (int) env('FREELANCER_MIN_PROFILE_PERCENT', 55),
+
+    /*
+    |--------------------------------------------------------------------------
     | Reminder cadence (hours between nudges)
     |--------------------------------------------------------------------------
     */

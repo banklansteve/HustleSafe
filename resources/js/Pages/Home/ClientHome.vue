@@ -73,6 +73,30 @@
                         </div>
                     </section>
 
+                    <section class="rounded-xl border border-primary-100/80 bg-gradient-to-r from-primary-50/90 via-white to-teal-50/50 p-4 shadow-sm ring-1 ring-primary-100 sm:p-5">
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-primary-800">Jump in</p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <Link
+                                :href="route('quests.index')"
+                                class="inline-flex items-center rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-primary-900 shadow-sm ring-1 ring-primary-200 hover:bg-primary-50"
+                            >
+                                My quests
+                            </Link>
+                            <Link
+                                :href="route('dashboard.lists.show', { list: 'client-proposals-inbox' })"
+                                class="inline-flex items-center rounded-full bg-primary-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-primary-800"
+                            >
+                                All proposals
+                            </Link>
+                            <Link
+                                :href="route('quests.explore')"
+                                class="inline-flex items-center rounded-full border border-primary-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-primary-900 shadow-sm hover:bg-primary-50"
+                            >
+                                Browse marketplace
+                            </Link>
+                        </div>
+                    </section>
+
                     <MiniBarChart
                         title="Escrow released (₦)"
                         subtitle="Spend across delivery and completed quests — 6 vs 12 month lens."
@@ -106,7 +130,10 @@
                         </div>
                         <ul class="mt-4 space-y-3">
                             <li v-for="q in attentionQuests" :key="q.id">
-                                <div class="rounded-xl border border-amber-100 bg-amber-50/50 px-4 py-3 ring-1 ring-amber-100/60">
+                                <Link
+                                    :href="questDetailHref(q)"
+                                    class="block rounded-xl border border-amber-100 bg-amber-50/50 px-4 py-3 ring-1 ring-amber-100/60 transition hover:border-primary-200 hover:bg-white hover:shadow-sm"
+                                >
                                     <p class="font-display text-sm font-bold text-slate-900">
                                         {{ q.title }}
                                     </p>
@@ -121,7 +148,7 @@
                                     <p class="mt-1.5 text-xs font-medium text-slate-600">
                                         Updated {{ formatWhen(q.updated_at) }}
                                     </p>
-                                </div>
+                                </Link>
                             </li>
                             <li
                                 v-if="attentionQuests.length === 0"
@@ -158,8 +185,9 @@
                         </div>
                         <ul class="mt-4 space-y-3">
                             <li v-for="q in recentQuests" :key="q.id">
-                                <div
-                                    class="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3 transition hover:border-primary-100 hover:bg-white"
+                                <Link
+                                    :href="questDetailHref(q)"
+                                    class="block rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3 transition hover:border-primary-200 hover:bg-white hover:shadow-sm"
                                 >
                                     <p class="font-display text-sm font-bold text-slate-900">
                                         {{ q.title }}
@@ -175,7 +203,7 @@
                                     <p class="mt-1.5 text-xs font-medium text-slate-500">
                                         Updated {{ formatWhen(q.updated_at) }}
                                     </p>
-                                </div>
+                                </Link>
                             </li>
                             <li
                                 v-if="recentQuests.length === 0"
@@ -248,18 +276,32 @@
                                 <li
                                     v-for="n in notifications"
                                     :key="n.id"
-                                    class="rounded-xl border px-3 py-3"
+                                    class="rounded-xl border px-0 py-0"
                                     :class="n.read ? 'border-slate-100 bg-slate-50/60' : 'border-secondary-200 bg-secondary-50/70'"
                                 >
-                                    <p class="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                                        {{ n.type }}
-                                    </p>
-                                    <p class="mt-1 text-sm font-semibold text-slate-900">
-                                        {{ summarizeNotification(n.data) }}
-                                    </p>
-                                    <p class="mt-1.5 text-xs font-medium text-slate-500">
-                                        {{ formatWhen(n.created_at) }}
-                                    </p>
+                                    <button
+                                        type="button"
+                                        class="block w-full rounded-xl px-3 py-3 text-left transition hover:bg-white/80 disabled:cursor-wait disabled:opacity-70"
+                                        :disabled="notifBusyId === n.id"
+                                        @click="openDashboardNotification(n)"
+                                    >
+                                        <span class="inline-flex items-center gap-2">
+                                            <ReLoader4Line
+                                                v-if="notifBusyId === n.id"
+                                                class="h-4 w-4 shrink-0 animate-spin text-primary-600"
+                                                aria-hidden="true"
+                                            />
+                                            <p class="text-[10px] font-bold uppercase tracking-wide text-primary-800">
+                                                {{ n.label }}
+                                            </p>
+                                        </span>
+                                        <p class="mt-1 text-sm font-semibold text-slate-900">
+                                            {{ n.line || summarizeNotification(n.data) }}
+                                        </p>
+                                        <p class="mt-1.5 text-xs font-medium text-slate-500">
+                                            {{ formatWhen(n.created_at) }}
+                                        </p>
+                                    </button>
                                 </li>
                                 <li
                                     v-if="notifications.length === 0"
@@ -345,33 +387,40 @@
                     <div class="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm ring-1 ring-slate-100 sm:p-5">
                         <div class="flex items-center justify-between gap-2">
                             <h3 class="font-display text-sm font-bold text-slate-900">
-                                Offers on your quests
+                                Proposals on your quests
                             </h3>
                             <Link
-                                :href="route('dashboard.lists.show', { list: 'client-offers-inbox' })"
+                                :href="route('dashboard.lists.show', { list: 'client-proposals-inbox' })"
                                 class="text-[11px] font-bold text-primary-700 hover:text-primary-800"
                             >
                                 See all
                             </Link>
                         </div>
                         <ul class="mt-3 space-y-2">
-                            <li
-                                v-for="o in inboundOffers"
-                                :key="o.id"
-                                class="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2"
-                            >
-                                <p class="text-xs font-bold text-slate-900 line-clamp-2">
-                                    {{ o.quest_title ?? 'Quest' }}
-                                </p>
-                                <p class="mt-0.5 text-[11px] font-semibold text-slate-600">
-                                    From {{ o.freelancer_label ?? 'Freelancer' }}
-                                </p>
-                                <p class="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-800">
-                                    {{ o.status.replace(/_/g, ' ') }}
-                                </p>
-                                <p class="mt-0.5 text-[10px] font-medium text-slate-500">
-                                    {{ formatWhen(o.updated_at) }}
-                                </p>
+                            <li v-for="o in inboundOffers" :key="o.id">
+                                <Link
+                                    v-if="o.proposal_url"
+                                    :href="o.proposal_url"
+                                    class="block rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 transition hover:border-primary-200 hover:bg-white hover:shadow-sm"
+                                >
+                                    <p class="text-xs font-bold text-slate-900 line-clamp-2">
+                                        {{ o.quest_title ?? 'Quest' }}
+                                    </p>
+                                    <p class="mt-0.5 text-[11px] font-semibold text-slate-600">
+                                        From {{ o.freelancer_label ?? 'Freelancer' }}
+                                    </p>
+                                    <p class="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-800">
+                                        {{ o.status.replace(/_/g, ' ') }}
+                                    </p>
+                                    <p class="mt-0.5 text-[10px] font-medium text-slate-500">
+                                        {{ formatWhen(o.updated_at) }}
+                                    </p>
+                                </Link>
+                                <div v-else class="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
+                                    <p class="text-xs font-bold text-slate-900 line-clamp-2">
+                                        {{ o.quest_title ?? 'Quest' }}
+                                    </p>
+                                </div>
                             </li>
                             <li v-if="inboundOffers.length === 0" class="text-xs font-semibold text-slate-600">
                                 Offers appear when freelancers respond to your briefs.
@@ -422,6 +471,7 @@ import MiniBarChart from '@/Components/Home/MiniBarChart.vue';
 import PanelIcon from '@/Components/Home/PanelIcon.vue';
 import TrustHalfDonut from '@/Components/Home/TrustHalfDonut.vue';
 import AppShell from '@/Layouts/AppShell.vue';
+import { useNotificationVisit } from '@/composables/useNotificationVisit';
 import {
     BellAlertIcon,
     ClipboardDocumentListIcon,
@@ -431,7 +481,22 @@ import {
     InformationCircleIcon,
     StarIcon,
 } from '@heroicons/vue/24/outline';
+import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { Head, Link } from '@inertiajs/vue3';
+
+const { busyId: notifBusyId, visit: visitNotification } = useNotificationVisit();
+
+function questDetailHref(q) {
+    if (!q?.slug && !q?.uuid) {
+        return route('quests.index');
+    }
+
+    return route('quests.show', q.slug || q.uuid);
+}
+
+function openDashboardNotification(n) {
+    void visitNotification(n.id);
+}
 
 defineProps({
     copy: {
@@ -512,12 +577,22 @@ function summarizeNotification(data) {
     if (!data || typeof data !== 'object') {
         return 'Update';
     }
+    if (typeof data.quest_title === 'string' && data.quest_title) {
+        return data.quest_title;
+    }
+    if (typeof data.preview === 'string' && data.preview) {
+        return data.preview;
+    }
     if (typeof data.message === 'string') {
         return data.message;
+    }
+    if (typeof data.body === 'string') {
+        return data.body;
     }
     if (typeof data.title === 'string') {
         return data.title;
     }
+
     return 'Update';
 }
 </script>

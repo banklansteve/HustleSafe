@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\UserFollow;
-use App\Notifications\UserFollowedNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,10 +18,6 @@ class UserFollowController extends Controller
             abort(403);
         }
 
-        if ($viewer->role?->slug !== 'client') {
-            abort(403);
-        }
-
         if (! Schema::hasTable('user_follows')) {
             return response()->json([
                 'message' => __('Follow is temporarily unavailable. Ask the site admin to run database migrations.'),
@@ -31,16 +26,22 @@ class UserFollowController extends Controller
 
         $target = User::query()
             ->where('slug', $slug)
-            ->whereHas('role', fn ($q) => $q->where('slug', 'freelancer'))
+            ->whereHas('role', fn ($q) => $q->whereIn('slug', ['freelancer', 'client']))
             ->firstOrFail();
 
         if ($viewer->id === $target->id) {
             abort(403);
         }
 
-        $notify = false;
+        $viewerRole = $viewer->role?->slug;
+        $targetRole = $target->role?->slug;
 
-        DB::transaction(function () use ($viewer, $target, &$notify) {
+        if (! (($viewerRole === 'client' && $targetRole === 'freelancer')
+            || ($viewerRole === 'freelancer' && $targetRole === 'client'))) {
+            abort(403, __('You can only follow clients or freelancers across roles.'));
+        }
+
+        DB::transaction(function () use ($viewer, $target): void {
             $exists = UserFollow::query()
                 ->where('follower_id', $viewer->id)
                 ->where('following_id', $target->id)
@@ -59,23 +60,20 @@ class UserFollowController extends Controller
                 'follower_id' => $viewer->id,
                 'following_id' => $target->id,
             ]);
-            $notify = true;
         });
-
-        if ($notify) {
-            $target->notify(new UserFollowedNotification($viewer));
-        }
 
         $following = UserFollow::query()
             ->where('follower_id', $viewer->id)
             ->where('following_id', $target->id)
             ->exists();
 
-        $count = UserFollow::query()->where('following_id', $target->id)->count();
+        $followersCount = UserFollow::query()->where('following_id', $target->id)->count();
+        $followingCount = UserFollow::query()->where('follower_id', $target->id)->count();
 
         return response()->json([
             'following' => $following,
-            'followers_count' => $count,
+            'followers_count' => $followersCount,
+            'following_count' => $followingCount,
         ]);
     }
 }

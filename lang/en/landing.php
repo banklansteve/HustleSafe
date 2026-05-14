@@ -4,7 +4,7 @@ return [
     'meta' => [
         'title' => 'HustleSafe — Secure quests, verified talent, escrow protection',
         'description' => 'Secure quests for freelancers — verified talent, escrow protection, pay only when satisfied. Nigerian marketplace with funds held until you approve.',
-        'keywords' => 'freelance Nigeria, escrow Nigeria, hire freelancers Lagos, verified freelancers, quests and offers, side hustle marketplace, remote work Nigeria',
+        'keywords' => 'freelance Nigeria, escrow Nigeria, hire freelancers Lagos, verified freelancers, quests and proposals, side hustle marketplace, remote work Nigeria',
     ],
 
     'nav' => [
@@ -12,7 +12,7 @@ return [
         'dashboard' => 'Dashboard',
         'quests' => 'Quests',
         'new_quest' => 'New quest',
-        'my_offers' => 'My offers',
+        'my_offers' => 'My proposals',
         'portfolios' => 'Portfolios',
         'portfolio' => 'Portfolio',
         'account' => 'Account',
@@ -30,9 +30,9 @@ return [
     'hero' => [
         'headline' => 'Secure quests for freelancers',
         'subhead' => 'Verified talent, escrow protection, pay only when satisfied.',
-        'lead' => 'Built for Nigeria — clients post quests, talent sends offers, payments stay protected.',
+        'lead' => 'Built for Nigeria — clients post quests, talent sends proposals, payments stay protected.',
         'cta_hire' => 'Start a Quest',
-        'cta_earn' => 'Create an Offer',
+        'cta_earn' => 'Send a proposal',
         'badge' => 'Escrow-first marketplace · Nigeria',
         'image_alt' => 'Professionals collaborating — HustleSafe marketplace banner',
     ],
@@ -62,8 +62,8 @@ return [
                 'body' => 'Complete verification and showcase work buyers can trust fast.',
             ],
             [
-                'title' => 'Win quests with strong offers',
-                'body' => 'Submit offers that match the brief — start only when scope and escrow funding are clear.',
+                'title' => 'Win quests with strong proposals',
+                'body' => 'Submit proposals that match the brief — start only when scope and escrow funding are clear.',
             ],
             [
                 'title' => 'Deliver & get paid',
@@ -112,7 +112,7 @@ return [
 
     'popular_jobs' => [
         'kicker' => 'Proof, not promises',
-        'title' => 'Quests & offers that delivered',
+        'title' => 'Quests & proposals that delivered',
         'subtitle' => 'Recently completed work with excellent reviews — proof from verified Safe Hustlers.',
         'cta' => 'Start a Quest',
         'items' => [

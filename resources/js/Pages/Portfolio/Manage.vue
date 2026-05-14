@@ -62,37 +62,11 @@
             </div>
             <div class="w-full sm:w-36">
                 <label class="text-xs font-bold uppercase tracking-wide text-slate-500">Status</label>
-                <select
-                    v-model="localStatus"
-                    class="mt-1 w-full rounded-lg border-slate-200 text-sm font-bold shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                >
-                    <option value="all">
-                        All
-                    </option>
-                    <option value="draft">
-                        Draft
-                    </option>
-                    <option value="published">
-                        Published
-                    </option>
-                </select>
+                <UiSelect v-model="localStatus" class="mt-1" :options="manageStatusOptions" placeholder="Status" />
             </div>
             <div class="w-full sm:w-40">
                 <label class="text-xs font-bold uppercase tracking-wide text-slate-500">Sort</label>
-                <select
-                    v-model="localSort"
-                    class="mt-1 w-full rounded-lg border-slate-200 text-sm font-bold shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                >
-                    <option value="latest">
-                        Recently updated
-                    </option>
-                    <option value="popular">
-                        Most liked
-                    </option>
-                    <option value="oldest">
-                        Oldest
-                    </option>
-                </select>
+                <UiSelect v-model="localSort" class="mt-1" :options="manageSortOptions" placeholder="Sort" />
             </div>
             <button
                 type="submit"
@@ -215,10 +189,23 @@
 
 <script setup>
 import PortfolioConfirmModal from '@/Components/Portfolio/PortfolioConfirmModal.vue';
+import UiSelect from '@/Components/Ui/UiSelect.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import { formatCompactCount } from '@/utils/formatCompactCount';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
+
+const manageStatusOptions = [
+    { value: 'all', label: 'All' },
+    { value: 'draft', label: 'Draft' },
+    { value: 'published', label: 'Published' },
+];
+
+const manageSortOptions = [
+    { value: 'latest', label: 'Recently updated' },
+    { value: 'popular', label: 'Most liked' },
+    { value: 'oldest', label: 'Oldest' },
+];
 
 const props = defineProps({
     portfolios: {

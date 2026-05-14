@@ -133,27 +133,14 @@
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div>
                                 <InputLabel for="gender" value="Gender (optional)" />
-                                <select
+                                <UiSelect
                                     id="gender"
                                     v-model="form.gender"
-                                    class="mt-2 block w-full rounded-xl border-slate-200 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                                >
-                                    <option value="">
-                                        Optional — choose
-                                    </option>
-                                    <option value="female">
-                                        Female
-                                    </option>
-                                    <option value="male">
-                                        Male
-                                    </option>
-                                    <option value="non_binary">
-                                        Non-binary
-                                    </option>
-                                    <option value="prefer_not_to_say">
-                                        Prefer not to say
-                                    </option>
-                                </select>
+                                    class="mt-2"
+                                    :options="genderOptions"
+                                    placeholder="Optional — choose"
+                                    :invalid="!!fieldError('gender')"
+                                />
                                 <InputError class="mt-2" :message="fieldError('gender')" />
                             </div>
                             <div>
@@ -235,36 +222,27 @@
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div>
                                 <InputLabel for="state_id" value="State" />
-                                <select
+                                <UiSelect
                                     id="state_id"
-                                    v-model.number="form.state_id"
-                                    class="mt-2 block w-full rounded-xl border-slate-200 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                                    @change="form.local_government_id = ''"
-                                >
-                                    <option disabled :value="0">
-                                        Select state
-                                    </option>
-                                    <option v-for="st in locations" :key="st.id" :value="st.id">
-                                        {{ st.name }}
-                                    </option>
-                                </select>
+                                    v-model="form.state_id"
+                                    class="mt-2"
+                                    :options="stateOptions"
+                                    placeholder="Select state"
+                                    :invalid="!!fieldError('state_id')"
+                                />
                                 <InputError class="mt-2" :message="fieldError('state_id')" />
                             </div>
                             <div>
                                 <InputLabel for="local_government_id" value="Local government (LGA)" />
-                                <select
+                                <UiSelect
                                     id="local_government_id"
-                                    v-model.number="form.local_government_id"
-                                    class="mt-2 block w-full rounded-xl border-slate-200 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                    v-model="form.local_government_id"
+                                    class="mt-2"
+                                    :options="lgaUiOptions"
+                                    :placeholder="form.state_id ? 'Select LGA' : 'Choose a state first'"
                                     :disabled="!form.state_id"
-                                >
-                                    <option disabled :value="0">
-                                        {{ form.state_id ? 'Select LGA' : 'Choose a state first' }}
-                                    </option>
-                                    <option v-for="lg in lgaOptions" :key="lg.id" :value="lg.id">
-                                        {{ lg.name }}
-                                    </option>
-                                </select>
+                                    :invalid="!!fieldError('local_government_id')"
+                                />
                                 <InputError class="mt-2" :message="fieldError('local_government_id')" />
                             </div>
                         </div>
@@ -387,13 +365,14 @@ import GoogleSignInButton from '@/Components/Auth/GoogleSignInButton.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
+import UiSelect from '@/Components/Ui/UiSelect.vue';
 import AuthSplitLayout from '@/Layouts/Auth/AuthSplitLayout.vue';
 import { FaRegBuilding } from '@kalimahapps/vue-icons/fa';
 import { SparklesIcon } from '@heroicons/vue/24/solid';
 import { useVuelidate } from '@vuelidate/core';
 import { email, helpers, maxLength, minLength, required } from '@vuelidate/validators';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
     locations: {
@@ -455,6 +434,34 @@ const lgaOptions = computed(() => {
 
     return st?.local_governments ?? [];
 });
+
+const genderOptions = [
+    { value: 'female', label: 'Female' },
+    { value: 'male', label: 'Male' },
+    { value: 'non_binary', label: 'Non-binary' },
+    { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+];
+
+const stateOptions = computed(() =>
+    props.locations.map((st) => ({
+        value: st.id,
+        label: st.name,
+    })),
+);
+
+const lgaUiOptions = computed(() =>
+    lgaOptions.value.map((lg) => ({
+        value: lg.id,
+        label: lg.name,
+    })),
+);
+
+watch(
+    () => form.state_id,
+    () => {
+        form.local_government_id = 0;
+    },
+);
 
 const phonePattern = helpers.regex(/^[0-9+\-\s()]+$/);
 

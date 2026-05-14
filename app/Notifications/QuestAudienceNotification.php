@@ -6,6 +6,7 @@ use App\Models\Quest;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Str;
 
 class QuestAudienceNotification extends Notification
 {
@@ -62,14 +63,26 @@ class QuestAudienceNotification extends Notification
      */
     public function toArray(object $notifiable): array
     {
-        $quest = $this->quest;
+        $quest = $this->quest->loadMissing(['client:id,first_name,name', 'questCategory:id,name']);
+
+        $headline = match ($this->kind) {
+            'follow' => __('New quest from someone you follow'),
+            'match' => __('Quest matches your categories'),
+            'tag' => __('You were tagged on a quest'),
+            default => __('New quest on HustleSafe'),
+        };
+
+        $preview = Str::limit(trim(preg_replace('/\s+/u', ' ', strip_tags((string) $quest->description))), 160) ?: null;
 
         return [
-            'title' => __('New quest'),
+            'headline' => $headline,
+            'title' => $headline,
+            'quest_title' => $quest->title,
             'body' => $quest->title,
+            'preview' => $preview,
             'href' => route('quests.show', $quest, absolute: false),
-            'quest_uuid' => $quest->uuid,
             'kind' => $this->kind,
+            'category' => $quest->questCategory?->name,
         ];
     }
 }

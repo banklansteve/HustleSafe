@@ -82,7 +82,7 @@
                     >
                         <span class="font-bold">Tip:</span>
                         add quest categories in your profile so we can rank better matches for you.
-                        <Link :href="route('account.show')" class="ml-1 font-bold text-amber-900 underline decoration-amber-400 underline-offset-2">
+                        <Link :href="`${route('account.show', { tab: 'overview' })}#account-work-categories`" class="ml-1 font-bold text-amber-900 underline decoration-amber-400 underline-offset-2">
                             Open account
                         </Link>
                     </div>
@@ -166,7 +166,7 @@
                                 :href="route('quests.explore')"
                                 class="inline-flex items-center rounded-lg bg-primary-700 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-primary-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 sm:text-sm"
                             >
-                                Explore &amp; send offers
+                                Explore &amp; send proposals
                             </Link>
                         </div>
                         <ul class="mt-5 space-y-3">
@@ -335,18 +335,32 @@
                                 <li
                                     v-for="n in notifications"
                                     :key="n.id"
-                                    class="rounded-xl border px-3 py-3"
+                                    class="rounded-xl border px-0 py-0"
                                     :class="n.read ? 'border-slate-100 bg-slate-50/60' : 'border-secondary-200 bg-secondary-50/70'"
                                 >
-                                    <p class="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                                        {{ n.type }}
-                                    </p>
-                                    <p class="mt-1 text-sm font-semibold text-slate-900">
-                                        {{ summarizeNotification(n.data) }}
-                                    </p>
-                                    <p class="mt-1.5 text-xs font-medium text-slate-500">
-                                        {{ formatWhen(n.created_at) }}
-                                    </p>
+                                    <button
+                                        type="button"
+                                        class="block w-full rounded-xl px-3 py-3 text-left transition hover:bg-white/80 disabled:cursor-wait disabled:opacity-70"
+                                        :disabled="notifBusyId === n.id"
+                                        @click="openDashboardNotification(n)"
+                                    >
+                                        <span class="inline-flex items-center gap-2">
+                                            <ReLoader4Line
+                                                v-if="notifBusyId === n.id"
+                                                class="h-4 w-4 shrink-0 animate-spin text-primary-600"
+                                                aria-hidden="true"
+                                            />
+                                            <p class="text-[10px] font-bold uppercase tracking-wide text-primary-800">
+                                                {{ n.label }}
+                                            </p>
+                                        </span>
+                                        <p class="mt-1 text-sm font-semibold text-slate-900">
+                                            {{ n.line || summarizeNotification(n.data) }}
+                                        </p>
+                                        <p class="mt-1.5 text-xs font-medium text-slate-500">
+                                            {{ formatWhen(n.created_at) }}
+                                        </p>
+                                    </button>
                                 </li>
                                 <li
                                     v-if="notifications.length === 0"
@@ -436,7 +450,7 @@
                                 Offers sent
                             </h3>
                             <Link
-                                :href="route('dashboard.lists.show', { list: 'freelancer-offers-sent' })"
+                                :href="route('dashboard.lists.show', { list: 'freelancer-proposals-sent' })"
                                 class="text-[11px] font-bold text-primary-700 hover:text-primary-800"
                             >
                                 See all
@@ -459,7 +473,7 @@
                                 </p>
                             </li>
                             <li v-if="recentOffers.length === 0" class="text-xs font-semibold text-slate-600">
-                                No offers yet — explore matches and send a pitch.
+                                No proposals yet — explore matches and send a pitch.
                             </li>
                         </ul>
                     </div>
@@ -507,6 +521,7 @@ import MiniBarChart from '@/Components/Home/MiniBarChart.vue';
 import PanelIcon from '@/Components/Home/PanelIcon.vue';
 import TrustHalfDonut from '@/Components/Home/TrustHalfDonut.vue';
 import AppShell from '@/Layouts/AppShell.vue';
+import { useNotificationVisit } from '@/composables/useNotificationVisit';
 import {
     BellAlertIcon,
     BriefcaseIcon,
@@ -516,7 +531,14 @@ import {
     SparklesIcon,
     StarIcon,
 } from '@heroicons/vue/24/outline';
+import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { Head, Link } from '@inertiajs/vue3';
+
+const { busyId: notifBusyId, visit: visitNotification } = useNotificationVisit();
+
+function openDashboardNotification(n) {
+    void visitNotification(n.id);
+}
 
 defineProps({
     copy: {
@@ -605,12 +627,22 @@ function summarizeNotification(data) {
     if (!data || typeof data !== 'object') {
         return 'Update';
     }
+    if (typeof data.quest_title === 'string' && data.quest_title) {
+        return data.quest_title;
+    }
+    if (typeof data.preview === 'string' && data.preview) {
+        return data.preview;
+    }
     if (typeof data.message === 'string') {
         return data.message;
+    }
+    if (typeof data.body === 'string') {
+        return data.body;
     }
     if (typeof data.title === 'string') {
         return data.title;
     }
+
     return 'Update';
 }
 </script>

@@ -16,16 +16,24 @@ use App\Http\Controllers\FreelancerCredentialVisibilityController;
 use App\Http\Controllers\FreelancerPortfolioController;
 use App\Http\Controllers\FreelancerPortfoliosDirectoryController;
 use App\Http\Controllers\FreelancerReviewsDirectoryController;
+use App\Http\Controllers\Legal\LegalPageController;
+use App\Http\Controllers\NotificationReadController;
 use App\Http\Controllers\Public\LandingController;
 use App\Http\Controllers\Public\NewsletterController;
 use App\Http\Controllers\Public\PublicFreelancerProfileController;
+use App\Http\Controllers\QuestClientProposalsController;
 use App\Http\Controllers\QuestBookmarkController;
+use App\Http\Controllers\QuestContentReportController;
 use App\Http\Controllers\QuestController;
+use App\Http\Controllers\QuestConversationController;
 use App\Http\Controllers\QuestExploreController;
 use App\Http\Controllers\QuestFieldProfileController;
 use App\Http\Controllers\QuestFileController;
 use App\Http\Controllers\QuestInviteController;
 use App\Http\Controllers\QuestOfferController;
+use App\Http\Controllers\QuestProposalController;
+use App\Http\Controllers\QuestProposalLifecycleController;
+use App\Http\Controllers\QuestProposalPdfController;
 use App\Http\Controllers\QuestWizardController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SitemapController;
@@ -33,6 +41,9 @@ use App\Http\Controllers\UserFollowController;
 use App\Http\Controllers\UserFreelancerSearchController;
 use App\Http\Controllers\UserVerificationController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/terms-of-service', [LegalPageController::class, 'terms'])->name('legal.terms');
+Route::get('/privacy-policy', [LegalPageController::class, 'privacy'])->name('legal.privacy');
 
 Route::get('/', LandingController::class)->name('home');
 
@@ -51,6 +62,12 @@ Route::get('/portfolio', [FreelancerPortfolioController::class, 'index'])->name(
 Route::get('/dashboard', DashboardController::class)->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    // GET avoids duplicate POST handling and reduces concurrent DB/session pressure (helps on Windows dev stacks).
+    Route::get('/notifications/{id}/next', NotificationReadController::class)
+        ->whereUuid('id')
+        ->middleware('throttle:120,1')
+        ->name('notifications.read');
+
     Route::get('/account', [AccountHubController::class, 'show'])->name('account.show');
     Route::patch('/account/details', [AccountUpdateController::class, 'details'])->name('account.details');
     Route::patch('/account/visibility', [AccountUpdateController::class, 'visibility'])->name('account.visibility');
@@ -85,9 +102,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/quests/wizard/validate-step', [QuestWizardController::class, 'validateStep'])
         ->middleware('throttle:60,1')
         ->name('quests.wizard.validate-step');
+    Route::post('/quests/{quest}/proposals', [QuestOfferController::class, 'store'])
+        ->middleware(['freelancer', 'throttle:15,1'])
+        ->name('quests.proposals.store');
     Route::post('/quests/{quest}/offers', [QuestOfferController::class, 'store'])
-        ->middleware('freelancer')
-        ->name('quests.offers.store');
+        ->middleware('freelancer');
     Route::post('/quests/{quest}/files', [QuestFileController::class, 'store'])->name('quests.files.store');
     Route::delete('/quests/{quest}/files/{file}', [QuestFileController::class, 'destroy'])
         ->whereNumber('file')
@@ -99,6 +118,68 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/quests/{quest}/freelancers/search', [QuestController::class, 'searchFreelancers'])->name('quests.freelancers.search');
     Route::post('/quests/{quest}/bookmark', [QuestBookmarkController::class, 'store'])->name('quests.bookmark.store');
     Route::delete('/quests/{quest}/bookmark', [QuestBookmarkController::class, 'destroy'])->name('quests.bookmark.destroy');
+
+    Route::get('/quests/{quest}/proposals', [QuestClientProposalsController::class, 'index'])
+        ->name('quests.client.proposals.index');
+
+    Route::get('/quests/{quest}/proposals/create', [QuestProposalController::class, 'create'])
+        ->middleware('freelancer')
+        ->name('quests.proposals.create');
+    Route::get('/quests/{quest}/proposals/{offer}/edit', [QuestProposalController::class, 'edit'])
+        ->middleware('freelancer')
+        ->whereNumber('offer')
+        ->name('quests.proposals.edit');
+    Route::patch('/quests/{quest}/proposals/{offer}', [QuestOfferController::class, 'update'])
+        ->middleware(['freelancer', 'throttle:15,1'])
+        ->whereNumber('offer')
+        ->name('quests.proposals.update');
+    Route::post('/quests/{quest}/proposals/{offer}/shortlist', [QuestProposalLifecycleController::class, 'shortlist'])
+        ->middleware('throttle:30,1')
+        ->whereNumber('offer')
+        ->name('quests.proposals.shortlist');
+    Route::post('/quests/{quest}/proposals/{offer}/unshortlist', [QuestProposalLifecycleController::class, 'unshortlist'])
+        ->middleware('throttle:30,1')
+        ->whereNumber('offer')
+        ->name('quests.proposals.unshortlist');
+    Route::post('/quests/{quest}/proposals/{offer}/pin', [QuestProposalLifecycleController::class, 'pin'])
+        ->middleware('throttle:30,1')
+        ->whereNumber('offer')
+        ->name('quests.proposals.pin');
+    Route::post('/quests/{quest}/proposals/{offer}/decline', [QuestProposalLifecycleController::class, 'decline'])
+        ->middleware('throttle:20,1')
+        ->whereNumber('offer')
+        ->name('quests.proposals.decline');
+    Route::post('/quests/{quest}/proposals/{offer}/accept', [QuestProposalLifecycleController::class, 'accept'])
+        ->middleware('throttle:10,1')
+        ->whereNumber('offer')
+        ->name('quests.proposals.accept');
+    Route::post('/quests/{quest}/proposals/{offer}/escrow-funded', [QuestProposalLifecycleController::class, 'markEscrowFunded'])
+        ->middleware('throttle:10,1')
+        ->whereNumber('offer')
+        ->name('quests.proposals.escrow-funded');
+    Route::post('/quests/{quest}/proposals/{offer}/withdraw', [QuestProposalLifecycleController::class, 'withdraw'])
+        ->middleware(['freelancer', 'throttle:10,1'])
+        ->whereNumber('offer')
+        ->name('quests.proposals.withdraw');
+    Route::get('/quests/{quest}/proposals/{offer}/pdf', QuestProposalPdfController::class)
+        ->whereNumber('offer')
+        ->name('quests.proposals.pdf');
+    Route::get('/quests/{quest}/proposals/{offer}', [QuestProposalController::class, 'show'])
+        ->whereNumber('offer')
+        ->name('quests.proposals.show');
+    Route::get('/quests/{quest}/messages/{contact?}', [QuestConversationController::class, 'show'])
+        ->name('quests.messages.show');
+    Route::post('/quests/{quest}/messages/{contact?}', [QuestConversationController::class, 'store'])
+        ->middleware('throttle:35,1')
+        ->name('quests.messages.store');
+    Route::post('/quests/{quest}/reports', [QuestContentReportController::class, 'storeQuest'])
+        ->middleware('throttle:20,1')
+        ->name('quests.reports.store');
+    Route::post('/quests/{quest}/proposals/{offer}/reports', [QuestContentReportController::class, 'storeProposal'])
+        ->middleware('throttle:20,1')
+        ->whereNumber('offer')
+        ->name('quests.proposals.reports.store');
+
     Route::patch('/quests/{quest}', [QuestController::class, 'update'])->name('quests.update');
     Route::delete('/quests/{quest}', [QuestController::class, 'destroy'])->name('quests.destroy');
     Route::get('/quests/{quest}', [QuestController::class, 'show'])->name('quests.show');

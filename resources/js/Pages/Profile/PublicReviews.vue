@@ -17,18 +17,14 @@
         <main class="mx-auto max-w-5xl space-y-8 px-4 py-10 sm:px-6 sm:py-12">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div class="flex items-center gap-4">
-                    <img
-                        v-if="profile.avatar_url"
+                    <UserProfileAvatar
+                        :href="route('freelancers.public', profile.slug)"
                         :src="profile.avatar_url"
+                        :name="profile.name"
                         :alt="profile.name"
-                        class="h-14 w-14 rounded-2xl border border-slate-200 object-cover shadow-sm"
+                        frame-class="h-14 w-14 text-lg"
+                        radius-class="rounded-2xl border border-slate-200 shadow-sm"
                     />
-                    <div
-                        v-else
-                        class="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 text-lg font-black text-slate-600"
-                    >
-                        {{ initials }}
-                    </div>
                     <div>
                         <h1 class="font-display text-2xl font-black text-slate-900 sm:text-3xl">
                             Reviews
@@ -55,37 +51,11 @@
                 </div>
                 <div class="w-full sm:w-44">
                     <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Sort</label>
-                    <select
-                        v-model="form.sort"
-                        class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                    >
-                        <option value="latest">
-                            Newest first
-                        </option>
-                        <option value="oldest">
-                            Oldest first
-                        </option>
-                        <option value="rating_high">
-                            Highest rating
-                        </option>
-                        <option value="rating_low">
-                            Lowest rating
-                        </option>
-                    </select>
+                    <UiSelect v-model="form.sort" class="mt-1" :options="reviewsSortOptions" placeholder="Sort" />
                 </div>
                 <div class="w-full sm:w-36">
                     <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Stars</label>
-                    <select
-                        v-model="form.rating"
-                        class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                    >
-                        <option value="">
-                            Any
-                        </option>
-                        <option v-for="n in 5" :key="n" :value="String(n)">
-                            {{ n }}★ only
-                        </option>
-                    </select>
+                    <UiSelect v-model="form.rating" class="mt-1" :options="reviewsRatingOptions" placeholder="Any" />
                 </div>
                 <div class="flex gap-2">
                     <button
@@ -177,8 +147,26 @@
 
 <script setup>
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
+import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
+import UiSelect from '@/Components/Ui/UiSelect.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { computed, reactive } from 'vue';
+import { reactive } from 'vue';
+
+const reviewsSortOptions = [
+    { value: 'latest', label: 'Newest first' },
+    { value: 'oldest', label: 'Oldest first' },
+    { value: 'rating_high', label: 'Highest rating' },
+    { value: 'rating_low', label: 'Lowest rating' },
+];
+
+const reviewsRatingOptions = [
+    { value: '', label: 'Any' },
+    { value: '1', label: '1★ only' },
+    { value: '2', label: '2★ only' },
+    { value: '3', label: '3★ only' },
+    { value: '4', label: '4★ only' },
+    { value: '5', label: '5★ only' },
+];
 
 const props = defineProps({
     profile: { type: Object, required: true },
@@ -190,13 +178,6 @@ const form = reactive({
     q: props.filters.q || '',
     sort: props.filters.sort || 'latest',
     rating: props.filters.rating != null && props.filters.rating !== '' ? String(props.filters.rating) : '',
-});
-
-const initials = computed(() => {
-    const n = props.profile.name || '';
-    const parts = n.trim().split(/\s+/);
-
-    return ((parts[0]?.[0] || 'H') + (parts[1]?.[0] || '')).toUpperCase();
 });
 
 function applyFilters() {

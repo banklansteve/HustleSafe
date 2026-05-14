@@ -43,14 +43,14 @@ class StoreRegisteredUserRequest extends FormRequest
                 Rule::exists('local_governments', 'id')->where('state_id', (int) $this->input('state_id', 0)),
             ],
             'quest_category_ids' => [
-                Rule::excludeUnless('account_type', 'hustler'),
+                Rule::excludeUnless(fn () => $this->input('account_type') === 'hustler'),
                 'required',
                 'array',
                 'min:1',
                 'max:40',
             ],
             'quest_category_ids.*' => [
-                Rule::excludeUnless('account_type', 'hustler'),
+                Rule::excludeUnless(fn () => $this->input('account_type') === 'hustler'),
                 'integer',
                 'distinct',
                 Rule::exists('quest_categories', 'id')->whereNotNull('parent_id')->where('is_active', true),

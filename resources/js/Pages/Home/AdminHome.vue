@@ -106,18 +106,32 @@
                     <li
                         v-for="n in notifications"
                         :key="n.id"
-                        class="rounded-2xl border px-4 py-4"
+                        class="rounded-2xl border px-0 py-0"
                         :class="n.read ? 'border-slate-100 bg-slate-50/60' : 'border-secondary-200 bg-secondary-50/70'"
                     >
-                        <p class="text-sm font-bold uppercase tracking-wide text-slate-500">
-                            {{ n.type }}
-                        </p>
-                        <p class="mt-2 text-base font-semibold text-slate-900">
-                            {{ summarizeNotification(n.data) }}
-                        </p>
-                        <p class="mt-2 text-sm font-medium text-slate-500">
-                            {{ formatWhen(n.created_at) }}
-                        </p>
+                        <button
+                            type="button"
+                            class="block w-full rounded-2xl px-4 py-4 text-left transition hover:bg-white/80 disabled:cursor-wait disabled:opacity-70"
+                            :disabled="notifBusyId === n.id"
+                            @click="openDashboardNotification(n)"
+                        >
+                            <span class="inline-flex items-center gap-2">
+                                <ReLoader4Line
+                                    v-if="notifBusyId === n.id"
+                                    class="h-4 w-4 shrink-0 animate-spin text-primary-600"
+                                    aria-hidden="true"
+                                />
+                                <p class="text-sm font-bold uppercase tracking-wide text-primary-800">
+                                    {{ n.label }}
+                                </p>
+                            </span>
+                            <p class="mt-2 text-base font-semibold text-slate-900">
+                                {{ n.line || summarizeNotification(n.data) }}
+                            </p>
+                            <p class="mt-2 text-sm font-medium text-slate-500">
+                                {{ formatWhen(n.created_at) }}
+                            </p>
+                        </button>
                     </li>
                     <li v-if="notifications.length === 0" class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-base font-semibold text-slate-600">
                         No operational pings yet — hook queues & risk alerts here later.
@@ -156,7 +170,15 @@
 <script setup>
 import StatCard from '@/Components/Home/StatCard.vue';
 import AppShell from '@/Layouts/AppShell.vue';
-import { Head } from '@inertiajs/vue3';
+import { useNotificationVisit } from '@/composables/useNotificationVisit';
+import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
+import { Head, Link } from '@inertiajs/vue3';
+
+const { busyId: notifBusyId, visit: visitNotification } = useNotificationVisit();
+
+function openDashboardNotification(n) {
+    void visitNotification(n.id);
+}
 
 const props = defineProps({
     copy: {
@@ -215,12 +237,22 @@ function summarizeNotification(data) {
     if (!data || typeof data !== 'object') {
         return 'Update';
     }
+    if (typeof data.quest_title === 'string' && data.quest_title) {
+        return data.quest_title;
+    }
+    if (typeof data.preview === 'string' && data.preview) {
+        return data.preview;
+    }
     if (typeof data.message === 'string') {
         return data.message;
+    }
+    if (typeof data.body === 'string') {
+        return data.body;
     }
     if (typeof data.title === 'string') {
         return data.title;
     }
+
     return 'Update';
 }
 </script>

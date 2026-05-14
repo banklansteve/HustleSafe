@@ -1,6 +1,14 @@
 /**
- * Human-friendly counts for favourites, likes, etc.
+ * Short label plus exact count in parentheses, e.g. "12.8k (12,800)".
  */
+export function formatCompactCountWithFull(n) {
+    const v = Math.floor(Number(n) || 0);
+    const short = formatCompactCount(v);
+
+    return `${short} (${v.toLocaleString('en-NG')})`;
+}
+
+/** Human-friendly compact number (e.g. 12.8k). */
 export function formatCompactCount(n) {
     const x = Number(n);
     if (!Number.isFinite(x) || x <= 0) {

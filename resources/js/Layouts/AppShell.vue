@@ -98,67 +98,176 @@
                 </nav>
 
                 <div class="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
-                    <div class="relative">
-                        <a
-                            href="#notifications"
-                            class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600"
-                            aria-label="Notifications"
+                <div ref="notifRoot" class="relative">
+                    <button
+                        type="button"
+                        class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600"
+                        :aria-expanded="notifOpen"
+                        aria-haspopup="true"
+                        aria-label="Notifications"
+                        @click.stop="notifOpen = !notifOpen"
+                    >
+                        <BellAlertIcon class="h-6 w-6" aria-hidden="true" />
+                    </button>
+                    <span
+                        v-if="unreadNotificationsCount > 0"
+                        class="pointer-events-none absolute -right-0.5 -top-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-secondary-500 px-1 text-[10px] font-black text-white ring-2 ring-white"
+                    >
+                        {{ unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount }}
+                    </span>
+                    <Transition
+                        enter-active-class="transition duration-150 ease-out"
+                        enter-from-class="opacity-0 translate-y-1"
+                        enter-to-class="opacity-100 translate-y-0"
+                        leave-active-class="transition duration-100 ease-in"
+                        leave-from-class="opacity-100 translate-y-0"
+                        leave-to-class="opacity-0 translate-y-1"
+                    >
+                        <div
+                            v-if="notifOpen"
+                            class="absolute right-0 top-[calc(100%+10px)] z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/90 bg-white py-2 shadow-2xl shadow-slate-900/15 ring-1 ring-slate-100"
+                            role="menu"
+                            @click.stop
                         >
-                            <BellAlertIcon class="h-6 w-6" aria-hidden="true" />
-                        </a>
-                        <span
-                            v-if="unreadNotificationsCount > 0"
-                            class="absolute -right-0.5 -top-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-secondary-500 px-1 text-[10px] font-black text-white ring-2 ring-white"
-                        >
-                            {{ unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount }}
-                        </span>
-                    </div>
+                            <div class="border-b border-slate-100 px-4 py-2.5">
+                                <p class="text-xs font-black uppercase tracking-wide text-slate-500">
+                                    Notifications
+                                </p>
+                            </div>
+                            <ul class="max-h-80 overflow-y-auto py-1">
+                                <li v-for="n in recentNotifications" :key="n.id">
+                                    <button
+                                        type="button"
+                                        class="flex w-full flex-col gap-0.5 px-4 py-3 text-left text-sm transition hover:bg-primary-50/80 disabled:cursor-wait disabled:opacity-70"
+                                        :class="n.read ? 'text-slate-600' : 'bg-secondary-50/40 font-semibold text-slate-900'"
+                                        :disabled="notifBusyId === n.id"
+                                        @click="openNotification(n)"
+                                    >
+                                        <span class="inline-flex items-center gap-2">
+                                            <ReLoader4Line
+                                                v-if="notifBusyId === n.id"
+                                                class="h-4 w-4 shrink-0 animate-spin text-primary-600"
+                                                aria-hidden="true"
+                                            />
+                                            <span class="text-[11px] font-black uppercase tracking-wide text-primary-800">{{ n.label }}</span>
+                                            <span
+                                                v-if="(n.stacked_unread || 0) > 1"
+                                                class="rounded-full bg-secondary-500 px-2 py-0.5 text-[10px] font-black text-white"
+                                            >{{ n.stacked_unread }}</span>
+                                        </span>
+                                        <span class="font-semibold leading-snug text-slate-900">{{ n.line || 'View details' }}</span>
+                                        <span v-if="n.preview" class="line-clamp-2 text-xs font-medium text-slate-500">{{ n.preview }}</span>
+                                        <span class="text-[10px] font-semibold text-slate-400">{{ formatNotifWhen(n.created_at) }}</span>
+                                    </button>
+                                </li>
+                                <li v-if="recentNotifications.length === 0" class="px-4 py-6 text-center text-sm font-semibold text-slate-500">
+                                    You are all caught up.
+                                </li>
+                            </ul>
+                            <div class="border-t border-slate-100 px-2 py-2">
+                                <Link
+                                    :href="`${route('dashboard')}#notifications`"
+                                    class="block rounded-xl px-3 py-2 text-center text-xs font-black text-primary-800 hover:bg-primary-50"
+                                    @click="notifOpen = false"
+                                >
+                                    View all on dashboard
+                                </Link>
+                            </div>
+                        </div>
+                    </Transition>
+                </div>
 
                     <NavUserMenu />
                 </div>
             </div>
-
-            <div
-                v-if="flashSuccess"
-                class="border-t border-emerald-100 bg-emerald-50 px-4 py-3 text-center text-sm font-semibold text-emerald-900 sm:text-base"
-                role="status"
-            >
-                {{ flashSuccess }}
-            </div>
-            <div
-                v-else-if="flashStatus"
-                class="border-t border-primary-100 bg-primary-50 px-4 py-3 text-center text-sm font-semibold text-primary-950 sm:text-base"
-                role="status"
-            >
-                {{ flashStatus }}
-            </div>
         </header>
+
+        <AppToastHost />
+
+        <Teleport to="body">
+            <div
+                v-if="systemBusy"
+                class="pointer-events-none fixed inset-x-0 top-16 z-[60] flex justify-center px-4"
+                role="status"
+                aria-live="polite"
+            >
+                <span class="inline-flex items-center gap-2 rounded-full border border-slate-200/90 bg-white/95 px-4 py-2 text-[11px] font-black uppercase tracking-wide text-slate-700 shadow-lg shadow-slate-900/10 ring-1 ring-slate-100">
+                    <ReLoader4Line class="h-4 w-4 shrink-0 animate-spin text-primary-600" aria-hidden="true" />
+                    {{ systemBusyLabel }}
+                </span>
+            </div>
+        </Teleport>
 
         <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
             <div
-                v-if="freelancerNudgeLines.length && !hideWorkspaceNudgeOnAccount"
+                v-if="page.props.flash?.proposal_next_steps && isFreelancer"
+                class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50/95 px-4 py-4 text-sm font-semibold text-emerald-950 shadow-sm ring-1 ring-emerald-100 sm:px-5"
+                role="status"
+            >
+                <p class="text-xs font-black uppercase tracking-wide text-emerald-900">What happens next</p>
+                <ol class="mt-3 list-decimal space-y-2 pl-5 text-[13px] leading-relaxed text-emerald-950/95">
+                    <li>The client gets an email and an in-app alert with your proposal.</li>
+                    <li>They may message you on the quest thread — keep replies on-platform.</li>
+                    <li>You can refine this quote until the edit window closes; after that, changes need a new conversation with the client.</li>
+                    <li>If they accept, they fund escrow before work should begin.</li>
+                </ol>
+            </div>
+            <div
+                v-if="page.props.flash?.quest_submitted_next_steps && showClientTools"
+                class="mb-6 rounded-2xl border border-sky-200 bg-sky-50/95 px-4 py-4 text-sm font-semibold text-sky-950 shadow-sm ring-1 ring-sky-100 sm:px-5"
+                role="status"
+            >
+                <p class="text-xs font-black uppercase tracking-wide text-sky-900">What happens next</p>
+                <ol class="mt-3 list-decimal space-y-2 pl-5 text-[13px] leading-relaxed text-sky-950/95">
+                    <li>Matching freelancers were notified by email and in-app.</li>
+                    <li>Watch your inbox and notifications for questions and proposals.</li>
+                    <li>Review proposals from <span class="font-black">My quests</span>, shortlist favourites, then accept one to move into escrow.</li>
+                    <li>You can still edit the brief until the client edit window shown on the quest page ends.</li>
+                </ol>
+            </div>
+            <div
+                v-if="clientNudgeItems.length"
+                class="mb-6 rounded-2xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm font-semibold text-amber-950 shadow-sm ring-1 ring-amber-100 sm:px-5 sm:py-4"
+                role="status"
+            >
+                <p class="text-xs font-black uppercase tracking-wide text-amber-900">Your attention</p>
+                <ul class="mt-3 space-y-3">
+                    <li v-for="(item, i) in clientNudgeItems" :key="i" class="list-none rounded-xl border border-amber-100/80 bg-white/70 px-3 py-2.5 ring-1 ring-white/60">
+                        <p class="text-[13px] font-semibold leading-snug text-amber-950">
+                            {{ item.message }}
+                        </p>
+                        <Link
+                            v-if="item.action_url"
+                            :href="item.action_url"
+                            class="mt-2 inline-flex items-center gap-1 text-xs font-black uppercase tracking-wide text-amber-900 underline decoration-amber-400 underline-offset-2 hover:text-amber-800"
+                        >
+                            {{ item.action_label || 'Open' }}
+                            <span aria-hidden="true">→</span>
+                        </Link>
+                    </li>
+                </ul>
+            </div>
+            <div
+                v-if="freelancerNudgeItems.length && !hideWorkspaceNudgeOnAccount && !hideWorkspaceNudgeOnQuestWorkspacePages"
                 class="mb-6 rounded-2xl border border-secondary-200/80 bg-secondary-50/90 px-4 py-3 text-sm font-semibold text-secondary-950 shadow-sm ring-1 ring-secondary-100 sm:px-5 sm:py-4"
                 role="status"
             >
                 <p class="text-xs font-black uppercase tracking-wide text-secondary-800">Action needed</p>
-                <ul class="mt-2 list-inside list-disc space-y-1">
-                    <li v-for="(line, i) in freelancerNudgeLines" :key="i">{{ line }}</li>
+                <ul class="mt-3 space-y-3">
+                    <li v-for="(item, i) in freelancerNudgeItems" :key="i" class="list-none rounded-xl border border-secondary-100/80 bg-white/60 px-3 py-2.5 ring-1 ring-white/60">
+                        <p class="text-[13px] font-semibold leading-snug text-secondary-950">
+                            {{ item.message }}
+                        </p>
+                        <Link
+                            v-if="item.action_url"
+                            :href="item.action_url"
+                            class="mt-2 inline-flex items-center gap-1 text-xs font-black uppercase tracking-wide text-secondary-900 underline decoration-secondary-400 underline-offset-2 hover:text-secondary-700"
+                        >
+                            {{ item.action_label || 'Fix this' }}
+                            <span aria-hidden="true">→</span>
+                        </Link>
+                    </li>
                 </ul>
-                <div class="mt-3 flex flex-wrap gap-2">
-                    <Link
-                        :href="route('account.show', { tab: 'overview' })"
-                        class="text-xs font-bold text-secondary-900 underline underline-offset-2 hover:text-secondary-700"
-                    >
-                        Account
-                    </Link>
-                    <span class="text-xs font-bold text-secondary-400">·</span>
-                    <Link
-                        :href="route('verifications.index')"
-                        class="text-xs font-bold text-secondary-900 underline underline-offset-2 hover:text-secondary-700"
-                    >
-                        Verifications
-                    </Link>
-                </div>
             </div>
             <slot />
         </main>
@@ -167,45 +276,163 @@
 
 <script setup>
 import NavUserMenu from '@/Components/Layout/NavUserMenu.vue';
+import AppToastHost from '@/Components/Ui/AppToastHost.vue';
+import { useNotificationVisit } from '@/composables/useNotificationVisit';
 import { pathMatches, usePathname } from '@/composables/usePathname';
-import { Link, usePage } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import { BellAlertIcon, BriefcaseIcon, ClipboardDocumentListIcon, HomeIcon, MagnifyingGlassIcon, PlusCircleIcon } from '@heroicons/vue/24/outline';
-import { computed } from 'vue';
+import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const page = usePage();
 const pathname = usePathname(page);
 
+const { busyId: notifBusyId, visit: visitNotification } = useNotificationVisit();
+
+const notifRoot = ref(null);
+const notifOpen = ref(false);
+const inertiaNavPending = ref(false);
+
+const systemBusy = computed(() => inertiaNavPending.value || notifBusyId.value !== null);
+const systemBusyLabel = computed(() => (notifBusyId.value ? 'Opening notification…' : 'Loading…'));
+
+let removeInertiaListeners = [];
+let notifPollTimer = null;
+
+async function openNotification(n) {
+    notifOpen.value = false;
+    const merge = Array.isArray(n.related_ids)
+        ? n.related_ids.filter((x) => x && x !== n.id).join(',')
+        : '';
+    await visitNotification(n.id, merge || null);
+}
+
+const recentNotifications = computed(() => page.props.recentNotifications ?? []);
+
 const unreadNotificationsCount = computed(() => Number(page.props.unreadNotificationsCount ?? 0) || 0);
+
+function formatNotifWhen(iso) {
+    if (!iso) {
+        return '';
+    }
+    try {
+        return new Date(iso).toLocaleString('en-NG', {
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Africa/Lagos',
+        });
+    } catch {
+        return '';
+    }
+}
+
+function onDocClick(e) {
+    if (!notifOpen.value || !notifRoot.value) {
+        return;
+    }
+    if (!notifRoot.value.contains(e.target)) {
+        notifOpen.value = false;
+    }
+}
+
+onMounted(() => {
+    document.addEventListener('click', onDocClick);
+    removeInertiaListeners = [
+        router.on('start', () => {
+            inertiaNavPending.value = true;
+        }),
+        router.on('finish', () => {
+            inertiaNavPending.value = false;
+        }),
+    ];
+
+    if (page.props.auth?.user) {
+        const tick = () => {
+            if (document.visibilityState !== 'visible' || notifOpen.value) {
+                return;
+            }
+            router.reload({ preserveScroll: true, preserveState: true });
+        };
+        window.addEventListener('focus', tick);
+        notifPollTimer = window.setInterval(tick, 35000);
+        removeInertiaListeners.push(() => window.removeEventListener('focus', tick));
+    }
+});
+onBeforeUnmount(() => {
+    document.removeEventListener('click', onDocClick);
+    if (notifPollTimer) {
+        window.clearInterval(notifPollTimer);
+    }
+    removeInertiaListeners.forEach((fn) => {
+        if (typeof fn === 'function') {
+            fn();
+        }
+    });
+});
 
 /** Avoid duplicating category/setup prompts already shown on Account Hub. */
 const hideWorkspaceNudgeOnAccount = computed(() => pathname.value.startsWith('/account'));
 
-const freelancerNudgeLines = computed(() => {
+/** Quest detail + Explore already embed the same checklist; hide shell banner to avoid double alerts. */
+const hideWorkspaceNudgeOnQuestWorkspacePages = computed(() => {
+    if (page.props.auth?.user?.role?.slug !== 'freelancer') {
+        return false;
+    }
+    const p = pathname.value;
+    if (p === '/quests/explore') {
+        return true;
+    }
+    const m = p.match(/^\/quests\/([^/]+)$/);
+    if (!m) {
+        return false;
+    }
+    const reserved = new Set(['create', 'explore', 'field-profile']);
+
+    return !reserved.has(m[1]);
+});
+
+const freelancerNudgeItems = computed(() => {
     const ws = page.props.freelancerWorkspace;
     if (!ws?.enabled) {
         return [];
     }
-    const lines = [];
+    const items = [];
     for (const b of ws.blockers || []) {
         if (b?.message) {
-            lines.push(b.message);
+            items.push({
+                message: b.message,
+                action_label: b.action_label,
+                action_url: b.action_url,
+            });
         }
     }
     for (const h of ws.hints || []) {
         if (h?.message) {
-            lines.push(h.message);
+            items.push({
+                message: h.message,
+                action_label: h.action_label,
+                action_url: h.action_url,
+            });
         }
     }
 
-    return lines.slice(0, 4);
+    return items.slice(0, 5);
+});
+
+const clientNudgeItems = computed(() => {
+    const raw = page.props.client_outstanding;
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+
+    return raw.filter((x) => x && typeof x.message === 'string');
 });
 
 const roleSlug = computed(() => page.props.auth?.user?.role?.slug ?? '');
 const isFreelancer = computed(() => roleSlug.value === 'freelancer');
 const showClientTools = computed(() => ['client', 'admin', 'super_admin'].includes(roleSlug.value));
-
-const flashSuccess = computed(() => page.props.flash?.success ?? null);
-const flashStatus = computed(() => page.props.flash?.status ?? null);
 
 const homeActive = computed(() => pathname.value === '/');
 

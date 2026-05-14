@@ -6,11 +6,14 @@ use App\Enums\PortfolioStatus;
 use App\Models\Portfolio;
 use App\Models\PortfolioFile;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class PortfolioService
 {
+    public function __construct(
+        protected CloudinaryUploadService $cloudinary,
+    ) {}
+
     public function uniqueSlugFromTitle(string $title, ?int $ignorePortfolioId = null): string
     {
         $base = Str::slug(Str::limit($title, 80, '')) ?: 'portfolio';
@@ -36,7 +39,6 @@ class PortfolioService
      */
     public function storeUploads(Portfolio $portfolio, array $uploads): void
     {
-        $dir = 'portfolio/'.$portfolio->id;
         $order = (int) $portfolio->files()->max('sort_order');
 
         foreach ($uploads as $file) {
@@ -44,17 +46,40 @@ class PortfolioService
                 continue;
             }
             $order++;
-            $name = Str::uuid()->toString().'.'.$file->getClientOriginalExtension();
-            $path = $file->storeAs($dir, $name, 'public');
 
-            PortfolioFile::query()->create([
-                'portfolio_id' => $portfolio->id,
-                'path' => $path,
-                'original_name' => $file->getClientOriginalName(),
-                'mime_type' => $file->getClientMimeType() ?? 'application/octet-stream',
-                'size_bytes' => $file->getSize() ?: 0,
-                'sort_order' => $order,
-            ]);
+            if ($this->cloudinary->isConfigured()) {
+                $folder = trim((string) config('cloudinary.folder_portfolios', 'hustleSafe/portfolios'), '/');
+                $publicId = 'portfolio_'.$portfolio->id.'_'.Str::uuid()->toString();
+                $out = $this->cloudinary->upload($file, $folder, $publicId);
+
+                PortfolioFile::query()->create([
+                    'portfolio_id' => $portfolio->id,
+                    'disk' => 'cloudinary',
+                    'path' => $out['secure_url'],
+                    'cloudinary_public_id' => $out['public_id'],
+                    'cloudinary_resource_type' => $out['resource_type'],
+                    'original_name' => $file->getClientOriginalName(),
+                    'mime_type' => $file->getClientMimeType() ?? 'application/octet-stream',
+                    'size_bytes' => $file->getSize() ?: 0,
+                    'sort_order' => $order,
+                ]);
+            } else {
+                $dir = 'portfolio/'.$portfolio->id;
+                $name = Str::uuid()->toString().'.'.$file->getClientOriginalExtension();
+                $path = $file->storeAs($dir, $name, 'public');
+
+                PortfolioFile::query()->create([
+                    'portfolio_id' => $portfolio->id,
+                    'disk' => 'public',
+                    'path' => $path,
+                    'cloudinary_public_id' => null,
+                    'cloudinary_resource_type' => null,
+                    'original_name' => $file->getClientOriginalName(),
+                    'mime_type' => $file->getClientMimeType() ?? 'application/octet-stream',
+                    'size_bytes' => $file->getSize() ?: 0,
+                    'sort_order' => $order,
+                ]);
+            }
         }
 
         $this->ensureCover($portfolio->fresh(['files']));
@@ -72,7 +97,7 @@ class PortfolioService
 
         $files = $portfolio->files()->whereIn('id', $ids)->get();
         foreach ($files as $file) {
-            Storage::disk('public')->delete($file->path);
+            $file->purgeFromStorage();
             $file->delete();
         }
 

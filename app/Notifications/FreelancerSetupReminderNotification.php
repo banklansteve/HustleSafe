@@ -15,6 +15,21 @@ class FreelancerSetupReminderNotification extends Notification
      */
     public function __construct(public array $summary) {}
 
+    public function primaryAccountUrl(): string
+    {
+        foreach ($this->summary['blockers'] ?? [] as $b) {
+            if (is_array($b) && ! empty($b['action_url'])) {
+                return (string) $b['action_url'];
+            }
+        }
+
+        if (! ($this->summary['identity_approved'] ?? false)) {
+            return route('verifications.index').'#verification-submit';
+        }
+
+        return route('account.show', ['tab' => 'overview']);
+    }
+
     /**
      * @return list<string>
      */
@@ -39,7 +54,7 @@ class FreelancerSetupReminderNotification extends Notification
         }
 
         return $mail
-            ->action(__('Open your account'), route('account.show', ['tab' => 'overview']));
+            ->action(__('Go to the right place'), $this->primaryAccountUrl());
     }
 
     /**
@@ -48,9 +63,10 @@ class FreelancerSetupReminderNotification extends Notification
     public function toArray(object $notifiable): array
     {
         return [
+            'headline' => __('Finish your freelancer profile'),
             'title' => __('Profile setup'),
             'body' => __('We still need a few details so you can send offers and withdraw safely.'),
-            'href' => route('account.show', ['tab' => 'overview']),
+            'href' => $this->primaryAccountUrl(),
         ];
     }
 }

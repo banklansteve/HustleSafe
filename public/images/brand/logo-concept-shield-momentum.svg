@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="HustleSafe concept: shield and forward motion">
+  <defs>
+    <linearGradient id="hs-grad-a" x1="18%" y1="8%" x2="88%" y2="96%" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#134e4a"/>
+      <stop offset="0.45" stop-color="#0d9488"/>
+      <stop offset="1" stop-color="#5eead4"/>
+    </linearGradient>
+    <linearGradient id="hs-grad-a2" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop stop-color="#ccfbf1" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#99f6e4" stop-opacity="0.35"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
+  <path d="M64 22 96 36v34c0 18-14 32-32 36-18-4-32-18-32-36V36l32-14Z" fill="url(#hs-grad-a)" opacity="0.98"/>
+  <path d="M64 30 88 41v27c0 14-11 26-24 29-13-3-24-15-24-29V41l24-11Z" fill="url(#hs-grad-a2)"/>
+  <path d="M44 72c6-10 16-16 28-16 4 0 8 1 12 2" stroke="#0f766e" stroke-width="5" stroke-linecap="round"/>
+  <path d="M48 86h32" stroke="#115e59" stroke-width="5" stroke-linecap="round" opacity="0.55"/>
+  <path d="M52 58 64 46l12 12" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+</svg>

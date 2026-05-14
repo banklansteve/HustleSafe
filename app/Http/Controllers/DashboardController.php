@@ -11,6 +11,7 @@ use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Models\User;
 use App\Services\QuestMatchingService;
+use App\Services\UserNotificationPresenter;
 use App\Support\UserAgentFriendly;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -175,7 +176,7 @@ class DashboardController extends Controller
             ->where('client_id', $user->id)
             ->latest('updated_at')
             ->take(6)
-            ->get(['id', 'uuid', 'title', 'status', 'updated_at', 'budget_amount_minor', 'paid_out_minor']);
+            ->get(['id', 'uuid', 'slug', 'title', 'status', 'updated_at', 'budget_amount_minor', 'paid_out_minor']);
 
         $spendBase = fn () => Quest::query()
             ->where('client_id', $user->id)
@@ -234,6 +235,8 @@ class DashboardController extends Controller
             ],
             'recentQuests' => $recentQuests->map(fn (Quest $q) => [
                 'id' => $q->id,
+                'slug' => $q->slug,
+                'uuid' => $q->uuid,
                 'title' => $q->title,
                 'status' => $q->status->value,
                 'updated_at' => $q->updated_at?->timezone('Africa/Lagos')->toIso8601String(),
@@ -304,17 +307,16 @@ class DashboardController extends Controller
             ->take(10)
             ->get(['title', 'body', 'type', 'created_at', 'meta']);
 
-        $notifications = $user->notifications()
-            ->latest()
-            ->take(10)
-            ->get()
-            ->map(fn ($n) => [
-                'id' => $n->id,
-                'read' => $n->read_at !== null,
-                'type' => class_basename($n->type),
-                'data' => $n->data,
-                'created_at' => $n->created_at?->timezone('Africa/Lagos')->toIso8601String(),
-            ]);
+        $notifications = collect(app(UserNotificationPresenter::class)->recentForNav($user, 10))
+            ->map(fn (array $r) => [
+                'id' => $r['id'],
+                'read' => $r['read'],
+                'label' => $r['label'],
+                'href' => $r['href'] ?? null,
+                'data' => $r['data'] ?? [],
+                'created_at' => $r['created_at'] ?? null,
+            ])
+            ->values();
 
         return [
             'recentLogins' => $recentLogins->map(fn (LoginEvent $e) => [
@@ -442,7 +444,7 @@ class DashboardController extends Controller
     {
         return QuestOffer::query()
             ->whereHas('quest', fn ($q) => $q->where('client_id', $user->id))
-            ->with(['quest:id,uuid,title,status', 'freelancer:id,first_name,name'])
+            ->with(['quest:id,uuid,slug,title,status', 'freelancer:id,first_name,name,avatar_url'])
             ->latest('updated_at')
             ->limit(5)
             ->get()
@@ -452,6 +454,7 @@ class DashboardController extends Controller
                 'freelancer_label' => $o->freelancer?->first_name ?: $o->freelancer?->name,
                 'quest_title' => $o->quest?->title,
                 'updated_at' => $o->updated_at?->timezone('Africa/Lagos')->toIso8601String(),
+                'proposal_url' => $o->quest ? route('quests.proposals.show', [$o->quest->getRouteKey(), $o->id]) : null,
             ])
             ->all();
     }
@@ -470,9 +473,11 @@ class DashboardController extends Controller
             ])
             ->latest('updated_at')
             ->limit(6)
-            ->get(['id', 'uuid', 'title', 'status', 'updated_at', 'budget_amount_minor'])
+            ->get(['id', 'uuid', 'slug', 'title', 'status', 'updated_at', 'budget_amount_minor'])
             ->map(fn (Quest $q) => [
                 'id' => $q->id,
+                'slug' => $q->slug,
+                'uuid' => $q->uuid,
                 'title' => $q->title,
                 'status' => $q->status->value,
                 'updated_at' => $q->updated_at?->timezone('Africa/Lagos')->toIso8601String(),
@@ -494,7 +499,7 @@ class DashboardController extends Controller
                 'icon' => 'photo',
             ],
             [
-                'label' => __('Explore quests & send offers'),
+                'label' => __('Explore quests & send proposals'),
                 'description' => __('Open briefs matched to your skills and location.'),
                 'href' => route('quests.explore'),
                 'icon' => 'search',
@@ -563,9 +568,9 @@ class DashboardController extends Controller
                 'icon' => 'plus',
             ],
             [
-                'label' => __('View offers on your quests'),
+                'label' => __('View proposals on your quests'),
                 'description' => __('Compare pitches before you assign someone.'),
-                'href' => route('dashboard.lists.show', ['list' => 'client-offers-inbox']),
+                'href' => route('dashboard.lists.show', ['list' => 'client-proposals-inbox']),
                 'icon' => 'inbox',
             ],
             [

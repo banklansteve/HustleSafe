@@ -34,6 +34,9 @@ class QuestPublishedNotificationService
                 ->get();
 
             foreach ($followers as $user) {
+                if (! $this->freelancerFollowerMatchesQuestCategories($user, $quest)) {
+                    continue;
+                }
                 $notified[$user->id] = true;
                 $user->notify(new QuestAudienceNotification($quest, 'follow'));
             }
@@ -100,5 +103,36 @@ class QuestPublishedNotificationService
             }
             $user->notify(new QuestAudienceNotification($quest, 'tag'));
         }
+    }
+
+    /**
+     * Freelancers who follow a client only receive “follow” alerts for quests that fit their saved work categories.
+     * If they have not chosen categories yet, they receive all alerts from clients they follow.
+     */
+    protected function freelancerFollowerMatchesQuestCategories(User $follower, Quest $quest): bool
+    {
+        if ($follower->role?->slug !== 'freelancer') {
+            return false;
+        }
+
+        $catId = (int) ($quest->quest_category_id ?? 0);
+        $parentId = (int) ($quest->questCategory?->parent_id ?? 0);
+
+        if ($catId < 1) {
+            return true;
+        }
+
+        if ($follower->questCategoryPreferences()->count() === 0) {
+            return true;
+        }
+
+        return $follower->questCategoryPreferences()
+            ->where(function ($w) use ($catId, $parentId): void {
+                $w->where('quest_categories.id', $catId);
+                if ($parentId > 0) {
+                    $w->orWhere('quest_categories.parent_id', $parentId);
+                }
+            })
+            ->exists();
     }
 }

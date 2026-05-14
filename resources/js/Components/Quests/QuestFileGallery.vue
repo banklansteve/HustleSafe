@@ -68,26 +68,30 @@
             <Transition name="fade">
                 <div
                     v-if="lightboxIndex !== null"
+                    ref="lightboxRoot"
                     tabindex="-1"
                     class="fixed inset-0 z-[110] flex flex-col bg-slate-950/96 backdrop-blur-md outline-none"
                     role="dialog"
                     aria-modal="true"
                     aria-label="Quest media viewer"
+                    @click.self="closeLightbox"
                     @keydown.escape.prevent="closeLightbox"
                 >
-                    <div class="flex items-center justify-between px-4 py-3 sm:px-6">
-                        <p class="truncate text-sm font-bold text-white">
+                    <div class="flex shrink-0 items-center justify-between gap-3 px-4 py-3 sm:px-6" @click.stop>
+                        <p class="min-w-0 truncate text-sm font-bold text-white">
                             {{ activeFile?.name }}
                         </p>
                         <button
                             type="button"
-                            class="rounded-xl bg-white/10 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                            class="inline-flex shrink-0 items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-black text-white ring-1 ring-white/25 transition hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                            aria-label="Close viewer"
                             @click="closeLightbox"
                         >
+                            <span aria-hidden="true" class="text-lg leading-none">×</span>
                             Close
                         </button>
                     </div>
-                    <div class="relative min-h-0 flex-1 px-2 pb-6 sm:px-6">
+                    <div class="relative min-h-0 flex-1 px-2 pb-6 sm:px-6" @click.self="closeLightbox">
                         <Swiper
                             :key="'lb-' + lightboxIndex"
                             :modules="lightboxModules"
@@ -116,6 +120,16 @@
                             </SwiperSlide>
                         </Swiper>
                     </div>
+                    <div class="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center px-4">
+                        <button
+                            type="button"
+                            class="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-black text-slate-900 shadow-xl ring-2 ring-slate-900/10 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                            @click="closeLightbox"
+                        >
+                            <span class="text-lg leading-none" aria-hidden="true">×</span>
+                            Close viewer
+                        </button>
+                    </div>
                 </div>
             </Transition>
         </Teleport>
@@ -129,7 +143,7 @@ import 'swiper/css/navigation';
 import 'swiper/css/pagination';
 import { Navigation, Pagination } from 'swiper/modules';
 import { Swiper, SwiperSlide } from 'swiper/vue';
-import { computed, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 
 const props = defineProps({
     files: {
@@ -150,6 +164,7 @@ const lightboxModules = [Navigation, Pagination];
 const mainSwiper = ref(null);
 const boxSwiper = ref(null);
 const lightboxIndex = ref(null);
+const lightboxRoot = ref(null);
 
 const activeFile = computed(() => {
     if (lightboxIndex.value === null) {
@@ -171,6 +186,14 @@ function openLightbox(i) {
     lightboxIndex.value = i;
     document.body.style.overflow = 'hidden';
 }
+
+watch(lightboxIndex, async (v) => {
+    if (v === null) {
+        return;
+    }
+    await nextTick();
+    lightboxRoot.value?.focus?.();
+});
 
 function closeLightbox() {
     lightboxIndex.value = null;

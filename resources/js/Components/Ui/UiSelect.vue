@@ -11,8 +11,7 @@
             :aria-invalid="invalid ? 'true' : 'false'"
             :disabled="disabled"
             @click.stop="toggle"
-            @keydown.down.prevent="onTriggerArrow"
-            @keydown.up.prevent="onTriggerArrow"
+            @keydown="onTriggerKeydown"
         >
             <span class="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight text-slate-900">{{ displayLabel }}</span>
             <ChevronDownIcon
@@ -39,12 +38,7 @@
                     class="fixed z-[290] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200/90 bg-white py-2 shadow-2xl shadow-primary-900/15 ring-1 ring-primary-100/70 outline-none"
                     role="listbox"
                     :style="panelStyle"
-                    @keydown.esc.prevent="open = false"
-                    @keydown.down.prevent="moveActive(1)"
-                    @keydown.up.prevent="moveActive(-1)"
-                    @keydown.enter.prevent="commitActive"
-                    @keydown.home.prevent="activeIndex = 0"
-                    @keydown.end.prevent="activeIndex = Math.max(0, options.length - 1)"
+                    @keydown="onPanelKeydown"
                 >
                     <li v-for="(opt, idx) in options" :key="String(opt.value)">
                         <button
@@ -115,6 +109,9 @@ const triggerRef = ref(null);
 const panelRef = ref(null);
 const panelStyle = ref({});
 const activeIndex = ref(-1);
+const typeAheadBuffer = ref('');
+let typeAheadResetTimer = null;
+let lastTypeAheadKeyAt = 0;
 
 function sameValue(a, b) {
     return String(a) === String(b);
@@ -179,12 +176,185 @@ function syncActiveToSelection() {
     activeIndex.value = i >= 0 ? i : 0;
 }
 
+function clearTypeAheadState() {
+    clearTimeout(typeAheadResetTimer);
+    typeAheadResetTimer = null;
+    typeAheadBuffer.value = '';
+}
+
+function scheduleTypeAheadReset() {
+    clearTimeout(typeAheadResetTimer);
+    typeAheadResetTimer = setTimeout(() => {
+        typeAheadBuffer.value = '';
+        typeAheadResetTimer = null;
+    }, 850);
+}
+
+function scrollOptionIntoView(idx) {
+    nextTick(() => {
+        const el = panelRef.value?.querySelector?.(`li:nth-child(${idx + 1}) button`);
+        el?.scrollIntoView?.({ block: 'nearest' });
+    });
+}
+
+/** @returns {number} index or -1 */
+function idxStartingWith(prefix, startFrom = 0) {
+    const p = String(prefix).toLowerCase();
+    const n = props.options.length;
+    if (!n || !p) {
+        return -1;
+    }
+    for (let step = 0; step < n; step += 1) {
+        const i = (startFrom + step) % n;
+        if (String(props.options[i].label).toLowerCase().startsWith(p)) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+/** @returns {boolean} true if the event was handled */
+function handleTypeAhead(e) {
+    if (props.disabled || !props.options.length) {
+        return false;
+    }
+    const k = e.key;
+    if (k.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) {
+        return false;
+    }
+
+    const now = Date.now();
+    const elapsed = now - lastTypeAheadKeyAt;
+    lastTypeAheadKeyAt = now;
+
+    if (elapsed > 850) {
+        typeAheadBuffer.value = '';
+    }
+
+    const lower = k.toLowerCase();
+
+    if (open.value && typeAheadBuffer.value.length === 1 && typeAheadBuffer.value === lower && elapsed < 850) {
+        const start = activeIndex.value >= 0 ? (activeIndex.value + 1) % props.options.length : 0;
+        const cycled = idxStartingWith(lower, start);
+        if (cycled >= 0) {
+            activeIndex.value = cycled;
+            scrollOptionIntoView(cycled);
+            scheduleTypeAheadReset();
+            e.preventDefault();
+
+            return true;
+        }
+        typeAheadBuffer.value = lower;
+    } else if (elapsed > 850) {
+        typeAheadBuffer.value = lower;
+    } else {
+        typeAheadBuffer.value = (typeAheadBuffer.value + lower).slice(0, 48);
+    }
+
+    let found = idxStartingWith(typeAheadBuffer.value, 0);
+    if (found < 0 && typeAheadBuffer.value.length > 1) {
+        typeAheadBuffer.value = lower;
+        found = idxStartingWith(typeAheadBuffer.value, 0);
+    }
+
+    if (found < 0) {
+        typeAheadBuffer.value = '';
+
+        return false;
+    }
+
+    if (!open.value) {
+        open.value = true;
+        nextTick(() => {
+            updatePanelPosition();
+            activeIndex.value = found;
+            panelRef.value?.focus?.();
+            scrollOptionIntoView(found);
+        });
+    } else {
+        activeIndex.value = found;
+        scrollOptionIntoView(found);
+    }
+    scheduleTypeAheadReset();
+    e.preventDefault();
+
+    return true;
+}
+
+function onTriggerKeydown(e) {
+    if (props.disabled) {
+        return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        clearTypeAheadState();
+        if (!open.value) {
+            open.value = true;
+            syncActiveToSelection();
+            nextTick(() => {
+                updatePanelPosition();
+                panelRef.value?.focus?.();
+            });
+        }
+
+        return;
+    }
+    handleTypeAhead(e);
+}
+
+function onPanelKeydown(e) {
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        open.value = false;
+
+        return;
+    }
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        clearTypeAheadState();
+        moveActive(1);
+
+        return;
+    }
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        clearTypeAheadState();
+        moveActive(-1);
+
+        return;
+    }
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        clearTypeAheadState();
+        commitActive();
+
+        return;
+    }
+    if (e.key === 'Home') {
+        e.preventDefault();
+        clearTypeAheadState();
+        activeIndex.value = 0;
+
+        return;
+    }
+    if (e.key === 'End') {
+        e.preventDefault();
+        clearTypeAheadState();
+        activeIndex.value = Math.max(0, props.options.length - 1);
+
+        return;
+    }
+    handleTypeAhead(e);
+}
+
 function toggle() {
     if (props.disabled) {
         return;
     }
     open.value = !open.value;
     if (open.value) {
+        clearTypeAheadState();
         syncActiveToSelection();
         nextTick(() => {
             updatePanelPosition();
@@ -194,19 +364,9 @@ function toggle() {
 }
 
 function select(v) {
+    clearTypeAheadState();
     emit('update:modelValue', v);
     open.value = false;
-}
-
-function onTriggerArrow() {
-    if (!open.value) {
-        open.value = true;
-        syncActiveToSelection();
-        nextTick(() => {
-            updatePanelPosition();
-            panelRef.value?.focus?.();
-        });
-    }
 }
 
 function moveActive(delta) {
@@ -221,10 +381,7 @@ function moveActive(delta) {
         i = (i + delta + len) % len;
     }
     activeIndex.value = i;
-    nextTick(() => {
-        const el = panelRef.value?.querySelector?.(`li:nth-child(${i + 1}) button`);
-        el?.scrollIntoView?.({ block: 'nearest' });
-    });
+    scrollOptionIntoView(i);
 }
 
 function commitActive() {
@@ -248,6 +405,7 @@ watch(open, (v) => {
         window.removeEventListener('scroll', onScrollOrResize, true);
         window.removeEventListener('resize', onScrollOrResize);
         activeIndex.value = -1;
+        clearTypeAheadState();
     }
 });
 
@@ -264,6 +422,7 @@ watch(
 onUnmounted(() => {
     window.removeEventListener('scroll', onScrollOrResize, true);
     window.removeEventListener('resize', onScrollOrResize);
+    clearTypeAheadState();
 });
 </script>
 

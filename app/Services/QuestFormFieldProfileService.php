@@ -41,6 +41,8 @@ class QuestFormFieldProfileService
     /**
      * @return array{
      *   show_site_visit: bool,
+     *   show_site_access: bool,
+     *   show_pets_question: bool,
      *   show_availability: bool,
      *   show_hourly_fields: bool,
      *   show_team_size: bool,
@@ -73,8 +75,12 @@ class QuestFormFieldProfileService
         $showHourlyFields = $parentSlug !== null && ! in_array($parentSlug, ['legal-compliance'], true);
         $showTeamSize = $parentSlug !== null && ! in_array($parentSlug, $digitalParents, true);
 
+        $showSiteAccess = $this->siteAccessContextApplies($parentSlug, $leafSlug);
+
         return [
             'show_site_visit' => $showSiteVisit,
+            'show_site_access' => $showSiteAccess,
+            'show_pets_question' => $showSiteAccess,
             'show_availability' => $showAvailability,
             'show_hourly_fields' => $showHourlyFields,
             'show_team_size' => $showTeamSize,
@@ -85,12 +91,42 @@ class QuestFormFieldProfileService
     }
 
     /**
+     * On-site access / pets only when the work is commonly performed at a client location
+     * (trades, selected field services, in-person tutoring, events, etc.) — not for desk-only digital work.
+     */
+    protected function siteAccessContextApplies(?string $parentSlug, ?string $leafSlug): bool
+    {
+        if ($parentSlug === 'trades-field') {
+            return true;
+        }
+
+        if ($leafSlug === null) {
+            return false;
+        }
+
+        $leaves = [
+            'photography',
+            'videography-livestream',
+            'event-planning',
+            'tutoring-stem',
+            'tutoring-languages',
+            'estate-management',
+            'nutrition-fitness',
+            'farm-advisory',
+        ];
+
+        return in_array($leafSlug, $leaves, true);
+    }
+
+    /**
      * @return array<string, bool|string|null>
      */
     protected function emptyProfile(): array
     {
         return [
             'show_site_visit' => false,
+            'show_site_access' => false,
+            'show_pets_question' => false,
             'show_availability' => true,
             'show_hourly_fields' => true,
             'show_team_size' => true,

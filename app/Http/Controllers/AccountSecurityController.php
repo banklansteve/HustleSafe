@@ -16,6 +16,7 @@ class AccountSecurityController extends Controller
     public function edit(Request $request): Response
     {
         $user = $request->user();
+        $user->loadMissing('role:id,slug');
 
         return Inertia::render('Account/Security', [
             'mustVerifyEmail' => $user instanceof MustVerifyEmail,
@@ -25,6 +26,8 @@ class AccountSecurityController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'avatar_url' => $user->avatar_url,
+                'slug' => $user->slug,
+                'role_slug' => $user->role?->slug,
             ],
         ]);
     }

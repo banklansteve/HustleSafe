@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="HustleSafe concept: escrow rings">
+  <defs>
+    <linearGradient id="hs-grad-b" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop stop-color="#0f766e"/>
+      <stop offset="0.55" stop-color="#14b8a6"/>
+      <stop offset="1" stop-color="#2dd4bf"/>
+    </linearGradient>
+    <linearGradient id="hs-grad-b-inner" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop stop-color="#134e4a" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#5eead4" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#f0fdfa"/>
+  <circle cx="64" cy="64" r="46" stroke="url(#hs-grad-b)" stroke-width="8" opacity="0.35"/>
+  <circle cx="64" cy="64" r="34" stroke="url(#hs-grad-b)" stroke-width="8" opacity="0.55"/>
+  <circle cx="64" cy="64" r="22" stroke="url(#hs-grad-b)" stroke-width="8" opacity="0.85"/>
+  <circle cx="64" cy="64" r="22" fill="url(#hs-grad-b-inner)"/>
+  <path d="M52 64c0-6.6 5.4-12 12-12s12 5.4 12 12-5.4 12-12 12" stroke="#0f766e" stroke-width="5" stroke-linecap="round" opacity="0.9"/>
+  <path d="M64 52v12l8 5" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+</svg>

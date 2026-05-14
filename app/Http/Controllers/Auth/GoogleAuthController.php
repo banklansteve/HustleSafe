@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\TextCasing;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -44,8 +45,8 @@ class GoogleAuthController extends Controller
 
         $fullName = trim((string) ($googleUser->getName() ?? ''));
         $parts = $fullName !== '' ? preg_split('/\s+/', $fullName, 2) : ['', ''];
-        $firstName = $parts[0] ?: 'User';
-        $lastName = $parts[1] ?? '';
+        $firstName = TextCasing::titleWords($parts[0] ?: 'User') ?? 'User';
+        $lastName = TextCasing::titleWords($parts[1] ?? '') ?? '';
 
         $user = User::query()->where('google_id', $googleUser->getId())->first();
 
@@ -62,9 +63,13 @@ class GoogleAuthController extends Controller
 
         if ($user === null) {
             $displayName = $fullName !== '' ? $fullName : trim($firstName.' '.$lastName);
+            if ($displayName === '') {
+                $displayName = $firstName;
+            }
+            $displayName = TextCasing::titleWords($displayName) ?? $displayName;
 
             $user = User::create([
-                'name' => $displayName !== '' ? $displayName : $firstName,
+                'name' => $displayName,
                 'first_name' => $firstName,
                 'last_name' => $lastName,
                 'email' => $googleUser->getEmail(),

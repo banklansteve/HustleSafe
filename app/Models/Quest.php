@@ -10,6 +10,7 @@ use App\Enums\QuestStartTiming;
 use App\Enums\QuestStatus;
 use App\Enums\QuestTeamSize;
 use App\Enums\QuestVisibility;
+use App\Services\QuestFileStorageService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -33,6 +34,8 @@ class Quest extends Model
         'latitude',
         'longitude',
         'status',
+        'escrow_status',
+        'accepted_quest_offer_id',
         'visibility',
         'freelancer_location_pref',
         'availability_need',
@@ -42,16 +45,21 @@ class Quest extends Model
         'promotion_tier',
         'auto_listing_expiry_days',
         'listing_expires_at',
+        'client_edit_until',
         'max_offers',
         'views_count',
         'offers_count',
         'saves_count',
         'traffic_source',
         'traffic_utm',
+        'terms_accepted_at',
         'start_timing',
         'estimated_completion_days',
         'estimated_delivery_date',
         'site_visits_allowed',
+        'site_access_level',
+        'pets_on_site',
+        'pets_detail',
         'scheduled_start_date',
         'budget_amount_minor',
         'paid_out_minor',
@@ -73,6 +81,27 @@ class Quest extends Model
                 $quest->reference_code = static::generateReferenceCode();
             }
         });
+
+        static::deleting(function (Quest $quest): void {
+            $quest->loadMissing('files');
+            $storage = app(QuestFileStorageService::class);
+            foreach ($quest->files as $file) {
+                $storage->purgeBinary($file);
+            }
+        });
+    }
+
+    /**
+     * Cover image URL when set; otherwise the configured default asset.
+     */
+    public function displayCoverUrl(): string
+    {
+        $url = $this->cover_image_url;
+        if (is_string($url) && $url !== '') {
+            return $url;
+        }
+
+        return asset(config('quests.default_cover_asset', 'images/quest-cover-default.svg'));
     }
 
     public static function generateReferenceCode(): string
@@ -92,7 +121,38 @@ class Quest extends Model
 
     public function getRouteKeyName(): string
     {
-        return 'uuid';
+        return 'slug';
+    }
+
+    /**
+     * Prefer SEO-friendly slug; fall back to UUID for legacy rows.
+     */
+    public function getRouteKey(): mixed
+    {
+        $slug = $this->slug;
+
+        return ($slug !== null && $slug !== '') ? $slug : $this->uuid;
+    }
+
+    /**
+     * Resolve by slug (canonical) or UUID (legacy bookmarks).
+     *
+     * @param  mixed  $value
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        if ($field !== null) {
+            return static::query()->where($field, $value)->firstOrFail();
+        }
+
+        return static::query()
+            ->where(function ($q) use ($value): void {
+                $q->where('slug', $value);
+                if (is_string($value) && preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/', $value)) {
+                    $q->orWhere('uuid', $value);
+                }
+            })
+            ->firstOrFail();
     }
 
     protected function casts(): array
@@ -108,9 +168,12 @@ class Quest extends Model
             'traffic_utm' => 'array',
             'start_timing' => QuestStartTiming::class,
             'site_visits_allowed' => 'boolean',
+            'pets_on_site' => 'boolean',
             'scheduled_start_date' => 'date',
             'estimated_delivery_date' => 'date',
             'listing_expires_at' => 'datetime',
+            'client_edit_until' => 'datetime',
+            'terms_accepted_at' => 'datetime',
             'due_at' => 'datetime',
             'delivered_at' => 'datetime',
             'completed_at' => 'datetime',
@@ -119,6 +182,14 @@ class Quest extends Model
             'latitude' => 'float',
             'longitude' => 'float',
         ];
+    }
+
+    /**
+     * @return BelongsTo<QuestOffer, $this>
+     */
+    public function acceptedOffer(): BelongsTo
+    {
+        return $this->belongsTo(QuestOffer::class, 'accepted_quest_offer_id');
     }
 
     /**
@@ -151,6 +222,14 @@ class Quest extends Model
     public function offers(): HasMany
     {
         return $this->hasMany(QuestOffer::class);
+    }
+
+    /**
+     * @return HasMany<QuestConversationThread, $this>
+     */
+    public function conversationThreads(): HasMany
+    {
+        return $this->hasMany(QuestConversationThread::class);
     }
 
     /**

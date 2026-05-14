@@ -40,22 +40,14 @@
                 </div>
 
                 <div class="mt-6 flex flex-col items-center gap-6 sm:flex-row sm:items-start">
-                    <div
-                        class="relative flex h-28 w-28 shrink-0 overflow-hidden rounded-full border-2 border-slate-100 bg-gradient-to-br from-primary-600 to-primary-800 shadow-lg ring-2 ring-white"
-                    >
-                        <img
-                            v-if="user.avatar_url"
-                            :src="user.avatar_url"
-                            alt=""
-                            class="h-full w-full object-cover"
-                        />
-                        <span
-                            v-else
-                            class="flex h-full w-full items-center justify-center text-3xl font-black tracking-tight text-white"
-                        >
-                            {{ initials }}
-                        </span>
-                    </div>
+                    <UserProfileAvatar
+                        :href="user.role_slug === 'freelancer' && user.slug ? route('freelancers.public', user.slug) : null"
+                        :src="user.avatar_url"
+                        :name="user.name"
+                        alt=""
+                        frame-class="h-28 w-28 border-2 border-slate-100 shadow-lg ring-2 ring-white"
+                        initials-text-class="text-3xl font-black tracking-tight sm:text-4xl"
+                    />
                     <div class="min-w-0 flex-1 space-y-3 text-center sm:text-left">
                         <input
                             ref="fileInput"
@@ -166,10 +158,11 @@
 
 <script setup>
 import InputError from '@/Components/InputError.vue';
+import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import DeleteUserForm from '@/Pages/Profile/Partials/DeleteUserForm.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 
 const props = defineProps({
     mustVerifyEmail: { type: Boolean, default: false },
@@ -180,13 +173,6 @@ const props = defineProps({
 const fileInput = ref(null);
 const currentPasswordInput = ref(null);
 const newPasswordInput = ref(null);
-
-const initials = computed(() => {
-    const n = props.user.name || '';
-    const parts = n.trim().split(/\s+/);
-
-    return ((parts[0]?.[0] || 'H') + (parts[1]?.[0] || '')).toUpperCase();
-});
 
 const avatarForm = useForm({
     avatar: null,

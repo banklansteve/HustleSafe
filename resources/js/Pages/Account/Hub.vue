@@ -21,18 +21,13 @@
                 <div class="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                     <div class="flex flex-col gap-5 sm:flex-row sm:items-start">
                         <div class="relative shrink-0">
-                            <img
-                                v-if="user.avatar_url"
+                            <UserProfileAvatar
+                                :href="user.role_slug === 'freelancer' && user.slug ? route('freelancers.public', user.slug) : null"
                                 :src="user.avatar_url"
+                                :name="user.name"
                                 :alt="user.name"
-                                class="h-24 w-24 rounded-full border-2 border-white object-cover shadow-lg ring-2 ring-slate-100 sm:h-28 sm:w-28"
+                                frame-class="h-24 w-24 border-2 border-white text-2xl shadow-lg ring-2 ring-slate-100 sm:h-28 sm:w-28 sm:text-3xl"
                             />
-                            <div
-                                v-else
-                                class="flex h-24 w-24 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-primary-600 to-primary-800 text-2xl font-black tracking-tight text-white shadow-lg ring-2 ring-slate-100 sm:h-28 sm:w-28 sm:text-3xl"
-                            >
-                                {{ initials }}
-                            </div>
                         </div>
                         <div class="min-w-0">
                             <p class="text-xs font-bold uppercase tracking-[0.2em] text-primary-700">
@@ -150,7 +145,10 @@
                 </section>
 
                 <div class="space-y-6">
-                    <div class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8">
+                    <div
+                        id="account-profile-story"
+                        class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8"
+                    >
                         <div class="flex items-start justify-between gap-4">
                             <div>
                                 <h2 class="font-display text-lg font-bold text-slate-900">
@@ -160,9 +158,33 @@
                                     {{ storySectionBlurb }}
                                 </p>
                             </div>
-                            <PencilSquareIcon class="h-6 w-6 shrink-0 text-slate-300" aria-hidden="true" />
+                            <button
+                                type="button"
+                                class="rounded-full p-2 text-slate-400 ring-1 ring-slate-200/80 transition hover:bg-primary-50 hover:text-primary-800"
+                                :aria-pressed="editSection === 'story'"
+                                :aria-label="editSection === 'story' ? 'Close editor' : 'Edit profile story'"
+                                @click="toggleSection('story')"
+                            >
+                                <PencilSquareIcon v-if="editSection !== 'story'" class="h-6 w-6" aria-hidden="true" />
+                                <XMarkIcon v-else class="h-6 w-6" aria-hidden="true" />
+                            </button>
                         </div>
-                            <form class="mt-6 space-y-5" @submit.prevent="submitDetails">
+                        <div class="mt-6 min-h-[12rem]">
+                            <div v-if="editSection !== 'story'" class="space-y-4 text-sm font-semibold text-slate-800">
+                                <div>
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Headline</p>
+                                    <p class="mt-1 font-bold text-slate-900">
+                                        {{ user.headline || '—' }}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Bio</p>
+                                    <p class="mt-1 whitespace-pre-wrap leading-relaxed text-slate-700">
+                                        {{ user.bio || '—' }}
+                                    </p>
+                                </div>
+                            </div>
+                            <form v-else class="space-y-5" @submit.prevent="submitDetails">
                                 <div>
                                     <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Headline</label>
                                     <input
@@ -191,24 +213,76 @@
                                     </button>
                                 </div>
                             </form>
+                        </div>
                     </div>
 
-                    <div
-                        v-if="user.role_slug === 'freelancer'"
-                        class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8"
-                    >
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <h2 class="font-display text-lg font-bold text-slate-900">
-                                    Professional details
-                                </h2>
-                                <p class="mt-1 text-sm font-medium text-slate-600">
-                                    Rates and experience inform matching and your public profile.
-                                </p>
+                    <div v-if="user.role_slug === 'freelancer'" class="space-y-6">
+                        <div
+                            id="account-professional-details"
+                            class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8"
+                        >
+                            <div class="flex items-start justify-between gap-4">
+                                <div>
+                                    <h2 class="font-display text-lg font-bold text-slate-900">
+                                        Professional details
+                                    </h2>
+                                    <p class="mt-1 text-sm font-medium text-slate-600">
+                                        Rates and experience inform matching and your public profile.
+                                    </p>
+                                </div>
+                                <div class="flex shrink-0 items-center gap-2">
+                                    <BriefcaseIcon class="hidden h-6 w-6 text-slate-300 sm:block" aria-hidden="true" />
+                                    <button
+                                        type="button"
+                                        class="rounded-full p-2 text-slate-400 ring-1 ring-slate-200/80 transition hover:bg-primary-50 hover:text-primary-800"
+                                        :aria-pressed="editSection === 'professional'"
+                                        :aria-label="editSection === 'professional' ? 'Close editor' : 'Edit professional details'"
+                                        @click="toggleSection('professional')"
+                                    >
+                                        <PencilSquareIcon v-if="editSection !== 'professional'" class="h-6 w-6" aria-hidden="true" />
+                                        <XMarkIcon v-else class="h-6 w-6" aria-hidden="true" />
+                                    </button>
+                                </div>
                             </div>
-                            <BriefcaseIcon class="h-6 w-6 shrink-0 text-slate-300" aria-hidden="true" />
-                        </div>
-                        <form class="mt-6 grid gap-5 sm:grid-cols-2" @submit.prevent="submitDetails">
+                            <div class="mt-6 min-h-[22rem]">
+                                <dl
+                                    v-if="editSection !== 'professional'"
+                                    class="grid gap-4 text-sm font-semibold text-slate-800 sm:grid-cols-2"
+                                >
+                                    <div class="sm:col-span-2">
+                                        <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Display name</dt>
+                                        <dd class="mt-1 font-bold text-slate-900">{{ user.name || '—' }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">First name</dt>
+                                        <dd class="mt-1">{{ user.first_name || '—' }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Last name</dt>
+                                        <dd class="mt-1">{{ user.last_name || '—' }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Profession</dt>
+                                        <dd class="mt-1">{{ user.profession || '—' }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Job title</dt>
+                                        <dd class="mt-1">{{ user.job_title || '—' }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Years experience</dt>
+                                        <dd class="mt-1">{{ user.years_experience ?? '—' }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Hourly min (₦)</dt>
+                                        <dd class="mt-1">{{ user.hourly_rate_min ?? '—' }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Hourly max (₦)</dt>
+                                        <dd class="mt-1">{{ user.hourly_rate_max ?? '—' }}</dd>
+                                    </div>
+                                </dl>
+                                <form v-else class="grid gap-5 sm:grid-cols-2" @submit.prevent="submitDetails">
                                 <div class="sm:col-span-2">
                                     <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Display name</label>
                                     <input
@@ -296,53 +370,84 @@
                                     </button>
                                 </div>
                         </form>
+                            </div>
+                        </div>
                         <div
                             v-if="questCategoryTree.length"
-                            class="mt-8 border-t border-slate-100 pt-8"
+                            id="account-work-categories"
+                            class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8"
                         >
-                            <h3 class="font-display text-base font-bold text-slate-900">
-                                Quest subcategories
-                            </h3>
-                            <p class="mt-1 text-sm font-medium text-slate-600">
-                                Pick every leaf category you want to be matched on. You can choose more than one — wider
-                                selection surfaces more relevant open quests.
-                            </p>
-                            <div class="mt-5 max-h-[24rem] space-y-5 overflow-y-auto pr-1">
-                                <div v-for="parent in questCategoryTree" :key="parent.id" class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-                                    <p class="text-xs font-black uppercase tracking-wide text-slate-500">{{ parent.name }}</p>
-                                    <div class="mt-3 flex flex-wrap gap-2">
-                                        <label
-                                            v-for="child in parent.children || []"
-                                            :key="child.id"
-                                            class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/60"
-                                        >
-                                            <input
-                                                v-model="categoryForm.quest_category_ids"
-                                                type="checkbox"
-                                                class="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                                                :value="child.id"
-                                            />
-                                            <span>{{ child.name }}</span>
-                                        </label>
-                                    </div>
+                            <div class="flex items-start justify-between gap-4">
+                                <div>
+                                    <h3 class="font-display text-lg font-bold text-slate-900">
+                                        Work subcategories
+                                    </h3>
+                                    <p class="mt-1 text-sm font-medium text-slate-600">
+                                        Domain → subcategory selections used to match you on open quests. Pick every leaf category you want offers for.
+                                    </p>
                                 </div>
-                            </div>
-                            <div class="mt-5 flex flex-wrap items-center gap-3">
                                 <button
                                     type="button"
-                                    class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md hover:bg-primary-700 disabled:opacity-50"
-                                    :disabled="categoryForm.processing || categoryForm.quest_category_ids.length < 1"
-                                    @click="submitCategories"
+                                    class="rounded-full p-2 text-slate-400 ring-1 ring-slate-200/80 transition hover:bg-primary-50 hover:text-primary-800"
+                                    :aria-pressed="editSection === 'categories'"
+                                    :aria-label="editSection === 'categories' ? 'Close editor' : 'Edit work subcategories'"
+                                    @click="toggleSection('categories')"
                                 >
-                                    Save categories
+                                    <PencilSquareIcon v-if="editSection !== 'categories'" class="h-6 w-6" aria-hidden="true" />
+                                    <XMarkIcon v-else class="h-6 w-6" aria-hidden="true" />
                                 </button>
-                                <InputError class="w-full sm:w-auto" :message="categoryForm.errors.quest_category_ids" />
+                            </div>
+                            <div class="mt-6 min-h-[10rem]">
+                                <div v-if="editSection !== 'categories'" class="flex flex-wrap gap-2">
+                                    <span
+                                        v-for="c in categories"
+                                        :key="c.id"
+                                        class="rounded-full border border-primary-100 bg-primary-50 px-3 py-1.5 text-xs font-bold text-primary-900 ring-1 ring-primary-100/80"
+                                    >
+                                        {{ c.name }}
+                                    </span>
+                                    <span v-if="!categories.length" class="text-sm font-semibold text-slate-500">No subcategories selected yet.</span>
+                                </div>
+                                <template v-else>
+                                    <div class="max-h-[24rem] space-y-5 overflow-y-auto pr-1">
+                                        <div v-for="parent in questCategoryTree" :key="parent.id" class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                                            <p class="text-xs font-black uppercase tracking-wide text-slate-500">{{ parent.name }}</p>
+                                            <div class="mt-3 flex flex-wrap gap-2">
+                                                <label
+                                                    v-for="child in parent.children || []"
+                                                    :key="child.id"
+                                                    class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/60"
+                                                >
+                                                    <input
+                                                        v-model="categoryForm.quest_category_ids"
+                                                        type="checkbox"
+                                                        class="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                                                        :value="child.id"
+                                                    />
+                                                    <span>{{ child.name }}</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-5 flex flex-wrap items-center gap-3">
+                                        <button
+                                            type="button"
+                                            class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md hover:bg-primary-700 disabled:opacity-50"
+                                            :disabled="categoryForm.processing || categoryForm.quest_category_ids.length < 1"
+                                            @click="submitCategories"
+                                        >
+                                            Save categories
+                                        </button>
+                                        <InputError class="w-full sm:w-auto" :message="categoryForm.errors.quest_category_ids" />
+                                    </div>
+                                </template>
                             </div>
                         </div>
                     </div>
 
                     <div
                         v-else
+                        id="account-client-profile"
                         class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8"
                     >
                         <div class="flex items-start justify-between gap-4">
@@ -354,9 +459,47 @@
                                     How you appear in the app; visibility is controlled in the Visibility tab.
                                 </p>
                             </div>
-                            <BriefcaseIcon class="h-6 w-6 shrink-0 text-slate-300" aria-hidden="true" />
+                            <div class="flex shrink-0 items-center gap-2">
+                                <BriefcaseIcon class="hidden h-6 w-6 text-slate-300 sm:block" aria-hidden="true" />
+                                <button
+                                    type="button"
+                                    class="rounded-full p-2 text-slate-400 ring-1 ring-slate-200/80 transition hover:bg-primary-50 hover:text-primary-800"
+                                    :aria-pressed="editSection === 'client'"
+                                    :aria-label="editSection === 'client' ? 'Close editor' : 'Edit profile details'"
+                                    @click="toggleSection('client')"
+                                >
+                                    <PencilSquareIcon v-if="editSection !== 'client'" class="h-6 w-6" aria-hidden="true" />
+                                    <XMarkIcon v-else class="h-6 w-6" aria-hidden="true" />
+                                </button>
+                            </div>
                         </div>
-                        <form class="mt-6 grid gap-5 sm:grid-cols-2" @submit.prevent="submitDetails">
+                        <div class="mt-6 min-h-[16rem]">
+                            <dl
+                                v-if="editSection !== 'client'"
+                                class="grid gap-4 text-sm font-semibold text-slate-800 sm:grid-cols-2"
+                            >
+                                <div class="sm:col-span-2">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Display name</dt>
+                                    <dd class="mt-1 font-bold text-slate-900">{{ user.name || '—' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">First name</dt>
+                                    <dd class="mt-1">{{ user.first_name || '—' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Last name</dt>
+                                    <dd class="mt-1">{{ user.last_name || '—' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Job title</dt>
+                                    <dd class="mt-1">{{ user.job_title || '—' }}</dd>
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Company / organisation</dt>
+                                    <dd class="mt-1">{{ user.company_name || '—' }}</dd>
+                                </div>
+                            </dl>
+                            <form v-else class="grid gap-5 sm:grid-cols-2" @submit.prevent="submitDetails">
                             <div class="sm:col-span-2">
                                 <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Display name</label>
                                 <input
@@ -412,21 +555,63 @@
                                 </button>
                             </div>
                         </form>
+                            </div>
                     </div>
 
-                    <div class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8">
+                    <div
+                        id="account-structured-address"
+                        class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8"
+                    >
                         <div class="flex items-start justify-between gap-4">
                             <div>
                                 <h2 class="font-display text-lg font-bold text-slate-900">
-                                    Contact &amp; city
+                                    Phone &amp; Nigeria location
                                 </h2>
                                 <p class="mt-1 text-sm font-medium text-slate-600">
                                     {{ contactSectionBlurb }}
                                 </p>
                             </div>
-                            <PhoneIcon class="h-6 w-6 shrink-0 text-slate-300" aria-hidden="true" />
+                            <div class="flex shrink-0 items-center gap-2">
+                                <PhoneIcon class="hidden h-6 w-6 text-slate-300 sm:block" aria-hidden="true" />
+                                <button
+                                    type="button"
+                                    class="rounded-full p-2 text-slate-400 ring-1 ring-slate-200/80 transition hover:bg-primary-50 hover:text-primary-800"
+                                    :aria-pressed="editSection === 'address'"
+                                    :aria-label="editSection === 'address' ? 'Close editor' : 'Edit phone and address'"
+                                    @click="toggleSection('address')"
+                                >
+                                    <PencilSquareIcon v-if="editSection !== 'address'" class="h-6 w-6" aria-hidden="true" />
+                                    <XMarkIcon v-else class="h-6 w-6" aria-hidden="true" />
+                                </button>
+                            </div>
                         </div>
-                            <form class="mt-6 grid gap-5 sm:grid-cols-2" @submit.prevent="submitDetails">
+                        <div class="mt-6 min-h-[14rem]">
+                            <dl
+                                v-if="editSection !== 'address'"
+                                class="grid gap-4 text-sm font-semibold text-slate-800 sm:grid-cols-2"
+                            >
+                                <div>
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Phone</dt>
+                                    <dd class="mt-1">{{ user.phone || '—' }}</dd>
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">Street address</dt>
+                                    <dd class="mt-1 whitespace-pre-wrap leading-relaxed">{{ user.address_line || '—' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">State</dt>
+                                    <dd class="mt-1">{{ user.state || '—' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">LGA</dt>
+                                    <dd class="mt-1">{{ user.local_government || '—' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">City</dt>
+                                    <dd class="mt-1">{{ user.city || '—' }}</dd>
+                                </div>
+                            </dl>
+                            <form v-else class="grid gap-5 sm:grid-cols-2" @submit.prevent="submitDetails">
                                 <div>
                                     <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Phone</label>
                                     <input
@@ -436,7 +621,40 @@
                                     />
                                     <InputError class="mt-1" :message="detailsForm.errors.phone" />
                                 </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Street address</label>
+                                    <textarea
+                                        v-model="detailsForm.address_line"
+                                        rows="3"
+                                        class="mt-1 w-full rounded-xl border-slate-200 text-sm font-medium shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                        placeholder="House number, street, area…"
+                                    />
+                                    <InputError class="mt-1" :message="detailsForm.errors.address_line" />
+                                </div>
                                 <div>
+                                    <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">State</label>
+                                    <UiSelect
+                                        v-model="detailsForm.state_id"
+                                        class="mt-1"
+                                        :options="stateSelectOptions"
+                                        placeholder="Select state"
+                                        :invalid="!!detailsForm.errors.state_id"
+                                    />
+                                    <InputError class="mt-1" :message="detailsForm.errors.state_id" />
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Local government (LGA)</label>
+                                    <UiSelect
+                                        v-model="detailsForm.local_government_id"
+                                        class="mt-1"
+                                        :options="lgaSelectOptions"
+                                        :placeholder="detailsForm.state_id ? 'Select LGA' : 'Choose state first'"
+                                        :disabled="!detailsForm.state_id"
+                                        :invalid="!!detailsForm.errors.local_government_id"
+                                    />
+                                    <InputError class="mt-1" :message="detailsForm.errors.local_government_id" />
+                                </div>
+                                <div class="sm:col-span-2">
                                     <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">City</label>
                                     <input
                                         v-model="detailsForm.city"
@@ -445,17 +663,18 @@
                                     />
                                     <InputError class="mt-1" :message="detailsForm.errors.city" />
                                 </div>
-                                <div class="sm:col-span-2">
+                                <div class="sm:col-span-2 flex justify-end">
                                     <button
                                         type="submit"
-                                        class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-800 shadow-sm hover:border-primary-200 hover:bg-primary-50 disabled:opacity-50"
+                                        class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md hover:bg-primary-700 disabled:opacity-50"
                                         :disabled="detailsForm.processing"
                                     >
-                                        Save contact
+                                        Save phone &amp; location
                                     </button>
                                 </div>
                             </form>
                         </div>
+                    </div>
                 </div>
             </div>
 
@@ -696,76 +915,110 @@
             </div>
 
             <!-- Visibility -->
-            <div v-show="localTab === 'visibility'" class="space-y-6">
+            <div v-show="localTab === 'visibility'" id="account-visibility-settings" class="space-y-6">
+                <div class="rounded-[1.75rem] border border-amber-200 bg-amber-50/80 p-6 ring-1 ring-amber-100">
+                    <p class="text-sm font-bold text-amber-950">
+                        {{ visibilityRiskWarning }}
+                    </p>
+                </div>
                 <div class="rounded-[1.75rem] border border-primary-100 bg-primary-50/60 p-6 ring-1 ring-primary-100/80">
                     <p class="text-sm font-semibold leading-relaxed text-primary-950">
                         {{ visibilityFieldHelp }}
                     </p>
                 </div>
-                <form class="space-y-4 rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8" @submit.prevent="submitVisibility">
-                    <div
-                        v-for="key in visibilityKeys"
-                        :key="key"
-                        class="flex items-start gap-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-4"
-                    >
-                        <input
-                            :id="'vis-'+key"
-                            v-model="visibilityForm.settings[key]"
-                            type="checkbox"
-                            class="mt-1 h-5 w-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                        />
-                        <div>
-                            <label :for="'vis-'+key" class="text-sm font-bold text-slate-900">{{ visibilityLabels[key] }}</label>
-                            <p class="mt-1 text-xs font-medium text-slate-600">
-                                {{ visibilityHints[key] }}
-                            </p>
-                        </div>
+                <div class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8">
+                    <div>
+                        <h2 class="font-display text-lg font-bold text-slate-900">
+                            Public visibility
+                        </h2>
+                        <p class="mt-1 text-sm font-medium text-slate-600">
+                            Choose what appears on your public profile. Changes save when you click the button below.
+                        </p>
                     </div>
-                    <div class="flex justify-end pt-2">
-                        <button
-                            type="submit"
-                            class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md hover:bg-primary-700 disabled:opacity-50"
-                            :disabled="visibilityForm.processing"
+                    <form class="mt-6 space-y-4" @submit.prevent="submitVisibility">
+                        <div
+                            v-for="key in visibilityKeys"
+                            :key="key"
+                            class="flex items-start gap-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-4"
                         >
-                            Save visibility
-                        </button>
-                    </div>
-                </form>
+                            <input
+                                :id="'vis-'+key"
+                                v-model="visibilityForm.settings[key]"
+                                type="checkbox"
+                                class="mt-1 h-5 w-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            <div>
+                                <label :for="'vis-'+key" class="text-sm font-bold text-slate-900">{{ visibilityLabels[key] }}</label>
+                                <p class="mt-1 text-xs font-medium text-slate-600">
+                                    {{ visibilityHints[key] }}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex justify-end pt-2">
+                            <button
+                                type="submit"
+                                class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md hover:bg-primary-700 disabled:opacity-50"
+                                :disabled="visibilityForm.processing"
+                            >
+                                Save visibility
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             <!-- Settings -->
             <div v-show="localTab === 'settings'" class="space-y-10">
-                <section class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8">
-                    <h2 class="font-display text-lg font-bold text-slate-900">
-                        Online status
-                    </h2>
-                    <p class="mt-2 text-sm font-medium text-slate-600">
-                        When you allow it, a green indicator can show on your public profile while you are active. If you hide your status, you will not see whether other people are online either — this keeps the feature fair for everyone.
-                    </p>
-                    <form class="mt-5 space-y-4" @submit.prevent="submitPresence">
-                        <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-                            <input
-                                v-model="presenceForm.hide_online_presence"
-                                type="checkbox"
-                                class="mt-1 h-5 w-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                            />
-                            <span>
-                                <span class="block text-sm font-bold text-slate-900">Hide my online status</span>
-                                <span class="mt-1 block text-xs font-medium text-slate-600">
-                                    You stop sharing when you were last active, and you will not see others’ online indicators while this is on.
-                                </span>
-                            </span>
-                        </label>
-                        <div class="flex justify-end">
-                            <button
-                                type="submit"
-                                class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md hover:bg-primary-700 disabled:opacity-50"
-                                :disabled="presenceForm.processing"
-                            >
-                                Save preference
-                            </button>
+                <section id="account-online-presence" class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <h2 class="font-display text-lg font-bold text-slate-900">
+                                Online status
+                            </h2>
+                            <p class="mt-2 text-sm font-medium text-slate-600">
+                                When you allow it, a green indicator can show on your public profile while you are active. If you hide your status, you will not see whether other people are online either — this keeps the feature fair for everyone.
+                            </p>
                         </div>
-                    </form>
+                        <button
+                            type="button"
+                            class="rounded-full p-2 text-slate-400 ring-1 ring-slate-200/80 transition hover:bg-primary-50 hover:text-primary-800"
+                            :aria-pressed="editSection === 'presence'"
+                            :aria-label="editSection === 'presence' ? 'Close editor' : 'Edit online status'"
+                            @click="toggleSection('presence')"
+                        >
+                            <PencilSquareIcon v-if="editSection !== 'presence'" class="h-6 w-6" aria-hidden="true" />
+                            <XMarkIcon v-else class="h-6 w-6" aria-hidden="true" />
+                        </button>
+                    </div>
+                    <div class="mt-5 min-h-[8rem]">
+                        <p v-if="editSection !== 'presence'" class="text-sm font-bold text-slate-900">
+                            {{ presenceForm.hide_online_presence ? 'Hidden — others will not see when you are online.' : 'Visible — you and others can see online indicators when enabled.' }}
+                        </p>
+                        <form v-else class="space-y-4" @submit.prevent="submitPresence">
+                            <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                                <input
+                                    v-model="presenceForm.hide_online_presence"
+                                    type="checkbox"
+                                    class="mt-1 h-5 w-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                                />
+                                <span>
+                                    <span class="block text-sm font-bold text-slate-900">Hide my online status</span>
+                                    <span class="mt-1 block text-xs font-medium text-slate-600">
+                                        You stop sharing when you were last active, and you will not see others’ online indicators while this is on.
+                                    </span>
+                                </span>
+                            </label>
+                            <div class="flex justify-end">
+                                <button
+                                    type="submit"
+                                    class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md hover:bg-primary-700 disabled:opacity-50"
+                                    :disabled="presenceForm.processing"
+                                >
+                                    Save preference
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </section>
 
                 <section class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8">
@@ -828,6 +1081,8 @@
 
 <script setup>
 import InputError from '@/Components/InputError.vue';
+import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
+import UiSelect from '@/Components/Ui/UiSelect.vue';
 import TrustHalfDonut from '@/Components/Home/TrustHalfDonut.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import {
@@ -841,9 +1096,12 @@ import {
     ShieldCheckIcon,
     Squares2X2Icon,
     StarIcon,
+    XMarkIcon,
 } from '@heroicons/vue/24/outline';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { usePathname } from '@/composables/usePathname';
+import { formatCompactCountWithFull } from '@/utils/formatCompactCount';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
 const props = defineProps({
     activeTab: { type: String, default: 'overview' },
@@ -861,8 +1119,10 @@ const props = defineProps({
     visibilityKeys: { type: Array, required: true },
     publicReviewsUrl: { type: String, default: null },
     publicPortfoliosUrl: { type: String, default: null },
-    followerCount: { type: Number, default: 0 },
+    follower_count: { type: Number, default: 0 },
+    following_count: { type: Number, default: 0 },
     visibilityFieldHelp: { type: String, default: '' },
+    locations: { type: Array, default: () => [] },
 });
 
 const tabs = computed(() => {
@@ -881,6 +1141,7 @@ const tabs = computed(() => {
 });
 
 const page = usePage();
+const pathname = usePathname(page);
 
 const localTab = ref(props.activeTab || 'overview');
 
@@ -915,6 +1176,7 @@ function setTab(id) {
     if (!tabIds().includes(id)) {
         return;
     }
+    editSection.value = null;
     localTab.value = id;
     const u = new URL(window.location.href);
     u.searchParams.set('tab', id);
@@ -929,15 +1191,6 @@ function syncTabFromUrl() {
     }
 }
 
-onMounted(() => {
-    window.addEventListener('popstate', syncTabFromUrl);
-    syncTabFromUrl();
-});
-
-onUnmounted(() => {
-    window.removeEventListener('popstate', syncTabFromUrl);
-});
-
 const presenceForm = useForm({
     hide_online_presence: !!props.user.hide_online_presence,
 });
@@ -948,6 +1201,34 @@ watch(
         presenceForm.hide_online_presence = !!v;
     },
 );
+
+const detailsForm = useForm({
+    first_name: props.user.first_name,
+    last_name: props.user.last_name,
+    name: props.user.name,
+    headline: props.user.headline,
+    bio: props.user.bio,
+    phone: props.user.phone,
+    profession: props.user.profession,
+    job_title: props.user.job_title,
+    years_experience: props.user.years_experience,
+    hourly_rate_min: props.user.hourly_rate_min,
+    hourly_rate_max: props.user.hourly_rate_max,
+    city: props.user.city,
+    company_name: props.user.company_name,
+    address_line: props.user.address_line ?? '',
+    state_id: props.user.state_id ?? null,
+    local_government_id: props.user.local_government_id ?? null,
+});
+
+const visibilityForm = useForm({
+    settings: Object.fromEntries(props.visibilityKeys.map((k) => [k, !!props.visibility[k]])),
+});
+
+const deactivateForm = useForm({
+    password: '',
+    confirm: '',
+});
 
 const visibilityLabels = {
     show_bio: 'Bio & story',
@@ -976,6 +1257,138 @@ const visibilityHints = {
     show_experience: 'Years and profession badges on your hero.',
     show_company: 'Displays your organisation when you sponsor or collaborate on quests.',
 };
+
+const visibilityRiskWarning = computed(() =>
+    props.user.role_slug === 'freelancer'
+        ? 'The more you hide, the less proof clients see — strong public profiles win more invitations and proposals. Only turn off items you are sure you want to keep private.'
+        : 'Freelancers often choose who to work with based on what they can verify. Keep useful details visible when you can.',
+);
+
+const categoryForm = useForm({
+    quest_category_ids: props.categories.map((c) => c.id),
+});
+
+/** One inline editor at a time — view mode avoids accidental edits. */
+const editSection = ref(null);
+
+const stateSelectOptions = computed(() =>
+    (props.locations || []).map((s) => ({
+        value: s.id,
+        label: s.name,
+    })),
+);
+
+const lgaSelectOptions = computed(() => {
+    const sid = Number(detailsForm.state_id);
+    const st = (props.locations || []).find((x) => Number(x.id) === sid);
+
+    return (st?.local_governments || []).map((lg) => ({
+        value: lg.id,
+        label: lg.name,
+    }));
+});
+
+function scrollToAccountHash() {
+    const id = window.location.hash?.replace('#', '') || '';
+    if (!id.startsWith('account-')) {
+        return;
+    }
+    requestAnimationFrame(() => {
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+}
+
+function toggleSection(section) {
+    if (editSection.value === section) {
+        editSection.value = null;
+        hydrateDetailsForm();
+        detailsForm.clearErrors();
+        visibilityForm.clearErrors();
+        presenceForm.clearErrors();
+
+        return;
+    }
+    editSection.value = section;
+    hydrateDetailsForm();
+}
+
+function hydrateDetailsForm() {
+    const u = props.user;
+    detailsForm.first_name = u.first_name ?? '';
+    detailsForm.last_name = u.last_name ?? '';
+    detailsForm.name = u.name ?? '';
+    detailsForm.headline = u.headline ?? '';
+    detailsForm.bio = u.bio ?? '';
+    detailsForm.phone = u.phone ?? '';
+    detailsForm.profession = u.profession ?? '';
+    detailsForm.job_title = u.job_title ?? '';
+    detailsForm.years_experience = u.years_experience ?? '';
+    detailsForm.hourly_rate_min = u.hourly_rate_min ?? '';
+    detailsForm.hourly_rate_max = u.hourly_rate_max ?? '';
+    detailsForm.city = u.city ?? '';
+    detailsForm.company_name = u.company_name ?? '';
+    detailsForm.address_line = u.address_line ?? '';
+    detailsForm.state_id = u.state_id ?? null;
+    detailsForm.local_government_id = u.local_government_id ?? null;
+}
+
+watch(
+    () => detailsForm.state_id,
+    (n, o) => {
+        if (editSection.value !== 'address' || o === undefined) {
+            return;
+        }
+        if (Number(n) !== Number(o)) {
+            detailsForm.local_government_id = null;
+        }
+    },
+);
+
+watch(
+    () => props.visibility,
+    (v) => {
+        if (!v) {
+            return;
+        }
+        visibilityForm.settings = Object.fromEntries(props.visibilityKeys.map((k) => [k, !!v[k]]));
+    },
+    { deep: true },
+);
+
+watch(
+    () => props.user,
+    () => {
+        hydrateDetailsForm();
+    },
+    { deep: true },
+);
+
+watch(
+    () => page.url,
+    () => {
+        if (pathname.value.startsWith('/account')) {
+            nextTick(scrollToAccountHash);
+        }
+    },
+);
+
+watch(
+    () => props.categories,
+    (cats) => {
+        categoryForm.quest_category_ids = (cats || []).map((c) => c.id);
+    },
+    { deep: true },
+);
+
+function submitCategories() {
+    categoryForm.patch(route('account.quest-categories.update'), {
+        preserveScroll: true,
+        replace: true,
+        onSuccess: () => {
+            editSection.value = null;
+        },
+    });
+}
 
 const roleBannerLabel = computed(() => {
     if (props.user.role_slug === 'freelancer') {
@@ -1032,50 +1445,9 @@ const storySectionBlurb = computed(() =>
 
 const contactSectionBlurb = computed(() =>
     props.user.role_slug === 'freelancer'
-        ? 'Phone and city stay private unless you enable them on your public profile.'
-        : 'Phone and city stay private unless you enable them for people you work with.',
+        ? 'Phone, street address, state, LGA, and city stay private unless you enable location on your public profile.'
+        : 'Phone, street address, state, LGA, and city stay private unless you enable them for people you work with.',
 );
-
-const categoryForm = useForm({
-    quest_category_ids: props.categories.map((c) => c.id),
-});
-
-watch(
-    () => props.categories,
-    (cats) => {
-        categoryForm.quest_category_ids = (cats || []).map((c) => c.id);
-    },
-    { deep: true },
-);
-
-function submitCategories() {
-    categoryForm.patch(route('account.quest-categories.update'), { preserveScroll: true });
-}
-
-const detailsForm = useForm({
-    first_name: props.user.first_name,
-    last_name: props.user.last_name,
-    name: props.user.name,
-    headline: props.user.headline,
-    bio: props.user.bio,
-    phone: props.user.phone,
-    profession: props.user.profession,
-    job_title: props.user.job_title,
-    years_experience: props.user.years_experience,
-    hourly_rate_min: props.user.hourly_rate_min,
-    hourly_rate_max: props.user.hourly_rate_max,
-    city: props.user.city,
-    company_name: props.user.company_name,
-});
-
-const visibilityForm = useForm({
-    settings: Object.fromEntries(props.visibilityKeys.map((k) => [k, !!props.visibility[k]])),
-});
-
-const deactivateForm = useForm({
-    password: '',
-    confirm: '',
-});
 
 const initials = computed(() => {
     const n = props.user.name || '';
@@ -1116,6 +1488,10 @@ const primaryTrustLabel = computed(() =>
     props.user.role_slug === 'freelancer' ? 'Freelancer trust' : 'Client trust',
 );
 
+function formatCountTile(n) {
+    return formatCompactCountWithFull(Number(n) || 0);
+}
+
 const statTiles = computed(() => {
     const tiles = [];
     if (props.user.role_slug === 'freelancer') {
@@ -1126,7 +1502,8 @@ const statTiles = computed(() => {
         });
         tiles.push({ label: 'Reviews', value: props.trust.rating_count_freelancer });
         tiles.push({ label: 'Profile', value: `${props.trust.profile_percent ?? 0}%` });
-        tiles.push({ label: 'Followers', value: props.followerCount });
+        tiles.push({ label: 'Followers', value: formatCountTile(props.follower_count) });
+        tiles.push({ label: 'Following', value: formatCountTile(props.following_count) });
         tiles.push({ label: 'Portfolios', value: props.portfolio.counts.published });
     } else {
         tiles.push({ label: 'Trust', value: `${props.trust.client}%` });
@@ -1136,6 +1513,8 @@ const statTiles = computed(() => {
         });
         tiles.push({ label: 'Reviews', value: props.trust.rating_count_client });
         tiles.push({ label: 'Profile', value: `${props.trust.profile_percent ?? 0}%` });
+        tiles.push({ label: 'Followers', value: formatCountTile(props.follower_count) });
+        tiles.push({ label: 'Following', value: formatCountTile(props.following_count) });
     }
 
     return tiles;
@@ -1154,15 +1533,33 @@ function distBarWidth(lvl) {
 }
 
 function submitDetails() {
-    detailsForm.patch(route('account.details'), { preserveScroll: true });
+    detailsForm.patch(route('account.details'), {
+        preserveScroll: true,
+        replace: true,
+        onSuccess: () => {
+            editSection.value = null;
+        },
+    });
 }
 
 function submitVisibility() {
-    visibilityForm.patch(route('account.visibility'), { preserveScroll: true });
+    visibilityForm.patch(route('account.visibility'), {
+        preserveScroll: true,
+        replace: true,
+        onSuccess: () => {
+            editSection.value = null;
+        },
+    });
 }
 
 function submitPresence() {
-    presenceForm.patch(route('account.presence'), { preserveScroll: true });
+    presenceForm.patch(route('account.presence'), {
+        preserveScroll: true,
+        replace: true,
+        onSuccess: () => {
+            editSection.value = null;
+        },
+    });
 }
 
 function submitDeactivate() {
@@ -1191,4 +1588,15 @@ function formatWhen(iso) {
 function formatCac(s) {
     return String(s || '').replaceAll('_', ' ');
 }
+
+onMounted(() => {
+    window.addEventListener('popstate', syncTabFromUrl);
+    syncTabFromUrl();
+    hydrateDetailsForm();
+    scrollToAccountHash();
+});
+
+onUnmounted(() => {
+    window.removeEventListener('popstate', syncTabFromUrl);
+});
 </script>

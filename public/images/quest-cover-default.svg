@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-label="Quest cover placeholder">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f766e"/>
+      <stop offset="100%" style="stop-color:#0f172a"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <g fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="3">
+    <rect x="280" y="200" width="240" height="200" rx="16" ry="16"/>
+    <path d="M320 340 L380 280 L440 320 L480 260" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="430" cy="240" r="18"/>
+  </g>
+  <text x="400" y="470" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-family="system-ui,sans-serif" font-size="22" font-weight="600">HustleSafe quest</text>
+</svg>

@@ -135,7 +135,7 @@ class QuestWizardStepValidator
         }
 
         $projectType = $payload['project_type'] ?? null;
-        if (! empty($profile['show_hourly_fields']) && $projectType === \App\Enums\QuestProjectType::Hourly->value) {
+        if (! empty($profile['show_hourly_fields']) && $projectType === QuestProjectType::Hourly->value) {
             $rules['estimated_hours'] = ['required', 'integer', 'min:1', 'max:2000'];
         } else {
             $rules['estimated_hours'] = ['nullable', 'integer', 'min:1', 'max:2000'];
@@ -143,6 +143,16 @@ class QuestWizardStepValidator
 
         if (! empty($profile['show_team_size'])) {
             $rules['team_size'] = ['required', Rule::enum(QuestTeamSize::class)];
+        }
+
+        if (! empty($profile['show_site_access'])) {
+            $rules['site_access_level'] = ['required', 'string', Rule::in(['ground_level_easy', 'stairs_no_lift', 'stairs_with_lift', 'ladder_or_height_work', 'narrow_or_difficult_access', 'other'])];
+            $rules['pets_on_site'] = ['required', 'boolean'];
+            $rules['pets_detail'] = ['nullable', 'string', 'max:255'];
+        } else {
+            $rules['site_access_level'] = ['nullable', 'string', 'max:40'];
+            $rules['pets_on_site'] = ['sometimes', 'boolean'];
+            $rules['pets_detail'] = ['nullable', 'string', 'max:255'];
         }
 
         return $rules;
@@ -157,7 +167,6 @@ class QuestWizardStepValidator
             'promotion_tier' => ['required', Rule::enum(QuestPromotionTier::class)],
             'auto_listing_expiry_days' => ['nullable', 'integer', 'min:1', 'max:90'],
             'max_offers' => ['nullable', 'integer', 'min:1', 'max:200'],
-            'slug' => ['nullable', 'string', 'max:120', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
             'tagged_freelancer_ids' => ['nullable', 'array', 'max:20'],
             'tagged_freelancer_ids.*' => ['integer', 'distinct'],
         ];

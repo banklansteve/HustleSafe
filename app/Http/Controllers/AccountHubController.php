@@ -7,6 +7,8 @@ use App\Enums\ReviewStatus;
 use App\Models\Portfolio;
 use App\Models\QuestCategory;
 use App\Models\Review;
+use App\Models\State;
+use App\Models\UserFollow;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -105,6 +107,9 @@ class AccountHubController extends Controller
                 'hourly_rate_min' => $user->hourly_rate_min,
                 'hourly_rate_max' => $user->hourly_rate_max,
                 'city' => $user->city,
+                'address_line' => $user->address_line,
+                'state_id' => $user->state_id,
+                'local_government_id' => $user->local_government_id,
                 'verification_tier' => $user->verification_tier,
                 'created_at' => $user->created_at?->timezone('Africa/Lagos')->toIso8601String(),
                 'state' => $user->stateModel?->name,
@@ -171,8 +176,11 @@ class AccountHubController extends Controller
                 : array_keys(config('profile.client_public_defaults', [])),
             'publicReviewsUrl' => $isFreelancer ? route('freelancers.public.reviews', $user->slug) : null,
             'publicPortfoliosUrl' => $isFreelancer ? route('freelancers.public.portfolios', $user->slug) : null,
-            'followerCount' => $isFreelancer && Schema::hasTable('user_follows')
-                ? $user->followers()->count()
+            'follower_count' => Schema::hasTable('user_follows')
+                ? UserFollow::query()->where('following_id', $user->id)->count()
+                : 0,
+            'following_count' => Schema::hasTable('user_follows')
+                ? UserFollow::query()->where('follower_id', $user->id)->count()
                 : 0,
             'visibilityFieldHelp' => $isFreelancer
                 ? __('More you show publicly, the easier it is for clients to trust you and invite you to quests.')
@@ -197,6 +205,21 @@ class AccountHubController extends Controller
                     ->values()
                     ->all()
                 : [],
+            'locations' => State::query()
+                ->with(['localGovernments:id,state_id,name'])
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (State $s) => [
+                    'id' => $s->id,
+                    'name' => $s->name,
+                    'local_governments' => $s->localGovernments->map(fn ($lg) => [
+                        'id' => $lg->id,
+                        'name' => $lg->name,
+                        'state_id' => $lg->state_id,
+                    ])->values()->all(),
+                ])
+                ->values()
+                ->all(),
         ]);
     }
 }

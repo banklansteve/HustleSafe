@@ -3,13 +3,10 @@
         <Head title="Strengthen sponsor trust" />
 
         <div class="mx-auto max-w-3xl">
-            <Link
-                :href="route('dashboard')"
-                class="mb-6 inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-            >
-                <ArrowLeftIcon class="h-4 w-4" aria-hidden="true" />
-                Back to home
-            </Link>
+            <div class="mb-6 flex items-center gap-3">
+                <BackChevronLink :href="route('dashboard')" aria-label="Back to dashboard" />
+                <span class="text-sm font-bold text-slate-600">Home</span>
+            </div>
 
             <header class="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8">
                 <p class="text-xs font-bold uppercase tracking-wider text-primary-700">
@@ -61,8 +58,8 @@
 </template>
 
 <script setup>
+import BackChevronLink from '@/Components/Ui/BackChevronLink.vue';
 import AppShell from '@/Layouts/AppShell.vue';
-import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { Head, Link } from '@inertiajs/vue3';
 
 defineProps({

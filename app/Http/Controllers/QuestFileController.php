@@ -5,35 +5,32 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Quests\StoreQuestFileRequest;
 use App\Models\Quest;
 use App\Models\QuestFile;
+use App\Services\QuestCoverService;
+use App\Services\QuestFileStorageService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\Storage;
 
 class QuestFileController extends Controller
 {
-    public function store(StoreQuestFileRequest $request, Quest $quest): RedirectResponse
-    {
+    public function store(
+        StoreQuestFileRequest $request,
+        Quest $quest,
+        QuestFileStorageService $questFiles,
+        QuestCoverService $cover,
+    ): RedirectResponse {
         if ($quest->files()->count() >= 10) {
             return back()->withErrors(['file' => __('You can attach up to 10 files per quest.')]);
         }
 
         $uploaded = $request->file('file');
-        $path = $uploaded->store("quests/{$quest->id}", 'public');
         $maxSort = (int) $quest->files()->max('sort_order');
 
-        QuestFile::query()->create([
-            'quest_id' => $quest->id,
-            'disk' => 'public',
-            'path' => $path,
-            'original_name' => $uploaded->getClientOriginalName(),
-            'mime_type' => $uploaded->getClientMimeType(),
-            'size_bytes' => $uploaded->getSize() ?: 0,
-            'sort_order' => $maxSort + 1,
-        ]);
+        $questFiles->store($quest, $uploaded, $maxSort + 1);
+        $cover->sync($quest->fresh(['files']));
 
         return back()->with('success', __('File uploaded.'));
     }
 
-    public function destroy(Quest $quest, QuestFile $file): RedirectResponse
+    public function destroy(Quest $quest, QuestFile $file, QuestFileStorageService $questFiles): RedirectResponse
     {
         $this->authorize('update', $quest);
 
@@ -41,8 +38,7 @@ class QuestFileController extends Controller
             abort(404);
         }
 
-        Storage::disk($file->disk)->delete($file->path);
-        $file->delete();
+        $questFiles->delete($file);
 
         return back()->with('success', __('File removed.'));
     }

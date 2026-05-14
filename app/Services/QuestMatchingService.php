@@ -32,7 +32,7 @@ class QuestMatchingService
             ->where('status', QuestStatus::Open)
             ->where('visibility', QuestVisibility::Public)
             ->whereNull('freelancer_id')
-            ->with(['questCategory:id,parent_id,name', 'stateModel:id,name', 'client:id,first_name,name'])
+            ->with(['questCategory:id,parent_id,name', 'questCategory.parent:id,name', 'stateModel:id,name', 'client:id,first_name,name'])
             ->latest('created_at')
             ->limit(200)
             ->get();
@@ -223,6 +223,30 @@ class QuestMatchingService
     }
 
     /**
+     * Open-quest discovery for Explore: freelancers get ranked matches; clients get a fresh public feed.
+     *
+     * @return Collection<int, array{quest: Quest, match_score: int, reasons: list<string>}>
+     */
+    public function discoveryFeedForExplore(User $user, int $limit = 48): Collection
+    {
+        if ($user->role?->slug === 'freelancer') {
+            return $this->rankedOpenQuestsForFreelancer($user, $limit);
+        }
+
+        return $this->fallbackOpenQuests($limit)->map(function (array $row) use ($user): array {
+            if ($user->role?->slug === 'client') {
+                return [
+                    'quest' => $row['quest'],
+                    'match_score' => 0,
+                    'reasons' => [__('Public marketplace listings — useful for benchmarking scope and budgets.')],
+                ];
+            }
+
+            return $row;
+        });
+    }
+
+    /**
      * @return Collection<int, array{quest: Quest, match_score: int, reasons: list<string>}>
      */
     protected function fallbackOpenQuests(int $limit): Collection
@@ -231,7 +255,7 @@ class QuestMatchingService
             ->where('status', QuestStatus::Open)
             ->where('visibility', QuestVisibility::Public)
             ->whereNull('freelancer_id')
-            ->with(['questCategory:id,parent_id,name', 'stateModel:id,name', 'client:id,first_name,name'])
+            ->with(['questCategory:id,parent_id,name', 'questCategory.parent:id,name', 'stateModel:id,name', 'client:id,first_name,name'])
             ->latest('created_at')
             ->limit($limit)
             ->get();

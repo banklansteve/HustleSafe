@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Account\AccountDetailsUpdateRequest;
 use App\Http\Requests\Account\AccountVisibilityUpdateRequest;
 use App\Services\TrustScoreOrchestrator;
+use App\Support\TextCasing;
 use Illuminate\Http\RedirectResponse;
 
 class AccountUpdateController extends Controller
@@ -13,6 +14,11 @@ class AccountUpdateController extends Controller
     {
         $user = $request->user();
         $data = $request->validated();
+        $data = TextCasing::patchUserProfile(
+            $data,
+            ['first_name', 'last_name', 'name', 'headline', 'city', 'profession', 'job_title', 'company_name'],
+            ['address_line', 'bio'],
+        );
         $user->fill(array_filter($data, fn ($v) => $v !== null && $v !== ''));
         $user->save();
         $trustScores->recalculate($user->fresh());

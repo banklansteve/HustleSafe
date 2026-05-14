@@ -1,42 +1,25 @@
 <template>
     <AppShell>
-        <Head :title="quest.title" />
+        <Head :title="quest.title">
+            <meta v-if="quest.meta_description" head-key="quest-desc" name="description" :content="quest.meta_description" />
+            <meta head-key="quest-og-title" property="og:title" :content="quest.title" />
+            <meta v-if="quest.meta_description" head-key="quest-og-desc" property="og:description" :content="quest.meta_description" />
+            <meta head-key="quest-og-type" property="og:type" content="article" />
+            <link v-if="quest.canonical_url" head-key="quest-canonical" rel="canonical" :href="quest.canonical_url" />
+        </Head>
 
-        <div class="flex flex-wrap items-center justify-between gap-4">
-            <div>
-                <p class="text-xs font-black uppercase tracking-[0.2em] text-primary-700">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="min-w-0">
+                <p v-if="is_quest_owner || isStaffRole" class="text-xs font-black uppercase tracking-[0.2em] text-primary-700">
                     Quest · {{ quest.reference_code }}
                 </p>
-                <h1 class="font-display mt-2 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
-                    {{ quest.title }}
-                </h1>
-                <div class="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-                    <span
-                        class="rounded-full px-3 py-1 uppercase tracking-wide ring-1"
-                        :class="statusPill(quest.status)"
-                    >
-                        {{ quest.status }}
-                    </span>
-                    <span v-if="quest.category" class="rounded-full bg-primary-50 px-3 py-1 text-primary-900 ring-1 ring-primary-100">
-                        {{ quest.category.parent_name ? `${quest.category.parent_name} · ` : '' }}{{ quest.category.name }}
-                    </span>
-                    <span class="rounded-full bg-slate-100 px-3 py-1 text-slate-700 ring-1 ring-slate-200">
-                        {{ [quest.location.city, quest.location.lga, quest.location.state].filter(Boolean).join(' · ') }}
-                    </span>
-                    <span v-if="quest.visibility" class="rounded-full bg-violet-50 px-3 py-1 text-violet-900 ring-1 ring-violet-100">
-                        {{ visibilityLabel(quest.visibility) }}
-                    </span>
-                    <span v-if="Number(quest.views_count) > 0" class="rounded-full bg-slate-50 px-3 py-1 text-slate-600 ring-1 ring-slate-200">
-                        {{ quest.views_count }} views
-                    </span>
-                    <span v-if="Number(quest.saves_count) > 0" class="rounded-full bg-slate-50 px-3 py-1 text-slate-600 ring-1 ring-slate-200">
-                        {{ quest.saves_count }} saves
-                    </span>
-                </div>
+                <p v-else class="text-xs font-black uppercase tracking-[0.2em] text-primary-700">
+                    {{ quest.category ? `${quest.category.parent_name ? quest.category.parent_name + ' · ' : ''}${quest.category.name}` : 'Open quest' }}
+                </p>
             </div>
             <div class="flex flex-wrap gap-2">
                 <Link
-                    :href="route('quests.index')"
+                    :href="allQuestsHref"
                     class="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-800 shadow-sm hover:border-primary-200 hover:bg-primary-50"
                 >
                     All quests
@@ -60,76 +43,424 @@
             </div>
         </div>
 
-        <div v-if="workspace.enabled && workspacePanelLines.length" class="mt-8 rounded-2xl border border-secondary-200/80 bg-gradient-to-r from-secondary-50 via-amber-50/90 to-secondary-50 p-5 shadow-sm ring-1 ring-secondary-100 sm:p-6">
+        <div
+            v-if="is_quest_owner && quest.status === 'open' && quest.is_client_edit_locked"
+            class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-950 ring-1 ring-amber-100"
+            role="status"
+        >
+            <p class="font-bold">
+                This quest can no longer be edited
+            </p>
+            <p class="mt-1 text-xs font-semibold leading-relaxed text-amber-900/95">
+                The client editing window has closed. Freelancers who already sent a proposal were notified by email and in-app when you saved changes earlier.
+            </p>
+        </div>
+        <div
+            v-else-if="is_quest_owner && quest.status === 'open' && quest.client_edit_until && !quest.is_client_edit_locked"
+            class="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm font-semibold text-sky-950 ring-1 ring-sky-100"
+            role="status"
+        >
+            <p>
+                You can edit this quest until
+                <span class="font-black">{{ formatWhen(quest.client_edit_until) }}</span>
+                (Lagos time). After that, the brief locks so proposals stay comparable.
+            </p>
+        </div>
+
+        <div v-if="workspace.enabled && workspacePanelItems.length" class="mt-4 rounded-xl border border-secondary-200/80 bg-gradient-to-r from-secondary-50 via-amber-50/90 to-secondary-50 p-5 shadow-sm ring-1 ring-secondary-100 sm:p-6">
             <p class="text-xs font-black uppercase tracking-[0.2em] text-secondary-800">
                 Freelancer workspace
             </p>
-            <ul class="mt-3 list-inside list-disc space-y-1.5 text-sm font-semibold text-secondary-950">
-                <li v-for="(line, i) in workspacePanelLines" :key="i">
-                    {{ line }}
+            <ul class="mt-3 space-y-3">
+                <li
+                    v-for="(item, i) in workspacePanelItems"
+                    :key="i"
+                    class="list-none rounded-xl border border-secondary-100/80 bg-white/60 px-3 py-2.5 text-sm font-semibold text-secondary-950 ring-1 ring-white/60"
+                >
+                    <p class="leading-snug">
+                        {{ item.message }}
+                    </p>
+                    <Link
+                        v-if="item.action_url"
+                        :href="item.action_url"
+                        class="mt-2 inline-flex items-center gap-1 text-xs font-black uppercase tracking-wide text-secondary-900 underline decoration-secondary-400 underline-offset-2 hover:text-secondary-700"
+                    >
+                        {{ item.action_label || 'Fix this' }}
+                        <span aria-hidden="true">→</span>
+                    </Link>
                 </li>
             </ul>
         </div>
 
-        <div class="mt-10 grid gap-8 lg:grid-cols-12 lg:gap-10">
-            <div class="space-y-8 lg:col-span-8">
-                <section class="rounded-2xl border border-slate-100 bg-white p-6 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-8">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <h2 class="font-display text-lg font-bold text-slate-900">
-                            Brief
-                        </h2>
-                        <p class="text-sm font-black text-primary-800">
-                            {{ formatBudget(quest.budget_minor) }}
-                        </p>
+        <div class="mt-6 grid gap-2 lg:grid-cols-12 lg:gap-3">
+            <div class="space-y-2 lg:col-span-8">
+                <section class="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
+                    <div class="relative h-44 w-full bg-slate-200 sm:h-52">
+                        <img :src="quest.cover_url" alt="" class="absolute inset-0 h-full w-full object-cover" loading="eager" />
                     </div>
-                    <p class="mt-4 whitespace-pre-wrap text-sm font-medium leading-relaxed text-slate-700">
-                        {{ quest.description }}
-                    </p>
-                    <dl class="mt-8 grid gap-4 sm:grid-cols-2">
-                        <div class="rounded-xl bg-slate-50/90 p-4 ring-1 ring-slate-100">
-                            <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
-                                Start timing
-                            </dt>
-                            <dd class="mt-1 text-sm font-bold text-slate-900">
-                                {{ timingLabel(quest.start_timing) }}
-                            </dd>
+                    <div class="border-t border-slate-800 bg-slate-950 px-4 py-4 text-white sm:px-6 sm:py-5">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <h1 class="font-display min-w-0 flex-1 text-2xl font-black tracking-tight sm:text-3xl md:text-4xl">
+                                {{ quest.title }}
+                            </h1>
+                            <p class="shrink-0 rounded-full bg-white/10 px-3 py-1 text-xs font-black text-white ring-1 ring-white/20">
+                                {{ formatBudget(quest.budget_minor) }}
+                            </p>
                         </div>
-                        <div class="rounded-xl bg-slate-50/90 p-4 ring-1 ring-slate-100">
-                            <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
-                                Est. completion
-                            </dt>
-                            <dd class="mt-1 text-sm font-bold text-slate-900">
-                                {{ quest.estimated_completion_days }} days
-                            </dd>
+                        <div class="mt-3 flex flex-wrap gap-2 text-[11px] font-bold sm:text-xs">
+                            <span
+                                class="rounded-full px-3 py-1 uppercase tracking-wide ring-1 ring-white/20"
+                                :class="statusPillHero(quest.status)"
+                            >
+                                {{ quest.status }}
+                            </span>
+                            <span
+                                v-if="quest.category"
+                                class="rounded-full bg-white/10 px-3 py-1 text-white/95 ring-1 ring-white/15"
+                            >
+                                {{ quest.category.parent_name ? `${quest.category.parent_name} · ` : '' }}{{ quest.category.name }}
+                            </span>
+                            <span class="rounded-full bg-white/10 px-3 py-1 text-white/95 ring-1 ring-white/15">
+                                {{ [quest.location.city, quest.location.lga, quest.location.state].filter(Boolean).join(' · ') }}
+                            </span>
+                            <span
+                                v-if="quest.visibility"
+                                class="rounded-full bg-white/10 px-3 py-1 text-white/95 ring-1 ring-white/15"
+                            >
+                                {{ visibilityLabel(quest.visibility) }}
+                            </span>
+                            <span
+                                v-if="Number(quest.views_count) > 0"
+                                class="rounded-full bg-white/5 px-3 py-1 text-white/90 ring-1 ring-white/10"
+                            >
+                                {{ quest.views_count }} views
+                            </span>
+                            <span
+                                v-if="Number(quest.saves_count) > 0"
+                                class="rounded-full bg-white/5 px-3 py-1 text-white/90 ring-1 ring-white/10"
+                            >
+                                {{ quest.saves_count }} saves
+                            </span>
                         </div>
-                        <div class="rounded-xl bg-slate-50/90 p-4 ring-1 ring-slate-100">
-                            <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
-                                Site visits
-                            </dt>
-                            <dd class="mt-1 text-sm font-bold text-slate-900">
-                                {{ quest.site_visits_allowed ? 'Allowed before proposals' : 'Not requested' }}
-                            </dd>
+                    </div>
+                    <div class="space-y-6 border-t border-slate-100 p-5 sm:p-6">
+                        <div
+                            v-if="viewerInsightLines.length"
+                            class="rounded-xl border border-primary-100 bg-gradient-to-r from-primary-50/90 to-teal-50/80 p-4 ring-1 ring-primary-100/80"
+                        >
+                            <p class="text-[10px] font-black uppercase tracking-wide text-primary-800">
+                                For you
+                            </p>
+                            <ul class="mt-2 space-y-1.5 text-sm font-semibold text-slate-900">
+                                <li v-for="(line, vi) in viewerInsightLines" :key="vi" class="flex gap-2">
+                                    <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary-500" aria-hidden="true" />
+                                    <span>{{ line }}</span>
+                                </li>
+                            </ul>
                         </div>
-                        <div class="rounded-xl bg-slate-50/90 p-4 ring-1 ring-slate-100">
-                            <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
-                                Due target
-                            </dt>
-                            <dd class="mt-1 text-sm font-bold text-slate-900">
-                                {{ formatWhen(quest.due_at) }}
-                            </dd>
+
+                        <div>
+                            <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
+                                About this quest
+                            </h2>
+                            <div
+                                v-if="quest.description"
+                                class="quest-description-html prose prose-sm mt-3 max-w-none font-medium leading-relaxed text-slate-700 prose-headings:font-bold prose-a:text-primary-700 prose-a:underline"
+                                v-html="quest.description"
+                            />
+                            <p v-else class="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-4 py-6 text-sm font-semibold text-slate-500">
+                                The client has not added a written description yet — use the gallery and budget as your guide, or ask in chat once you connect.
+                            </p>
                         </div>
-                    </dl>
+
+                        <div v-if="can_edit && form_options" id="edit-listing-panel" class="rounded-xl border border-slate-200/90 bg-slate-50/60 p-4 ring-1 ring-slate-100">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-600">
+                                    Edit listing
+                                </h2>
+                                <div class="flex flex-wrap gap-2">
+                                    <button
+                                        v-if="!showEditQuestForm"
+                                        type="button"
+                                        class="rounded-full border border-primary-200 bg-primary-50 px-4 py-2 text-xs font-black text-primary-900 hover:bg-primary-100"
+                                        @click="showEditQuestForm = true"
+                                    >
+                                        Edit details
+                                    </button>
+                                    <button
+                                        v-else
+                                        type="button"
+                                        class="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-800 hover:bg-slate-50"
+                                        @click="closeEditQuestForm"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                            <form v-show="showEditQuestForm" class="mt-4 space-y-4" @submit.prevent="submitEdit">
+                                <div>
+                                    <InputLabel for="e_title" value="Title" />
+                                    <TextInput id="e_title" v-model="editForm.title" type="text" class="mt-1 w-full rounded-xl border-slate-200 shadow-sm" />
+                                    <InputError class="mt-1" :message="editForm.errors.title" />
+                                </div>
+                                <div>
+                                    <InputLabel for="e_desc" value="Description" />
+                                    <QuestRichDescriptionEditor
+                                        id="e_desc"
+                                        v-model="editForm.description"
+                                        class="mt-1"
+                                        placeholder="Update your brief…"
+                                        :invalid="!!editForm.errors.description"
+                                    />
+                                    <InputError class="mt-1" :message="editForm.errors.description" />
+                                </div>
+                                <div class="grid gap-3 sm:grid-cols-2">
+                                    <div>
+                                        <InputLabel for="e_parent" value="Domain" />
+                                        <UiSelect
+                                            id="e_parent"
+                                            class="mt-1"
+                                            :model-value="editParentId"
+                                            :options="editParentCategoryOptions"
+                                            placeholder="Domain"
+                                            @update:model-value="setEditParent"
+                                        />
+                                    </div>
+                                    <div>
+                                        <InputLabel for="e_cat" value="Subcategory" />
+                                        <UiSelect
+                                            id="e_cat"
+                                            v-model="editForm.quest_category_id"
+                                            class="mt-1"
+                                            :options="editLeafUiOptions"
+                                            placeholder="Subcategory"
+                                            :invalid="!!editForm.errors.quest_category_id"
+                                        />
+                                        <InputError class="mt-1" :message="editForm.errors.quest_category_id" />
+                                    </div>
+                                </div>
+                                <div class="grid gap-3 sm:grid-cols-2">
+                                    <div>
+                                        <InputLabel for="e_state" value="State" />
+                                        <UiSelect
+                                            id="e_state"
+                                            v-model="editForm.state_id"
+                                            class="mt-1"
+                                            :options="editStateOptions"
+                                            placeholder="State"
+                                        />
+                                    </div>
+                                    <div>
+                                        <InputLabel for="e_lga" value="LGA" />
+                                        <UiSelect
+                                            id="e_lga"
+                                            v-model="editForm.local_government_id"
+                                            class="mt-1"
+                                            :options="editLgaUiOptions"
+                                            placeholder="LGA"
+                                            :disabled="!editLgas.length"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <InputLabel for="e_city" value="City" />
+                                    <TextInput id="e_city" v-model="editForm.city" type="text" class="mt-1 w-full rounded-xl border-slate-200 shadow-sm" />
+                                </div>
+                                <div>
+                                    <InputLabel for="e_budget" value="Budget (₦)" />
+                                    <input
+                                        id="e_budget"
+                                        v-model.number="editBudgetNgn"
+                                        type="range"
+                                        min="100"
+                                        max="500000"
+                                        step="500"
+                                        class="mt-2 h-2 w-full cursor-pointer accent-primary-600"
+                                    />
+                                    <p class="mt-1 text-xs font-bold text-primary-800">
+                                        {{ formatBudget(editForm.budget_amount_minor) }}
+                                    </p>
+                                    <InputError class="mt-1" :message="editForm.errors.budget_amount_minor" />
+                                </div>
+                                <div>
+                                    <InputLabel for="e_timing" value="Start timing" />
+                                    <UiSelect
+                                        id="e_timing"
+                                        v-model="editForm.start_timing"
+                                        class="mt-1"
+                                        :options="start_timing_options"
+                                        placeholder="Start timing"
+                                    />
+                                </div>
+                                <div v-if="editForm.start_timing === 'scheduled'">
+                                    <InputLabel for="e_sched" value="Scheduled date" />
+                                    <PremiumDatePicker id="e_sched" v-model="editForm.scheduled_start_date" placeholder="Pick date" />
+                                    <InputError class="mt-1" :message="editForm.errors.scheduled_start_date" />
+                                </div>
+                                <div>
+                                    <InputLabel for="e_days" value="Est. completion (days)" />
+                                    <input
+                                        id="e_days"
+                                        v-model.number="editForm.estimated_completion_days"
+                                        type="number"
+                                        min="1"
+                                        max="365"
+                                        class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm"
+                                    />
+                                </div>
+                                <label class="flex items-center gap-2 text-sm font-bold text-slate-800">
+                                    <input v-model="editForm.site_visits_allowed" type="checkbox" class="rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
+                                    Site visits allowed
+                                </label>
+                                <button
+                                    type="submit"
+                                    class="w-full rounded-full bg-slate-900 py-3 text-sm font-black text-white shadow-md hover:bg-slate-800 disabled:opacity-50"
+                                    :disabled="editForm.processing"
+                                >
+                                    Save changes
+                                </button>
+                            </form>
+                        </div>
+
+                        <div>
+                            <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
+                                At a glance
+                            </h2>
+                            <dl class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                <div class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Start timing
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ timingLabel(quest.start_timing) }}
+                                    </dd>
+                                </div>
+                                <div class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Est. completion
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ quest.estimated_completion_days }} days
+                                    </dd>
+                                </div>
+                                <div class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Site visits
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ quest.site_visits_allowed ? 'Allowed before proposals' : 'Not requested' }}
+                                    </dd>
+                                </div>
+                                <div class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Due target
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ formatWhen(quest.due_at) }}
+                                    </dd>
+                                </div>
+                                <div v-if="quest.project_type" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Project type
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ projectTypeLabel(quest.project_type) }}
+                                    </dd>
+                                </div>
+                                <div v-if="quest.team_size" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Team size
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ teamSizeLabel(quest.team_size) }}
+                                    </dd>
+                                </div>
+                                <div v-if="quest.availability_need" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Availability
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ availabilityLabel(quest.availability_need) }}
+                                    </dd>
+                                </div>
+                                <div v-if="quest.freelancer_location_pref" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Location preference
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ locationPrefLabel(quest.freelancer_location_pref) }}
+                                    </dd>
+                                </div>
+                                <div v-if="quest.promotion_tier" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Listing tier
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ promotionLabel(quest.promotion_tier) }}
+                                    </dd>
+                                </div>
+                                <div v-if="quest.max_offers != null" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Max proposals
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ quest.max_offers === 0 ? 'Unlimited' : quest.max_offers }}
+                                    </dd>
+                                </div>
+                                <div v-if="quest.estimated_delivery_date" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Target delivery
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ quest.estimated_delivery_date }}
+                                    </dd>
+                                </div>
+                                <div v-if="quest.estimated_hours" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Est. hours
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ quest.estimated_hours }} h
+                                    </dd>
+                                </div>
+                                <div v-if="quest.scheduled_start_date" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Scheduled start
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ quest.scheduled_start_date }}
+                                    </dd>
+                                </div>
+                                <div v-if="is_quest_owner && quest.listing_expires_at" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Listing expires
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ formatWhen(quest.listing_expires_at) }}
+                                    </dd>
+                                </div>
+                                <div v-if="is_quest_owner && quest.traffic_source" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Traffic source
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ quest.traffic_source }}
+                                    </dd>
+                                </div>
+                            </dl>
+                        </div>
+                    </div>
                 </section>
 
-                <section class="rounded-2xl border border-slate-100 bg-white p-6 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-8">
+                <section class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-6">
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <h2 class="font-display text-lg font-bold text-slate-900">
                             Gallery
                         </h2>
                         <span class="text-xs font-semibold text-slate-500">{{ quest.files.length }} / 10</span>
                     </div>
-                    <QuestFileGallery class="mt-5" :files="quest.files" :can-delete="can_edit" @delete="removeFile" />
-                    <div v-if="can_edit" class="mt-6">
+                    <QuestFileGallery class="mt-4" :files="quest.files" :can-delete="can_edit" @delete="removeFile" />
+                    <div v-if="can_edit" class="mt-5">
                         <label class="block text-xs font-black uppercase tracking-wide text-slate-500">Add file</label>
                         <input
                             type="file"
@@ -141,15 +472,15 @@
                     </div>
                 </section>
 
-                <section v-if="similar_quests.length" class="rounded-2xl border border-slate-100 bg-white p-6 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-8">
+                <section v-if="similar_quests.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-6">
                     <h2 class="font-display text-lg font-bold text-slate-900">
                         Similar quests nearby
                     </h2>
-                    <ul class="mt-5 space-y-3">
+                    <ul class="mt-4 space-y-2">
                         <li v-for="s in similar_quests" :key="s.uuid">
                             <Link
-                                :href="route('quests.show', s.uuid)"
-                                class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-900 ring-1 ring-slate-100 transition hover:border-primary-200 hover:bg-white"
+                                :href="route('quests.show', s.slug || s.uuid)"
+                                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-900 ring-1 ring-slate-100 transition hover:border-primary-200 hover:bg-white"
                             >
                                 <span class="min-w-0 flex-1 truncate">{{ s.title }}</span>
                                 <span class="text-xs font-semibold text-primary-800">{{ formatBudget(s.budget_minor) }}</span>
@@ -157,44 +488,177 @@
                         </li>
                     </ul>
                 </section>
+
+                <section v-if="from_client_quests.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-6">
+                    <h2 class="font-display text-lg font-bold text-slate-900">
+                        More from this client
+                    </h2>
+                    <ul class="mt-4 space-y-2">
+                        <li v-for="s in from_client_quests" :key="s.uuid">
+                            <Link
+                                :href="route('quests.show', s.slug || s.uuid)"
+                                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-900 ring-1 ring-slate-100 transition hover:border-primary-200 hover:bg-white"
+                            >
+                                <span class="min-w-0 flex-1 truncate">{{ s.title }}</span>
+                                <span class="text-xs font-semibold text-primary-800">{{ formatBudget(s.budget_minor) }}</span>
+                            </Link>
+                        </li>
+                    </ul>
+                </section>
+
+                <section v-if="category_quests_other_areas.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-6">
+                    <h2 class="font-display text-lg font-bold text-slate-900">
+                        Same category, other states
+                    </h2>
+                    <ul class="mt-4 space-y-2">
+                        <li v-for="s in category_quests_other_areas" :key="s.uuid">
+                            <Link
+                                :href="route('quests.show', s.slug || s.uuid)"
+                                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-900 ring-1 ring-slate-100 transition hover:border-primary-200 hover:bg-white"
+                            >
+                                <span class="min-w-0 flex-1 truncate">{{ s.title }}</span>
+                                <span class="text-xs font-semibold text-slate-600">{{ s.state }}</span>
+                            </Link>
+                        </li>
+                    </ul>
+                </section>
             </div>
 
-            <aside class="space-y-6 lg:col-span-4">
-                <section class="rounded-2xl border border-slate-100 bg-white p-6 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
+            <aside class="space-y-2 lg:col-span-4">
+                <section class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
                     <h2 class="font-display text-sm font-bold uppercase tracking-wide text-slate-500">
                         Client
                     </h2>
                     <div class="mt-4 flex items-center gap-3">
-                        <span class="flex h-12 w-12 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-primary-600 to-teal-700 text-sm font-black text-white ring-2 ring-white shadow-md">
-                            <img v-if="quest.client.avatar_url" :src="quest.client.avatar_url" alt="" class="h-full w-full object-cover" />
-                            <span v-else class="flex h-full w-full items-center justify-center">{{ initials(quest.client.name) }}</span>
-                        </span>
-                        <div class="min-w-0">
-                            <p class="truncate font-bold text-slate-900">
+                        <UserProfileAvatar
+                            :href="clientProfileHref"
+                            :src="quest.client.avatar_url"
+                            :name="quest.client.name"
+                            :alt="quest.client.name"
+                            frame-class="h-12 w-12 text-sm shadow-md"
+                        />
+                        <div class="min-w-0 text-left">
+                            <Link
+                                v-if="clientProfileHref"
+                                :href="clientProfileHref"
+                                prefetch="false"
+                                preserve-scroll
+                                class="block truncate font-bold text-slate-900 underline decoration-primary-300 decoration-2 underline-offset-2 hover:text-primary-800"
+                            >
+                                {{ quest.client.name }}
+                            </Link>
+                            <p v-else class="truncate font-bold text-slate-900">
                                 {{ quest.client.name }}
                             </p>
                             <p v-if="quest.client.username" class="truncate text-xs font-semibold text-slate-500">
                                 @{{ quest.client.username }}
                             </p>
-                            <Link
-                                v-if="quest.client.slug"
-                                :href="route('freelancers.public', quest.client.slug)"
-                                class="mt-0.5 inline-block text-xs font-bold text-primary-700 hover:underline"
-                            >
-                                View profile
-                            </Link>
                         </div>
                     </div>
                 </section>
 
-                <section v-if="isFreelancer" class="rounded-2xl border border-slate-100 bg-gradient-to-br from-primary-50 via-white to-teal-50 p-6 shadow-md ring-1 ring-primary-100">
+                <section
+                    v-if="is_quest_owner && quest_message_threads.length"
+                    class="rounded-xl border border-primary-100 bg-gradient-to-br from-primary-50/90 via-white to-teal-50/80 p-5 shadow-md ring-1 ring-primary-100"
+                >
+                    <h2 class="font-display text-lg font-bold text-slate-900">
+                        Quest messages
+                    </h2>
+                    <p class="mt-1 text-xs font-semibold text-slate-600">
+                        Secure in-app chat — no phone numbers or email.
+                    </p>
+                    <ul class="mt-4 space-y-2">
+                        <li v-for="t in quest_message_threads" :key="t.slug" class="flex items-center gap-2 rounded-xl border border-white/80 bg-white/90 py-1 pl-1 pr-2 shadow-sm ring-1 ring-slate-100">
+                            <UserProfileAvatar
+                                :href="route('freelancers.public', t.slug)"
+                                :src="t.avatar_url"
+                                :name="t.name"
+                                :alt="t.name"
+                                frame-class="h-10 w-10 text-[10px]"
+                            />
+                            <Link
+                                :href="t.messages_url"
+                                prefetch="false"
+                                preserve-scroll
+                                class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-sm font-bold text-slate-900 transition hover:bg-primary-50/60"
+                            >
+                                <span class="min-w-0 flex-1 truncate">{{ t.first_name || t.name }}</span>
+                                <ChatBubbleLeftRightIcon class="h-5 w-5 shrink-0 text-primary-700" aria-hidden="true" />
+                            </Link>
+                        </li>
+                    </ul>
+                </section>
+
+                <section
+                    v-if="is_quest_owner && client_proposals.length"
+                    class="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50/90 via-white to-fuchsia-50/70 p-5 shadow-md ring-1 ring-violet-100"
+                >
+                    <div class="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                            <h2 class="font-display text-lg font-bold text-slate-900">
+                                Proposals inbox
+                            </h2>
+                            <p class="mt-1 text-xs font-semibold text-violet-900/90">
+                                {{ client_proposals.length }} {{ client_proposals.length === 1 ? 'response' : 'responses' }} on this quest
+                            </p>
+                        </div>
+                        <Link
+                            v-if="client_proposals_hub_url"
+                            :href="client_proposals_hub_url"
+                            class="shrink-0 rounded-full bg-violet-700 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white shadow-sm hover:bg-violet-800"
+                        >
+                            Manage all
+                        </Link>
+                    </div>
+                    <ul class="mt-4 space-y-2">
+                        <li v-for="p in client_proposals.slice(0, 6)" :key="p.id">
+                            <Link
+                                :href="p.show_url"
+                                class="flex items-center gap-3 rounded-xl border border-white/80 bg-white/90 px-3 py-2.5 shadow-sm ring-1 ring-violet-100/80 transition hover:border-primary-200 hover:shadow-md"
+                            >
+                                <UserProfileAvatar
+                                    :href="p.freelancer?.slug ? route('freelancers.public', p.freelancer.slug) : null"
+                                    :src="p.freelancer?.avatar_url"
+                                    :name="p.freelancer?.first_name || p.freelancer?.name || 'Freelancer'"
+                                    :alt="p.freelancer?.name"
+                                    frame-class="h-10 w-10 text-[10px]"
+                                />
+                                <div class="min-w-0 flex-1">
+                                    <p class="truncate text-sm font-bold text-slate-900">
+                                        {{ p.freelancer?.first_name || p.freelancer?.name || 'Freelancer' }}
+                                    </p>
+                                    <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-violet-900">
+                                        <span>{{ p.status.replace(/_/g, ' ') }}</span>
+                                        <span class="font-bold text-slate-600">{{ formatBudget(p.quoted_amount_minor) }}</span>
+                                    </div>
+                                </div>
+                            </Link>
+                        </li>
+                    </ul>
+                    <p v-if="client_proposals.length > 6 && client_proposals_hub_url" class="mt-3 text-center text-[11px] font-bold text-violet-900">
+                        <Link :href="client_proposals_hub_url" class="underline decoration-violet-400 underline-offset-2 hover:text-violet-950">
+                            Search, sort & open every proposal →
+                        </Link>
+                    </p>
+                </section>
+
+                <section v-if="isFreelancer" class="rounded-xl border border-slate-100 bg-gradient-to-br from-primary-50 via-white to-teal-50 p-5 shadow-md ring-1 ring-primary-100">
                     <h2 class="font-display text-lg font-bold text-slate-900">
                         Proposals
                     </h2>
                     <div v-if="my_offer" class="mt-4 rounded-xl border border-emerald-100 bg-white/90 p-4 text-sm font-semibold text-slate-800 ring-1 ring-emerald-50">
-                        <p class="text-xs font-black uppercase tracking-wide text-emerald-700">
-                            Your offer · {{ my_offer.status }}
-                        </p>
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <p class="text-xs font-black uppercase tracking-wide text-emerald-700">
+                                Your proposal · {{ my_offer.status }}
+                            </p>
+                            <Link
+                                v-if="my_offer.show_url"
+                                :href="my_offer.show_url"
+                                class="text-[11px] font-black uppercase tracking-wide text-primary-800 underline decoration-primary-300 underline-offset-2"
+                            >
+                                Open
+                            </Link>
+                        </div>
                         <p class="mt-2 line-clamp-4 text-sm">
                             {{ my_offer.pitch }}
                         </p>
@@ -206,142 +670,31 @@
                         v-else-if="can_offer"
                         type="button"
                         class="mt-4 w-full rounded-full bg-primary-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-primary-900/20 hover:bg-primary-700"
-                        @click="openOffer"
+                        @click="goToProposalComposer"
                     >
-                        Send proposal
+                        Build proposal
                     </button>
+                    <Link
+                        v-if="isFreelancer && can_use_quest_messaging && messages_url"
+                        :href="messages_url"
+                        class="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-primary-200 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-wide text-primary-900 shadow-sm hover:bg-primary-50"
+                    >
+                        <ChatBubbleLeftRightIcon class="h-4 w-4 shrink-0 text-primary-700" aria-hidden="true" />
+                        Message client (in-app)
+                    </Link>
                     <p v-else class="mt-3 text-xs font-semibold text-amber-900">
-                        <span v-if="!workspace.can_submit_offers">Complete your freelancer workspace checklist to unlock proposals.</span>
-                        <span v-else>Add this quest’s subcategory to your profile so we know you are qualified for this brief.</span>
+                        <template v-if="workspacePanelItems.length">
+                            <span v-if="!workspace.can_submit_proposals">Use the <span class="font-black">Freelancer workspace</span> checklist above to unlock proposals.</span>
+                            <span v-else>Add this quest’s subcategory to your profile so we know you are qualified for this brief.</span>
+                        </template>
+                        <template v-else>
+                            <span v-if="!workspace.can_submit_proposals">Complete your freelancer workspace checklist to unlock proposals.</span>
+                            <span v-else>Add this quest’s subcategory to your profile so we know you are qualified for this brief.</span>
+                        </template>
                     </p>
                 </section>
 
-                <section v-if="can_edit && form_options" class="rounded-2xl border border-slate-100 bg-white p-6 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
-                    <h2 class="font-display text-lg font-bold text-slate-900">
-                        Edit quest
-                    </h2>
-                    <form class="mt-5 space-y-4" @submit.prevent="submitEdit">
-                        <div>
-                            <InputLabel for="e_title" value="Title" />
-                            <TextInput id="e_title" v-model="editForm.title" type="text" class="mt-1 w-full rounded-xl border-slate-200 shadow-sm" />
-                            <InputError class="mt-1" :message="editForm.errors.title" />
-                        </div>
-                        <div>
-                            <InputLabel for="e_desc" value="Description" />
-                            <textarea
-                                id="e_desc"
-                                v-model="editForm.description"
-                                rows="5"
-                                class="mt-1 w-full rounded-xl border-slate-200 text-sm font-medium shadow-sm"
-                            />
-                            <InputError class="mt-1" :message="editForm.errors.description" />
-                        </div>
-                        <div class="grid gap-3 sm:grid-cols-2">
-                            <div>
-                                <InputLabel for="e_parent" value="Domain" />
-                                <select
-                                    id="e_parent"
-                                    v-model.number="editParentId"
-                                    class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm"
-                                    @change="onEditParent"
-                                >
-                                    <option v-for="p in form_options.category_tree" :key="p.id" :value="p.id">
-                                        {{ p.name }}
-                                    </option>
-                                </select>
-                            </div>
-                            <div>
-                                <InputLabel for="e_cat" value="Subcategory" />
-                                <select id="e_cat" v-model.number="editForm.quest_category_id" class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm">
-                                    <option v-for="c in editLeafOptions" :key="c.id" :value="c.id">
-                                        {{ c.name }}
-                                    </option>
-                                </select>
-                                <InputError class="mt-1" :message="editForm.errors.quest_category_id" />
-                            </div>
-                        </div>
-                        <div class="grid gap-3 sm:grid-cols-2">
-                            <div>
-                                <InputLabel for="e_state" value="State" />
-                                <select
-                                    id="e_state"
-                                    v-model.number="editForm.state_id"
-                                    class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm"
-                                    @change="editForm.local_government_id = 0"
-                                >
-                                    <option v-for="s in form_options.locations" :key="s.id" :value="s.id">
-                                        {{ s.name }}
-                                    </option>
-                                </select>
-                            </div>
-                            <div>
-                                <InputLabel for="e_lga" value="LGA" />
-                                <select id="e_lga" v-model.number="editForm.local_government_id" class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm">
-                                    <option v-for="lg in editLgas" :key="lg.id" :value="lg.id">
-                                        {{ lg.name }}
-                                    </option>
-                                </select>
-                            </div>
-                        </div>
-                        <div>
-                            <InputLabel for="e_city" value="City" />
-                            <TextInput id="e_city" v-model="editForm.city" type="text" class="mt-1 w-full rounded-xl border-slate-200 shadow-sm" />
-                        </div>
-                        <div>
-                            <InputLabel for="e_budget" value="Budget (₦)" />
-                            <input
-                                id="e_budget"
-                                v-model.number="editBudgetNgn"
-                                type="range"
-                                min="100"
-                                max="500000"
-                                step="500"
-                                class="mt-2 h-2 w-full cursor-pointer accent-primary-600"
-                            />
-                            <p class="mt-1 text-xs font-bold text-primary-800">
-                                {{ formatBudget(editForm.budget_amount_minor) }}
-                            </p>
-                            <InputError class="mt-1" :message="editForm.errors.budget_amount_minor" />
-                        </div>
-                        <div>
-                            <InputLabel for="e_timing" value="Start timing" />
-                            <select id="e_timing" v-model="editForm.start_timing" class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm">
-                                <option v-for="o in start_timing_options" :key="o.value" :value="o.value">
-                                    {{ o.label }}
-                                </option>
-                            </select>
-                        </div>
-                        <div v-if="editForm.start_timing === 'scheduled'">
-                            <InputLabel for="e_sched" value="Scheduled date" />
-                            <TextInput id="e_sched" v-model="editForm.scheduled_start_date" type="date" class="mt-1 w-full rounded-xl border-slate-200 shadow-sm" />
-                            <InputError class="mt-1" :message="editForm.errors.scheduled_start_date" />
-                        </div>
-                        <div>
-                            <InputLabel for="e_days" value="Est. completion (days)" />
-                            <input
-                                id="e_days"
-                                v-model.number="editForm.estimated_completion_days"
-                                type="number"
-                                min="1"
-                                max="365"
-                                class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm"
-                            />
-                        </div>
-                        <label class="flex items-center gap-2 text-sm font-bold text-slate-800">
-                            <input v-model="editForm.site_visits_allowed" type="checkbox" class="rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
-                            Site visits allowed
-                        </label>
-                        <button
-                            type="submit"
-                            class="w-full rounded-full bg-slate-900 py-3 text-sm font-black text-white shadow-md hover:bg-slate-800 disabled:opacity-50"
-                            :disabled="editForm.processing"
-                        >
-                            Save changes
-                        </button>
-                    </form>
-                </section>
-
-                <section v-if="can_edit" class="rounded-2xl border border-slate-100 bg-white p-6 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
+                <section v-if="can_edit" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
                     <h2 class="font-display text-lg font-bold text-slate-900">
                         Tag freelancers
                     </h2>
@@ -368,8 +721,15 @@
                     />
                     <ul v-if="inviteHits.length" class="mt-2 max-h-40 overflow-auto rounded-xl border border-slate-100 bg-white shadow-md">
                         <li v-for="u in inviteHits" :key="u.id">
-                            <button type="button" class="flex w-full px-3 py-2 text-left text-sm font-semibold hover:bg-primary-50" @click="addInvite(u)">
-                                {{ u.name }}
+                            <button type="button" class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm font-semibold hover:bg-primary-50" @click="addInvite(u)">
+                                <UserProfileAvatar
+                                    :href="u.slug ? route('freelancers.public', u.slug) : null"
+                                    :src="u.avatar_url"
+                                    :name="u.name"
+                                    :alt="u.name"
+                                    frame-class="h-9 w-9 text-[10px]"
+                                />
+                                <span class="min-w-0 flex-1 truncate">{{ u.name }}</span>
                             </button>
                         </li>
                     </ul>
@@ -382,20 +742,24 @@
                     </button>
                 </section>
 
-                <section v-if="top_freelancers.length" class="rounded-2xl border border-slate-100 bg-white p-6 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
+                <section v-if="top_freelancers.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
                     <h2 class="font-display text-lg font-bold text-slate-900">
                         Top freelancers here
                     </h2>
-                    <ul class="mt-4 space-y-3">
+                    <ul class="mt-3 space-y-2">
                         <li v-for="f in top_freelancers" :key="f.id">
                             <Link
                                 :href="route('freelancers.public', f.slug)"
-                                class="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-sm font-bold text-slate-900 ring-1 ring-slate-100 hover:border-primary-200"
+                                class="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-sm font-bold text-slate-900 ring-1 ring-slate-100 hover:border-primary-200"
                             >
                                 <span class="flex min-w-0 items-center gap-2">
-                                    <span class="flex h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-200">
-                                        <img v-if="f.avatar_url" :src="f.avatar_url" alt="" class="h-full w-full object-cover" />
-                                    </span>
+                                    <UserProfileAvatar
+                                        :href="route('freelancers.public', f.slug)"
+                                        :src="f.avatar_url"
+                                        :name="f.name"
+                                        :alt="f.name"
+                                        frame-class="h-9 w-9 text-[10px] ring-2 ring-white"
+                                    />
                                     <span class="truncate">{{ f.name }}</span>
                                 </span>
                                 <span class="shrink-0 text-[10px] font-black text-primary-700">★ {{ f.trust }}</span>
@@ -404,7 +768,7 @@
                     </ul>
                 </section>
 
-                <section v-if="can_edit" class="rounded-2xl border border-rose-100 bg-rose-50/60 p-6 shadow-sm ring-1 ring-rose-100">
+                <section v-if="can_edit" class="rounded-xl border border-rose-100 bg-rose-50/60 p-5 shadow-sm ring-1 ring-rose-100">
                     <h2 class="font-display text-lg font-bold text-rose-900">
                         Danger zone
                     </h2>
@@ -421,106 +785,139 @@
                 </section>
             </aside>
         </div>
-
-        <Teleport to="body">
-            <div
-                v-if="offerOpen"
-                class="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/50 p-4 sm:items-center"
-                role="dialog"
-                aria-modal="true"
-                @click.self="offerOpen = false"
-            >
-                <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl sm:p-8" @click.stop>
-                    <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                Proposal
-                            </p>
-                            <p class="font-display text-lg font-bold text-slate-900">
-                                {{ quest.title }}
-                            </p>
-                        </div>
-                        <button type="button" class="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label="Close" @click="offerOpen = false">
-                            ✕
-                        </button>
-                    </div>
-                    <form class="mt-6 space-y-4" @submit.prevent="submitOffer">
-                        <div>
-                            <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Pitch</label>
-                            <textarea
-                                v-model="offerForm.pitch"
-                                required
-                                rows="5"
-                                class="mt-1 w-full rounded-xl border-slate-200 text-sm font-medium shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                            />
-                            <InputError class="mt-1" :message="offerForm.errors.pitch" />
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Quote (₦, optional)</label>
-                            <input
-                                v-model.number="offerForm.quoted_ngn"
-                                type="number"
-                                min="0"
-                                step="1"
-                                class="mt-1 w-full rounded-xl border-slate-200 text-sm font-medium shadow-sm"
-                            />
-                            <InputError class="mt-1" :message="offerForm.errors.quoted_amount_minor" />
-                        </div>
-                        <InputError class="mt-1" :message="offerForm.errors.offer" />
-                        <InputError class="mt-1" :message="offerForm.errors.workspace" />
-                        <div class="flex flex-wrap gap-3 pt-2">
-                            <button
-                                type="submit"
-                                class="rounded-full bg-primary-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-primary-700 disabled:opacity-50"
-                                :disabled="offerForm.processing"
-                            >
-                                Submit
-                            </button>
-                            <button type="button" class="rounded-full border border-slate-200 px-6 py-2.5 text-sm font-bold text-slate-800" @click="offerOpen = false">
-                                Cancel
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </Teleport>
     </AppShell>
 </template>
 
 <script setup>
+import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
+import UiSelect from '@/Components/Ui/UiSelect.vue';
 import QuestFileGallery from '@/Components/Quests/QuestFileGallery.vue';
+import QuestRichDescriptionEditor from '@/Components/Quests/QuestRichDescriptionEditor.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
+import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { ChatBubbleLeftRightIcon } from '@heroicons/vue/24/outline';
 import axios from 'axios';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
     quest: { type: Object, required: true },
+    is_quest_owner: { type: Boolean, default: false },
     can_edit: { type: Boolean, default: false },
     can_offer: { type: Boolean, default: false },
     workspace: { type: Object, required: true },
     my_offer: { type: Object, default: null },
     is_bookmarked: { type: Boolean, default: false },
     similar_quests: { type: Array, default: () => [] },
+    from_client_quests: { type: Array, default: () => [] },
+    category_quests_other_areas: { type: Array, default: () => [] },
     top_freelancers: { type: Array, default: () => [] },
+    can_use_quest_messaging: { type: Boolean, default: false },
+    messages_url: { type: String, default: null },
+    quest_message_threads: { type: Array, default: () => [] },
     start_timing_options: { type: Array, default: () => [] },
     form_options: { type: Object, default: null },
+    client_proposals: { type: Array, default: () => [] },
+    client_proposals_hub_url: { type: String, default: null },
 });
 
 const page = usePage();
 const isFreelancer = computed(() => page.props.auth?.user?.role?.slug === 'freelancer');
+const isStaffRole = computed(() => ['admin', 'super_admin'].includes(page.props.auth?.user?.role?.slug ?? ''));
 
-const offerOpen = ref(false);
+const allQuestsHref = computed(() => {
+    if (props.is_quest_owner) {
+        return route('quests.index');
+    }
+    if (isFreelancer.value) {
+        return route('quests.explore');
+    }
+
+    return route('quests.explore');
+});
+
+const clientProfileHref = computed(() => {
+    const c = props.quest?.client;
+    if (!c?.slug || c.role_slug !== 'freelancer') {
+        return null;
+    }
+
+    return route('freelancers.public', c.slug);
+});
+
+const questRouteKey = computed(() => props.quest.slug || props.quest.uuid || props.quest.id);
+
+const workspacePanelItems = computed(() => {
+    const ws = props.workspace;
+    if (!ws?.enabled) {
+        return [];
+    }
+    const items = [];
+    for (const b of ws.blockers || []) {
+        if (b?.message) {
+            items.push({
+                message: b.message,
+                action_label: b.action_label,
+                action_url: b.action_url,
+            });
+        }
+    }
+    for (const h of ws.hints || []) {
+        if (h?.message) {
+            items.push({
+                message: h.message,
+                action_label: h.action_label,
+                action_url: h.action_url,
+            });
+        }
+    }
+
+    return items.slice(0, 5);
+});
+
+const viewerInsightLines = computed(() => {
+    const lines = [];
+    if (props.is_quest_owner) {
+        lines.push('You are viewing this listing as the client — a clear brief attracts stronger proposals.');
+        if (props.quest.status === 'open' && !props.quest.is_client_edit_locked) {
+            lines.push('You can still adjust title, description, and budget until the editing window closes.');
+        }
+    } else if (isFreelancer.value) {
+        if (props.can_offer) {
+            lines.push('You can send a proposal on this quest — highlight outcomes, timeline, and how you de-risk delivery.');
+        } else if (workspacePanelItems.value.length) {
+            // Checklist already shown in the page banner — keep insights tactical, not duplicated.
+            if (props.workspace?.can_submit_proposals) {
+                lines.push('Add this subcategory to your profile so we know you are qualified for similar briefs.');
+            }
+        } else if (!props.workspace?.can_submit_proposals) {
+            lines.push('Complete your freelancer workspace checklist to unlock proposals from this page.');
+        } else {
+            lines.push('Add this subcategory to your profile so we know you are qualified for similar briefs.');
+        }
+        if (props.my_offer) {
+            lines.push('You already submitted a proposal — follow up in thread if the client has questions.');
+        }
+        if (props.is_bookmarked) {
+            lines.push('You saved this quest for later — it stays in your saved list.');
+        }
+    }
+
+    return lines.slice(0, 4);
+});
+
+const uploadForm = useForm({ file: null });
+const showEditQuestForm = ref(false);
 const inviteQuery = ref('');
 const inviteHits = ref([]);
 const inviteIds = ref([]);
 const inviteLabels = ref({});
 let inviteTimer = null;
-
-const uploadForm = useForm({ file: null });
+let proposalPollTimer = null;
+let proposalEchoChannel = null;
 
 const editForm = useForm({
     title: props.quest.title,
@@ -544,25 +941,74 @@ watch(
     (q) => {
         inviteIds.value = (q.invited || []).map((u) => u.id);
         inviteLabels.value = Object.fromEntries((q.invited || []).map((u) => [u.id, u.name]));
-        editForm.title = q.title;
-        editForm.description = q.description;
-        editForm.quest_category_id = q.quest_category_id;
-        editForm.state_id = q.state_id;
-        editForm.local_government_id = q.local_government_id;
-        editForm.city = q.city;
-        editForm.budget_amount_minor = q.budget_minor;
-        editForm.start_timing = q.start_timing;
-        editForm.scheduled_start_date = q.scheduled_start_date || '';
-        editForm.estimated_completion_days = q.estimated_completion_days;
-        editForm.site_visits_allowed = !!q.site_visits_allowed;
-        editParentId.value = findParentForLeaf(q.quest_category_id);
-        editBudgetNgn.value = Math.round(q.budget_minor / 100);
+        applyQuestToEditForm(q);
     },
     { deep: true, immediate: true },
 );
 
+watch(
+    () => editForm.state_id,
+    (newId, oldId) => {
+        if (oldId === undefined) {
+            return;
+        }
+        if (Number(newId) !== Number(oldId)) {
+            editForm.local_government_id = 0;
+        }
+    },
+);
+
+watch(
+    () => editForm.errors,
+    (errs) => {
+        if (errs && Object.keys(errs).length > 0) {
+            showEditQuestForm.value = true;
+        }
+    },
+    { deep: true },
+);
+
 watch(editBudgetNgn, (n) => {
     editForm.budget_amount_minor = Math.max(10000, Math.round(Number(n) || 0) * 100);
+});
+
+onMounted(() => {
+    const path = page.url || '';
+    if (/\bedit=1\b/.test(path) && props.can_edit) {
+        showEditQuestForm.value = true;
+        nextTick(() => {
+            document.getElementById('edit-listing-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }
+
+    if (props.is_quest_owner && props.quest.status === 'open') {
+        const qid = Number(props.quest.id);
+        if (qid > 0) {
+            const reloadProposals = () => {
+                router.reload({
+                    only: ['client_proposals', 'quest'],
+                    preserveScroll: true,
+                });
+            };
+            if (window.Echo) {
+                proposalEchoChannel = window.Echo.private(`quests.${qid}.client`).listen('.proposals.updated', reloadProposals);
+            } else {
+                proposalPollTimer = window.setInterval(reloadProposals, 15000);
+            }
+        }
+    }
+});
+
+onBeforeUnmount(() => {
+    if (proposalPollTimer) {
+        window.clearInterval(proposalPollTimer);
+    }
+    if (proposalEchoChannel && window.Echo) {
+        const qid = Number(props.quest.id);
+        if (qid > 0) {
+            window.Echo.leave(`quests.${qid}.client`);
+        }
+    }
 });
 
 const editLeafOptions = computed(() => {
@@ -577,30 +1023,33 @@ const editLgas = computed(() => {
     return s?.local_governments ?? [];
 });
 
-const workspacePanelLines = computed(() => {
-    const ws = props.workspace;
-    if (!ws?.enabled) {
-        return [];
-    }
-    const lines = [];
-    for (const b of ws.blockers || []) {
-        if (b?.message) {
-            lines.push(b.message);
-        }
-    }
-    for (const h of ws.hints || []) {
-        if (h?.message) {
-            lines.push(h.message);
-        }
-    }
+const editParentCategoryOptions = computed(() =>
+    (props.form_options?.category_tree ?? []).map((p) => ({
+        value: p.id,
+        label: p.name,
+    })),
+);
 
-    return lines;
-});
+const editLeafUiOptions = computed(() =>
+    editLeafOptions.value.map((c) => ({
+        value: c.id,
+        label: c.name,
+    })),
+);
 
-const offerForm = useForm({
-    pitch: '',
-    quoted_ngn: null,
-});
+const editStateOptions = computed(() =>
+    (props.form_options?.locations ?? []).map((s) => ({
+        value: s.id,
+        label: s.name,
+    })),
+);
+
+const editLgaUiOptions = computed(() =>
+    editLgas.value.map((lg) => ({
+        value: lg.id,
+        label: lg.name,
+    })),
+);
 
 watch(inviteQuery, (q) => {
     window.clearTimeout(inviteTimer);
@@ -611,13 +1060,35 @@ watch(inviteQuery, (q) => {
     }
     inviteTimer = window.setTimeout(async () => {
         try {
-            const { data } = await axios.get(route('quests.freelancers.search', props.quest.uuid), { params: { q: q.trim() } });
+            const { data } = await axios.get(route('quests.freelancers.search', questRouteKey.value), { params: { q: q.trim() } });
             inviteHits.value = (data.users || []).filter((u) => !inviteIds.value.includes(u.id));
         } catch {
             inviteHits.value = [];
         }
     }, 280);
 });
+
+function applyQuestToEditForm(q) {
+    editForm.title = q.title;
+    editForm.description = q.description;
+    editForm.quest_category_id = q.quest_category_id;
+    editForm.state_id = q.state_id;
+    editForm.local_government_id = q.local_government_id;
+    editForm.city = q.city;
+    editForm.budget_amount_minor = q.budget_minor;
+    editForm.start_timing = q.start_timing;
+    editForm.scheduled_start_date = q.scheduled_start_date || '';
+    editForm.estimated_completion_days = q.estimated_completion_days;
+    editForm.site_visits_allowed = !!q.site_visits_allowed;
+    editParentId.value = findParentForLeaf(q.quest_category_id);
+    editBudgetNgn.value = Math.round(q.budget_minor / 100);
+}
+
+function closeEditQuestForm() {
+    showEditQuestForm.value = false;
+    editForm.clearErrors();
+    applyQuestToEditForm(props.quest);
+}
 
 function findParentForLeaf(leafId) {
     for (const p of props.form_options?.category_tree || []) {
@@ -631,6 +1102,11 @@ function findParentForLeaf(leafId) {
     return first?.id ?? 0;
 }
 
+function setEditParent(v) {
+    editParentId.value = v;
+    onEditParent();
+}
+
 function onEditParent() {
     const first = editLeafOptions.value[0];
     editForm.quest_category_id = first?.id ?? editForm.quest_category_id;
@@ -642,15 +1118,15 @@ function initials(name) {
     return ((p[0]?.[0] || 'H') + (p[1]?.[0] || '')).toUpperCase();
 }
 
-function statusPill(s) {
+function statusPillHero(s) {
     if (s === 'open') {
-        return 'bg-emerald-50 text-emerald-800 ring-emerald-200';
+        return 'bg-emerald-500/35 text-white ring-emerald-100/40';
     }
     if (s === 'draft') {
-        return 'bg-amber-50 text-amber-900 ring-amber-200';
+        return 'bg-amber-400/40 text-white ring-amber-100/35';
     }
 
-    return 'bg-slate-100 text-slate-700 ring-slate-200';
+    return 'bg-white/15 text-white ring-white/25';
 }
 
 function timingLabel(v) {
@@ -669,11 +1145,45 @@ function visibilityLabel(v) {
     return map[v] || v;
 }
 
+function projectTypeLabel(v) {
+    const map = { fixed_price: 'Fixed price', hourly: 'Hourly' };
+
+    return map[v] || v;
+}
+
+function teamSizeLabel(v) {
+    const map = { solo: 'Solo freelancer', small_team: 'Small team (2–5)' };
+
+    return map[v] || v;
+}
+
+function availabilityLabel(v) {
+    const map = {
+        full_time: 'Full-time cadence',
+        part_time: 'Part-time',
+        as_needed: 'As-needed / flexible',
+    };
+
+    return map[v] || v;
+}
+
+function locationPrefLabel(v) {
+    const map = { remote_friendly: 'Remote-friendly', local_only: 'Local only' };
+
+    return map[v] || v;
+}
+
+function promotionLabel(v) {
+    const map = { standard: 'Standard listing', featured: 'Featured / boost' };
+
+    return map[v] || v;
+}
+
 function toggleBookmark() {
     if (props.is_bookmarked) {
-        router.delete(route('quests.bookmark.destroy', props.quest.uuid), { preserveScroll: true });
+        router.delete(route('quests.bookmark.destroy', questRouteKey.value), { preserveScroll: true });
     } else {
-        router.post(route('quests.bookmark.store', props.quest.uuid), {}, { preserveScroll: true });
+        router.post(route('quests.bookmark.store', questRouteKey.value), {}, { preserveScroll: true });
     }
 }
 
@@ -702,7 +1212,7 @@ function removeFile(id) {
     if (!window.confirm('Remove this file?')) {
         return;
     }
-    router.delete(route('quests.files.destroy', [props.quest.uuid, id]), { preserveScroll: true });
+    router.delete(route('quests.files.destroy', [questRouteKey.value, id]), { preserveScroll: true });
 }
 
 function uploadFile(e) {
@@ -712,7 +1222,7 @@ function uploadFile(e) {
         return;
     }
     uploadForm.file = f;
-    uploadForm.post(route('quests.files.store', props.quest.uuid), {
+    uploadForm.post(route('quests.files.store', questRouteKey.value), {
         forceFormData: true,
         preserveScroll: true,
         onSuccess: () => uploadForm.reset('file'),
@@ -723,7 +1233,12 @@ function submitEdit() {
     editForm.transform((data) => ({
         ...data,
         site_visits_allowed: !!data.site_visits_allowed,
-    })).patch(route('quests.update', props.quest.uuid), { preserveScroll: true });
+    })).patch(route('quests.update', questRouteKey.value), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showEditQuestForm.value = false;
+        },
+    });
 }
 
 function inviteLabel(id) {
@@ -746,39 +1261,20 @@ function removeInvite(id) {
 
 function syncInvites() {
     router.post(
-        route('quests.invites.store', props.quest.uuid),
+        route('quests.invites.store', questRouteKey.value),
         { freelancer_ids: inviteIds.value },
         { preserveScroll: true },
     );
+}
+
+function goToProposalComposer() {
+    router.visit(route('quests.proposals.create', questRouteKey.value));
 }
 
 function confirmDelete() {
     if (!window.confirm('Permanently delete this quest and all files?')) {
         return;
     }
-    router.delete(route('quests.destroy', props.quest.uuid));
-}
-
-function openOffer() {
-    offerOpen.value = true;
-    offerForm.clearErrors();
-    offerForm.reset();
-}
-
-function submitOffer() {
-    offerForm
-        .transform((data) => ({
-            pitch: data.pitch,
-            quoted_amount_minor:
-                data.quoted_ngn !== null && data.quoted_ngn !== '' && !Number.isNaN(Number(data.quoted_ngn))
-                    ? Math.round(Number(data.quoted_ngn) * 100)
-                    : null,
-        }))
-        .post(route('quests.offers.store', props.quest.uuid), {
-            preserveScroll: true,
-            onSuccess: () => {
-                offerOpen.value = false;
-            },
-        });
+    router.delete(route('quests.destroy', questRouteKey.value));
 }
 </script>

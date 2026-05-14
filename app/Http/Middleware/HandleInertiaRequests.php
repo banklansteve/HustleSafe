@@ -2,7 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\ClientOutstandingActionsService;
 use App\Services\FreelancerWorkspaceReadinessService;
+use App\Services\UserNotificationPresenter;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -45,14 +47,35 @@ class HandleInertiaRequests extends Middleware
             },
             'unreadNotificationsCount' => static function () use ($request) {
                 $user = $request->user();
+                if ($user === null) {
+                    return 0;
+                }
 
-                return $user === null ? 0 : $user->unreadNotifications()->count();
+                return app(UserNotificationPresenter::class)->groupedUnreadCount($user);
+            },
+            'recentNotifications' => static function () use ($request) {
+                $user = $request->user();
+                if ($user === null) {
+                    return [];
+                }
+
+                return app(UserNotificationPresenter::class)->recentForNav($user, 8);
             },
             'flash' => [
                 'newsletter' => fn () => $request->session()->get('newsletter'),
                 'success' => fn () => $request->session()->get('success'),
                 'status' => fn () => $request->session()->get('status'),
+                'proposal_next_steps' => fn () => $request->session()->get('proposal_next_steps'),
+                'quest_submitted_next_steps' => fn () => $request->session()->get('quest_submitted_next_steps'),
             ],
+            'client_outstanding' => static function () use ($request) {
+                $user = $request->user();
+                if ($user === null || $user->role?->slug !== 'client') {
+                    return [];
+                }
+
+                return app(ClientOutstandingActionsService::class)->items($user);
+            },
         ];
     }
 }

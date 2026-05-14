@@ -33,6 +33,8 @@ class PortfolioFavoritedNotification extends Notification
         $label = $this->fan->first_name ?: $this->fan->name ?: __('Someone');
 
         return [
+            'headline' => __('Someone favourited your portfolio'),
+            'title' => __('Someone favourited your portfolio'),
             'message' => __(':name favourited your portfolio “:title”.', [
                 'name' => $label,
                 'title' => Str::limit($this->portfolio->title, 80),
@@ -41,6 +43,7 @@ class PortfolioFavoritedNotification extends Notification
             'portfolio_title' => $this->portfolio->title,
             'fan_id' => $this->fan->id,
             'type' => 'portfolio_favorited',
+            'href' => route('portfolio.show', $this->portfolio, absolute: false),
         ];
     }
 }

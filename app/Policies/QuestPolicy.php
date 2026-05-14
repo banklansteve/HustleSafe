@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Enums\QuestStatus;
 use App\Enums\QuestVisibility;
 use App\Models\Quest;
+use App\Models\QuestConversationThread;
 use App\Models\User;
 
 class QuestPolicy
@@ -25,6 +26,16 @@ class QuestPolicy
         }
 
         if ($quest->freelancer_id !== null && $quest->freelancer_id === $user->id) {
+            return true;
+        }
+
+        if (QuestConversationThread::query()
+            ->where('quest_id', $quest->id)
+            ->where(function ($q) use ($user): void {
+                $q->where('client_id', $user->id)
+                    ->orWhere('freelancer_id', $user->id);
+            })
+            ->exists()) {
             return true;
         }
 
@@ -53,8 +64,24 @@ class QuestPolicy
             return false;
         }
 
-        return $quest->freelancer_id === null
+        $stateOk = $quest->freelancer_id === null
             && in_array($quest->status, [QuestStatus::Open, QuestStatus::Draft], true);
+
+        if (! $stateOk) {
+            return false;
+        }
+
+        if (in_array($user->role?->slug, ['admin', 'super_admin'], true)) {
+            return true;
+        }
+
+        if ($quest->status === QuestStatus::Open
+            && $quest->client_edit_until !== null
+            && now()->greaterThan($quest->client_edit_until)) {
+            return false;
+        }
+
+        return true;
     }
 
     public function delete(User $user, Quest $quest): bool

@@ -18,8 +18,15 @@ return [
     'api_secret' => env('CLOUDINARY_API_SECRET'),
 
     /**
-     * Root folder for this app (e.g. hustlesafe). Avatars use {folder}/avatars.
+     * @deprecated Use folder_profiles, folder_quests, folder_portfolios.
      */
-    'folder' => env('CLOUDINARY_FOLDER', 'hustlesafe'),
+    'folder' => env('CLOUDINARY_FOLDER', 'hustleSafe'),
+
+    /** Upload prefixes in Cloudinary (Media Library folders). */
+    'folder_profiles' => env('CLOUDINARY_FOLDER_PROFILES', 'hustleSafe/profiles'),
+
+    'folder_quests' => env('CLOUDINARY_FOLDER_QUESTS', 'hustleSafe/quests'),
+
+    'folder_portfolios' => env('CLOUDINARY_FOLDER_PORTFOLIOS', 'hustleSafe/portfolios'),
 
 ];

@@ -16,6 +16,6 @@ class AccountQuestCategoriesController extends Controller
         $user->questCategoryPreferences()->sync($request->validated()['quest_category_ids']);
         $trustScores->recalculate($user->fresh());
 
-        return redirect()->route('account.show', ['tab' => 'overview'])->with('success', __('Work categories updated.'));
+        return redirect()->to(route('account.show', ['tab' => 'overview']).'#account-work-categories')->with('success', __('Work categories updated.'));
     }
 }

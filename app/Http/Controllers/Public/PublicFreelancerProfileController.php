@@ -88,11 +88,14 @@ class PublicFreelancerProfileController extends Controller
 
         $viewerCanFollow = $followsReady
             && $viewer !== null
-            && $viewer->role?->slug === 'client'
-            && $viewer->id !== $user->id;
+            && (int) $viewer->id !== (int) $user->id
+            && (
+                ($viewer->role?->slug === 'client' && $user->role?->slug === 'freelancer')
+                || ($viewer->role?->slug === 'freelancer' && $user->role?->slug === 'client')
+            );
 
         $isFollowing = false;
-        if ($viewerCanFollow) {
+        if ($followsReady && $viewer !== null && (int) $viewer->id !== (int) $user->id) {
             $isFollowing = UserFollow::query()
                 ->where('follower_id', $viewer->id)
                 ->where('following_id', $user->id)
@@ -101,6 +104,10 @@ class PublicFreelancerProfileController extends Controller
 
         $followersCount = $followsReady
             ? UserFollow::query()->where('following_id', $user->id)->count()
+            : 0;
+
+        $followingCount = $followsReady
+            ? UserFollow::query()->where('follower_id', $user->id)->count()
             : 0;
 
         $displayName = $user->first_name
@@ -150,6 +157,13 @@ class PublicFreelancerProfileController extends Controller
             $profile['cac'] = null;
         }
 
+        if (($settings['show_phone'] ?? false) && filled($user->phone)) {
+            $profile['phone'] = $user->phone;
+        }
+        if (($settings['show_email'] ?? false) && filled($user->email)) {
+            $profile['email'] = $user->email;
+        }
+
         if (($settings['show_credentials'] ?? true) && $user->freelancerCredentials->isNotEmpty()) {
             $profile['credentials'] = $user->freelancerCredentials->map(fn ($c) => [
                 'type' => $c->credential_type,
@@ -197,8 +211,10 @@ class PublicFreelancerProfileController extends Controller
                 'viewer_can_follow' => $viewerCanFollow,
                 'is_following' => $isFollowing,
                 'followers_count' => $followersCount,
+                'following_count' => $followingCount,
             ],
             'is_authenticated' => $viewer !== null,
+            'viewer_role_slug' => $viewer?->role?->slug ?? '',
         ]);
     }
 

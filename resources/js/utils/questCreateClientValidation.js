@@ -3,29 +3,35 @@
  * so the wizard stays offline until final Inertia submit.
  */
 
-const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+import { htmlToPlainText } from '@/utils/htmlPlainText';
 
-function todayYmd() {
+function todayYmdLocal() {
     const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
 
-    return d.toISOString().slice(0, 10);
+    return `${y}-${m}-${day}`;
 }
 
 function isLeafInTree(categoryTree, leafId) {
-    if (!leafId) {
+    const lid = Number(leafId);
+    if (!Number.isFinite(lid) || lid < 1) {
         return false;
     }
 
-    return categoryTree.some((p) => (p.children || []).some((c) => Number(c.id) === Number(leafId)));
+    return categoryTree.some((p) => (p.children || []).some((c) => Number(c.id) === lid));
 }
 
 function lgaInState(locations, stateId, lgaId) {
-    if (!stateId || !lgaId) {
+    const sid = Number(stateId);
+    const lid = Number(lgaId);
+    if (!Number.isFinite(sid) || !Number.isFinite(lid)) {
         return false;
     }
-    const s = locations.find((x) => Number(x.id) === Number(stateId));
+    const s = locations.find((x) => Number(x.id) === sid);
 
-    return !!(s?.local_governments || []).some((lg) => Number(lg.id) === Number(lgaId));
+    return !!(s?.local_governments || []).some((lg) => Number(lg.id) === lid);
 }
 
 /**
@@ -35,7 +41,7 @@ function lgaInState(locations, stateId, lgaId) {
  */
 export function validateQuestCreateStep(step, deps) {
     const errors = {};
-    const { form, fieldProfile, categoryTree, locations, maxBudgetMinor } = deps;
+    const { form, fieldProfile, categoryTree, locations, maxBudgetMinor, minBudgetMinor = 10000 } = deps;
 
     if (step === 1) {
         if (!form.quest_category_id || !isLeafInTree(categoryTree, form.quest_category_id)) {
@@ -46,9 +52,10 @@ export function validateQuestCreateStep(step, deps) {
         } else if (String(form.title).length > 200) {
             errors.title = 'Title must be 200 characters or fewer.';
         }
-        if (!String(form.description || '').trim()) {
+        const descPlain = htmlToPlainText(form.description);
+        if (!descPlain) {
             errors.description = 'Describe the quest so freelancers understand the brief.';
-        } else if (String(form.description).length > 50000) {
+        } else if (String(form.description || '').length > 50000) {
             errors.description = 'Description is too long.';
         }
     }
@@ -69,10 +76,12 @@ export function validateQuestCreateStep(step, deps) {
     }
 
     if (step === 3) {
-        if (!form.state_id) {
+        const sid = Number(form.state_id);
+        if (!Number.isFinite(sid) || sid < 1) {
             errors.state_id = 'Select a state.';
         }
-        if (!form.local_government_id || !lgaInState(locations, form.state_id, form.local_government_id)) {
+        const lgid = Number(form.local_government_id);
+        if (!Number.isFinite(lgid) || lgid < 1 || !lgaInState(locations, form.state_id, form.local_government_id)) {
             errors.local_government_id = 'Select a valid LGA for this state.';
         }
         if (!String(form.city || '').trim()) {
@@ -89,20 +98,31 @@ export function validateQuestCreateStep(step, deps) {
         if (form.start_timing === 'scheduled' && !String(form.scheduled_start_date || '').trim()) {
             errors.scheduled_start_date = 'Pick a start date for a scheduled start.';
         }
-        if (!form.estimated_completion_days || form.estimated_completion_days < 1 || form.estimated_completion_days > 365) {
+        const days = Number(form.estimated_completion_days);
+        if (!Number.isFinite(days) || days < 1 || days > 365) {
             errors.estimated_completion_days = 'Pick a completion window between 1 and 365 days.';
         }
         const edd = String(form.estimated_delivery_date || '').trim();
-        if (edd && edd < todayYmd()) {
+        if (edd && edd < todayYmdLocal()) {
             errors.estimated_delivery_date = 'Delivery date must be today or later.';
         }
         const b = Number(form.budget_amount_minor);
-        if (!Number.isFinite(b) || b < 10000 || b > maxBudgetMinor) {
-            errors.budget_amount_minor = `Budget must be between ₦${(10000 / 100).toLocaleString('en-NG')} and ₦${(maxBudgetMinor / 100).toLocaleString('en-NG')}.`;
+        const maxB = Number(maxBudgetMinor);
+        const minB = Number(minBudgetMinor);
+        if (!Number.isFinite(b) || b < minB || b > maxB) {
+            errors.budget_amount_minor = `Budget must be between ₦${(minB / 100).toLocaleString('en-NG')} and ₦${(maxB / 100).toLocaleString('en-NG')}.`;
         }
     }
 
     if (step === 5) {
+        if (fieldProfile.show_site_access) {
+            if (!String(form.site_access_level || '').trim()) {
+                errors.site_access_level = 'Choose how accessible the work location is.';
+            }
+            if (form.pets_on_site !== true && form.pets_on_site !== false) {
+                errors.pets_on_site = 'Say whether pets are usually on-site.';
+            }
+        }
         if (fieldProfile.show_hourly_fields && form.project_type === 'hourly') {
             const h = Number(form.estimated_hours);
             if (!Number.isFinite(h) || h < 1 || h > 2000) {
@@ -111,6 +131,14 @@ export function validateQuestCreateStep(step, deps) {
         }
         if (fieldProfile.show_team_size && !form.team_size) {
             errors.team_size = 'Choose solo or small team.';
+        }
+        if (fieldProfile.show_site_access) {
+            if (!String(form.site_access_level || '').trim()) {
+                errors.site_access_level = 'Choose how accessible the location is.';
+            }
+            if (form.pets_on_site !== true && form.pets_on_site !== false) {
+                errors.pets_on_site = 'Say whether pets are usually on site.';
+            }
         }
     }
 
@@ -125,10 +153,6 @@ export function validateQuestCreateStep(step, deps) {
         const mo = form.max_offers;
         if (mo != null && mo !== '' && (Number(mo) < 1 || Number(mo) > 200)) {
             errors.max_offers = 'Max proposals must be between 1 and 200.';
-        }
-        const slug = String(form.slug || '').trim();
-        if (slug && (!SLUG_RE.test(slug) || slug.length > 120)) {
-            errors.slug = 'Use lowercase letters, numbers, and single hyphens only (max 120 characters).';
         }
         if (form.visibility === 'invite_only' && (!Array.isArray(form.tagged_freelancer_ids) || form.tagged_freelancer_ids.length < 1)) {
             errors.tagged_freelancer_ids = 'Invite-only quests need at least one tagged freelancer.';

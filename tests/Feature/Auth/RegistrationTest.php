@@ -70,4 +70,34 @@ class RegistrationTest extends TestCase
                 && str_contains($mail->verificationUrl, (string) $user->getKey());
         });
     }
+
+    public function test_sponsor_can_register_without_quest_category_ids(): void
+    {
+        Mail::fake();
+
+        $lga = LocalGovernment::query()->with('state')->first();
+        $this->assertNotNull($lga);
+
+        $response = $this->post('/register', [
+            'account_type' => 'sponsor',
+            'first_name' => 'Sponsor',
+            'last_name' => 'Client',
+            'email' => 'sponsor@example.com',
+            'phone' => '+234 802 000 0000',
+            'address_line' => '1 Admiralty Way',
+            'city' => 'Lekki',
+            'state_id' => $lga->state_id,
+            'local_government_id' => $lga->id,
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertRedirect(route('dashboard', absolute: false));
+        $this->assertAuthenticated();
+
+        $user = User::query()->where('email', 'sponsor@example.com')->first();
+        $this->assertNotNull($user);
+        $this->assertSame('sponsor', $user->account_type);
+        $this->assertSame(0, $user->questCategoryPreferences()->count());
+    }
 }

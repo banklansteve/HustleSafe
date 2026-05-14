@@ -42,6 +42,14 @@
             <form class="mt-8" @submit.prevent="submit">
                 <Transition name="fade-slide" mode="out-in">
                     <div :key="step" class="rounded-2xl border border-slate-100 bg-white p-6 shadow-lg shadow-slate-900/5 ring-1 ring-slate-100 sm:p-8">
+                        <div
+                            v-if="clientStepBanner"
+                            id="quest-create-alert"
+                            class="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold leading-snug text-rose-900 ring-1 ring-rose-100"
+                            role="alert"
+                        >
+                            {{ clientStepBanner }}
+                        </div>
                         <!-- Step 1 -->
                         <section v-if="step === 1">
                             <h2 class="font-display text-xl font-bold text-slate-900">
@@ -58,10 +66,11 @@
                                     </div>
                                     <UiSelect
                                         id="parent_cat"
-                                        v-model="parentCategoryId"
+                                        :model-value="parentCategoryId"
                                         class="mt-2"
                                         :options="parentSelectOptions"
                                         placeholder="Select domain"
+                                        @update:model-value="onParentCategoryChange"
                                     />
                                 </div>
                                 <div>
@@ -111,15 +120,12 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <UiTextarea
+                                    <QuestRichDescriptionEditor
                                         id="description"
                                         v-model="form.description"
                                         class="mt-3"
                                         placeholder="Describe the quest in detail…"
-                                        :min-rows="2"
-                                        :max-rows="22"
                                         :invalid="!!form.errors.description"
-                                        required
                                     />
                                     <InputError class="mt-2" :message="form.errors.description" />
                                 </div>
@@ -163,18 +169,30 @@
                                     <InputLabel for="traffic_source" value="Traffic source (optional)" />
                                     <TextInput id="traffic_source" v-model="form.traffic_source" type="text" class="mt-2 w-full rounded-xl border-slate-200 shadow-sm" placeholder="e.g. instagram, newsletter" />
                                 </div>
+                                <p class="text-xs font-semibold leading-relaxed text-slate-600">
+                                    If you share special links to this quest, the three fields below help you see which posts or partners send the best visitors. They are optional — you can leave them blank.
+                                </p>
                                 <div class="grid gap-3 sm:grid-cols-3">
                                     <div>
-                                        <InputLabel for="utm_s" value="utm_source" />
-                                        <TextInput id="utm_s" v-model="utm.utm_source" type="text" class="mt-2 w-full rounded-xl border-slate-200 text-sm shadow-sm" />
+                                        <div class="flex items-center gap-1">
+                                            <InputLabel for="utm_s" value="Referrer / source" />
+                                            <FieldHint text="Where the visitor came from — e.g. Instagram story, WhatsApp group, or a partner site." />
+                                        </div>
+                                        <TextInput id="utm_s" v-model="utm.utm_source" type="text" class="mt-2 w-full rounded-xl border-slate-200 text-sm shadow-sm" placeholder="e.g. instagram" />
                                     </div>
                                     <div>
-                                        <InputLabel for="utm_m" value="utm_medium" />
-                                        <TextInput id="utm_m" v-model="utm.utm_medium" type="text" class="mt-2 w-full rounded-xl border-slate-200 text-sm shadow-sm" />
+                                        <div class="flex items-center gap-1">
+                                            <InputLabel for="utm_m" value="Channel type" />
+                                            <FieldHint text="What kind of link it was — e.g. social, email, paid ad, or referral." />
+                                        </div>
+                                        <TextInput id="utm_m" v-model="utm.utm_medium" type="text" class="mt-2 w-full rounded-xl border-slate-200 text-sm shadow-sm" placeholder="e.g. social" />
                                     </div>
                                     <div>
-                                        <InputLabel for="utm_c" value="utm_campaign" />
-                                        <TextInput id="utm_c" v-model="utm.utm_campaign" type="text" class="mt-2 w-full rounded-xl border-slate-200 text-sm shadow-sm" />
+                                        <div class="flex items-center gap-1">
+                                            <InputLabel for="utm_c" value="Campaign name" />
+                                            <FieldHint text="A short label for this push — e.g. spring-launch — so you can compare results later." />
+                                        </div>
+                                        <TextInput id="utm_c" v-model="utm.utm_campaign" type="text" class="mt-2 w-full rounded-xl border-slate-200 text-sm shadow-sm" placeholder="e.g. spring-2026" />
                                     </div>
                                 </div>
                                 <p v-if="form.visibility === 'invite_only'" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-950">
@@ -237,12 +255,12 @@
                                     <InputError class="mt-2" :message="form.errors.start_timing" />
                                 </div>
                                 <div v-if="form.start_timing === 'scheduled'">
-                                    <InputLabel for="sched" value="Start date" />
-                                    <TextInput id="sched" v-model="form.scheduled_start_date" type="date" class="mt-2 w-full rounded-xl border-slate-200 shadow-sm" />
+                                    <InputLabel for="sched" value="Planned start date" />
+                                    <PremiumDatePicker id="sched" v-model="form.scheduled_start_date" class="mt-2" placeholder="Pick start date" />
                                     <InputError class="mt-2" :message="form.errors.scheduled_start_date" />
                                 </div>
                                 <div>
-                                    <InputLabel for="ecd" value="Estimated completion (days)" />
+                                    <InputLabel for="ecd" value="Estimated duration (days)" />
                                     <UiSelect
                                         id="ecd"
                                         v-model="form.estimated_completion_days"
@@ -250,22 +268,67 @@
                                         :options="completionDayOptions"
                                         placeholder="Select duration"
                                     />
+                                    <p
+                                        v-if="completionGuidanceCopy"
+                                        class="mt-2 rounded-xl border border-teal-100 bg-teal-50/60 px-3 py-2.5 text-xs font-semibold leading-relaxed text-teal-950 ring-1 ring-teal-100/80"
+                                    >
+                                        {{ completionGuidanceCopy }}
+                                    </p>
                                 </div>
                                 <div>
                                     <div class="flex items-center gap-1">
-                                        <InputLabel for="edd" value="Target delivery date (optional)" />
-                                        <FieldHint text="Aim date for the full deliverable — helps freelancers schedule." />
+                                        <InputLabel for="edd" value="Planned finish date (optional)" />
+                                        <FieldHint text="Target date for the full deliverable — complements the duration above." />
                                     </div>
-                                    <TextInput id="edd" v-model="form.estimated_delivery_date" type="date" class="mt-2 w-full rounded-xl border-slate-200 shadow-sm" />
+                                    <PremiumDatePicker
+                                        id="edd"
+                                        v-model="form.estimated_delivery_date"
+                                        class="mt-2"
+                                        placeholder="Optional finish date"
+                                        :min="finishDateMin"
+                                    />
                                     <InputError class="mt-2" :message="form.errors.estimated_delivery_date" />
                                 </div>
-                                <div>
-                                    <div class="flex items-end justify-between gap-3">
+                                <div class="rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/90 to-white p-4 ring-1 ring-slate-100 sm:p-5">
+                                    <div class="flex flex-wrap items-end justify-between gap-2">
                                         <InputLabel for="budget" value="Budget ceiling" />
-                                        <p class="text-sm font-black text-primary-800">{{ formatNgn(form.budget_amount_minor) }}</p>
+                                        <p class="text-lg font-black tabular-nums text-primary-800">{{ formatNgn(clampedBudgetMinor) }}</p>
                                     </div>
-                                    <p class="text-xs font-semibold text-slate-500">Maximum ₦1,000,000</p>
-                                    <input id="budget" v-model.number="form.budget_amount_minor" type="range" min="10000" :max="maxBudgetMinor" step="50000" class="mt-3 h-2 w-full cursor-pointer accent-primary-600" />
+                                    <div class="mt-2 flex justify-between gap-2 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                        <span>Min {{ formatNgn(minBudgetMinor) }}</span>
+                                        <span>Max {{ formatNgn(maxBudgetMinor) }}</span>
+                                    </div>
+                                    <p
+                                        v-if="budgetGuidanceCopy"
+                                        class="mt-3 rounded-xl border border-primary-100 bg-primary-50/50 px-3 py-2.5 text-xs font-semibold leading-relaxed text-primary-950 ring-1 ring-primary-100/80"
+                                    >
+                                        {{ budgetGuidanceCopy }}
+                                    </p>
+                                    <input
+                                        id="budget"
+                                        v-model.number="budgetSliderModel"
+                                        type="range"
+                                        :min="minBudgetMinor"
+                                        :max="maxBudgetMinor"
+                                        :step="budgetSliderStep"
+                                        class="budget-range mt-4 w-full"
+                                    />
+                                    <div class="mt-4">
+                                        <div class="flex items-center gap-1">
+                                            <InputLabel for="budget_ngn_direct" value="Or type budget (₦)" />
+                                            <FieldHint text="Whole naira. We keep it within the min and max shown above." />
+                                        </div>
+                                        <input
+                                            id="budget_ngn_direct"
+                                            v-model="budgetNairaText"
+                                            type="text"
+                                            inputmode="numeric"
+                                            class="mt-2 w-full max-w-xs rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+                                            placeholder="e.g. 50000"
+                                            @blur="commitBudgetNairaFromInput"
+                                            @keyup.enter="commitBudgetNairaFromInput"
+                                        />
+                                    </div>
                                     <InputError class="mt-2" :message="form.errors.budget_amount_minor" />
                                 </div>
                             </div>
@@ -301,6 +364,39 @@
                                     <UiSelect v-model="form.team_size" class="mt-2" :options="teamSizeOptions" />
                                     <InputError class="mt-2" :message="form.errors.team_size" />
                                 </div>
+                                <div v-if="fieldProfile.show_site_access" class="space-y-4 rounded-xl border border-slate-100 bg-slate-50/60 p-4 ring-1 ring-slate-100">
+                                    <p class="text-xs font-black uppercase tracking-wide text-slate-600">On-site brief</p>
+                                    <div>
+                                        <InputLabel value="Location accessibility" />
+                                        <UiSelect v-model="form.site_access_level" class="mt-2" :options="siteAccessOptions" placeholder="Select access type" />
+                                        <InputError class="mt-2" :message="form.errors.site_access_level" />
+                                    </div>
+                                    <div>
+                                        <InputLabel value="Are pets usually on-site?" />
+                                        <div class="mt-2 flex flex-wrap gap-4 text-sm font-semibold text-slate-800">
+                                            <label class="inline-flex cursor-pointer items-center gap-2">
+                                                <input v-model="form.pets_on_site" type="radio" class="text-primary-600 focus:ring-primary-500" :value="true" />
+                                                Yes
+                                            </label>
+                                            <label class="inline-flex cursor-pointer items-center gap-2">
+                                                <input v-model="form.pets_on_site" type="radio" class="text-primary-600 focus:ring-primary-500" :value="false" />
+                                                No
+                                            </label>
+                                        </div>
+                                        <InputError class="mt-2" :message="form.errors.pets_on_site" />
+                                    </div>
+                                    <div v-if="form.pets_on_site === true">
+                                        <InputLabel value="Pet details (optional)" />
+                                        <textarea
+                                            v-model="form.pets_detail"
+                                            rows="2"
+                                            maxlength="255"
+                                            class="mt-2 w-full rounded-xl border-slate-200 text-sm font-medium shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                            placeholder="e.g. Friendly dog, stays in garden during visits."
+                                        />
+                                        <InputError class="mt-2" :message="form.errors.pets_detail" />
+                                    </div>
+                                </div>
                             </div>
                         </section>
 
@@ -328,17 +424,24 @@
                                     <InputLabel for="maxo" value="Max proposals (optional)" />
                                     <input id="maxo" v-model.number="form.max_offers" type="number" min="1" max="200" class="mt-2 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm" />
                                 </div>
-                                <div>
+                                <div v-if="freelancerNetworkGroups.length">
                                     <div class="flex items-center gap-1">
-                                        <InputLabel for="slug" value="Public slug (optional)" />
-                                        <FieldHint text="SEO-friendly path segment. Leave blank and we generate one from your title." />
+                                        <p class="text-xs font-black uppercase tracking-wide text-slate-500">
+                                            Tag from your network
+                                        </p>
+                                        <FieldHint text="Multi-select freelancers you follow or who follow you. You can still search below to add anyone else." />
                                     </div>
-                                    <TextInput id="slug" v-model="form.slug" type="text" class="mt-2 w-full rounded-xl border-slate-200 font-mono text-sm shadow-sm" placeholder="e.g. brand-refresh-lagos" />
-                                    <InputError class="mt-2" :message="form.errors.slug" />
+                                    <UiMultiSelect
+                                        v-model="form.tagged_freelancer_ids"
+                                        class="mt-2"
+                                        :groups="freelancerNetworkGroups"
+                                        placeholder="Tap to choose followers / following"
+                                        :max="20"
+                                    />
                                 </div>
                                 <div>
                                     <p class="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                        Tag freelancers
+                                        Or search freelancers
                                     </p>
                                     <TextInput v-model="tagQuery" type="search" class="mt-2 w-full rounded-xl border-slate-200 text-sm shadow-sm" placeholder="Search by name…" />
                                     <ul v-if="tagResults.length" class="mt-2 max-h-40 overflow-auto rounded-xl border border-slate-100 bg-white shadow-md">
@@ -356,7 +459,7 @@
                                 <div>
                                     <InputLabel value="Reference files" />
                                     <div
-                                        class="mt-2 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-8 text-center transition"
+                                        class="mt-2 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-7 text-center transition active:scale-[0.99] sm:py-8"
                                         :class="dragOver ? 'border-primary-400 bg-primary-50/80' : 'border-slate-200 bg-slate-50/80 hover:border-primary-300'"
                                         role="button"
                                         tabindex="0"
@@ -367,8 +470,34 @@
                                         @drop.prevent="onDrop"
                                     >
                                         <p class="text-sm font-bold text-slate-800">Drop files or tap to browse</p>
+                                        <p class="mt-1 text-xs font-semibold text-slate-500">Images or PDF · up to 10 files</p>
                                         <input ref="fileInput" type="file" class="hidden" multiple accept=".jpg,.jpeg,.png,.webp,.gif,.pdf" @change="onFileInput" />
                                     </div>
+                                    <ul v-if="fileRows.length" class="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
+                                        <li
+                                            v-for="(row, idx) in fileRows"
+                                            :key="row.key"
+                                            class="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white ring-1 ring-slate-100"
+                                        >
+                                            <div class="relative aspect-square w-full overflow-hidden bg-slate-100">
+                                                <img v-if="row.url" :src="row.url" alt="" class="h-full w-full object-cover" />
+                                                <div v-else class="flex h-full w-full flex-col items-center justify-center px-1 text-center">
+                                                    <span class="text-[10px] font-black uppercase text-slate-500">{{ row.isPdf ? 'PDF' : 'File' }}</span>
+                                                </div>
+                                            </div>
+                                            <div class="min-w-0 p-2">
+                                                <p class="line-clamp-2 text-[11px] font-bold leading-tight text-slate-900">{{ row.name }}</p>
+                                                <p class="text-[10px] font-semibold text-slate-500">{{ formatFileSize(row.size) }}</p>
+                                                <button
+                                                    type="button"
+                                                    class="mt-1.5 text-[10px] font-black uppercase tracking-wide text-rose-600 hover:text-rose-800"
+                                                    @click="removeFile(idx)"
+                                                >
+                                                    Remove
+                                                </button>
+                                            </div>
+                                        </li>
+                                    </ul>
                                     <InputError class="mt-2" :message="form.errors.files" />
                                 </div>
                             </div>
@@ -415,6 +544,41 @@
                                 </article>
                             </div>
 
+                            <details class="group rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-100">
+                                <summary
+                                    class="cursor-pointer list-none px-4 py-3 text-sm font-bold text-slate-900 marker:hidden [&::-webkit-details-marker]:hidden"
+                                >
+                                    <span class="flex items-center justify-between gap-2">
+                                        <span>Preview terms in-page</span>
+                                        <span class="text-xs font-black uppercase tracking-wide text-primary-700 group-open:hidden">Open</span>
+                                        <span class="hidden text-xs font-black uppercase tracking-wide text-primary-700 group-open:inline">Close</span>
+                                    </span>
+                                </summary>
+                                <div class="border-t border-slate-100 p-3">
+                                    <iframe
+                                        title="Terms of Service"
+                                        class="h-64 w-full rounded-xl border border-slate-200 bg-white sm:h-80"
+                                        :src="termsFrameSrc"
+                                    />
+                                </div>
+                            </details>
+
+                            <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-emerald-200/90 bg-emerald-50/60 px-4 py-3 text-sm font-semibold text-emerald-950 ring-1 ring-emerald-100">
+                                <input v-model="form.accepted_terms" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>
+                                    I agree to the
+                                    <a :href="route('legal.terms')" target="_blank" rel="noopener noreferrer" class="font-black text-emerald-800 underline decoration-emerald-400 underline-offset-2">
+                                        Terms of Service
+                                    </a>
+                                    and
+                                    <a :href="route('legal.privacy')" target="_blank" rel="noopener noreferrer" class="font-black text-emerald-800 underline decoration-emerald-400 underline-offset-2">
+                                        Privacy Policy
+                                    </a>
+                                    , and to post accurate quest details on HustleSafe.
+                                </span>
+                            </label>
+                            <InputError class="mt-1" :message="form.errors.accepted_terms" />
+
                             <label class="flex items-start gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 ring-1 ring-emerald-100/80">
                                 <input v-model="form.publish_now" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600" />
                                 <span class="text-sm font-bold text-emerald-950">Publish immediately (otherwise save as draft)</span>
@@ -455,7 +619,7 @@
                             v-if="step === 7"
                             type="submit"
                             class="rounded-full bg-slate-900 px-8 py-3 text-sm font-black text-white shadow-lg disabled:opacity-50"
-                            :disabled="form.processing"
+                            :disabled="form.processing || !form.accepted_terms"
                         >
                             {{ form.processing ? 'Saving…' : 'Submit quest' }}
                         </button>
@@ -467,9 +631,11 @@
 </template>
 
 <script setup>
+import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
 import FieldHint from '@/Components/Ui/FieldHint.vue';
+import UiMultiSelect from '@/Components/Ui/UiMultiSelect.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
-import UiTextarea from '@/Components/Ui/UiTextarea.vue';
+import QuestRichDescriptionEditor from '@/Components/Quests/QuestRichDescriptionEditor.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
@@ -477,30 +643,58 @@ import AppShell from '@/Layouts/AppShell.vue';
 import { InformationCircleIcon } from '@heroicons/vue/24/outline';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useQuestCreateDraft } from '@/composables/useQuestCreateDraft';
 import { validateQuestCreateStep } from '@/utils/questCreateClientValidation';
+import { htmlToPlainText } from '@/utils/htmlPlainText';
 
 const props = defineProps({
     locations: { type: Array, required: true },
     categoryTree: { type: Array, required: true },
     startTimingOptions: { type: Array, required: true },
     maxBudgetMinor: { type: Number, default: 100_000_000 },
+    minBudgetMinor: { type: Number, default: 10_000 },
     fieldProfileUrl: { type: String, required: true },
+    freelancersYouFollow: { type: Array, default: () => [] },
+    freelancersFollowingYou: { type: Array, default: () => [] },
+    quest_stats_hints: {
+        type: Object,
+        default: () => ({
+            by_category: {},
+            global_budget: null,
+            global_completion: null,
+        }),
+    },
 });
 
 const page = usePage();
+
+const termsFrameSrc = computed(() => {
+    const z = page.props.ziggy;
+    if (z?.location) {
+        return `${String(z.location).replace(/\/$/, '')}/terms-of-service`;
+    }
+
+    return '/terms-of-service';
+});
+
 const draftStorageKey = computed(() => `hustlesafe:quest-create:v1:${page.props.auth?.user?.id ?? 'guest'}`);
 
 const stepTitles = ['Story', 'Audience', 'Location', 'Schedule', 'Scope', 'Launch', 'Review'];
 const step = ref(1);
 const maxReachedStep = ref(1);
 const fromPreview = ref(false);
+const clientStepBanner = ref('');
 const dragOver = ref(false);
 const fileInput = ref(null);
+/** @type {import('vue').Ref<{ key: number, name: string, size: number, url: string | null, isPdf: boolean }[]>} */
+const fileRows = ref([]);
+let fileRowKey = 0;
 const parentCategoryId = ref(0);
 const fieldProfile = reactive({
     show_site_visit: false,
+    show_site_access: false,
+    show_pets_question: false,
     show_availability: true,
     show_hourly_fields: true,
     show_team_size: true,
@@ -512,12 +706,12 @@ const tagLabelById = ref({});
 let tagTimer = null;
 const utm = reactive({ utm_source: '', utm_medium: '', utm_campaign: '' });
 
-const completionPresets = [3, 5, 7, 10, 14, 21, 30, 45, 60, 90];
+const completionPresets = [1, 2, 3, 5, 7, 10, 14, 21, 30, 45, 60, 90];
 
 const visibilityOptions = [
     { value: 'public', label: 'Public — discoverable in Explore' },
     { value: 'invite_only', label: 'Invite-only — tagged + followers only' },
-    { value: 'private', label: 'Private — only you (no marketplace offers)' },
+    { value: 'private', label: 'Private — only you (no marketplace proposals)' },
 ];
 const locationPrefOptions = [
     { value: 'remote_friendly', label: 'Remote-friendly' },
@@ -545,6 +739,15 @@ const yesNoOptions = [
     { value: 'no', label: 'No site visits' },
 ];
 
+const siteAccessOptions = [
+    { value: 'ground_level_easy', label: 'Ground level — easy access' },
+    { value: 'stairs_no_lift', label: 'Stairs only (no lift)' },
+    { value: 'stairs_with_lift', label: 'Stairs + lift available' },
+    { value: 'ladder_or_height_work', label: 'Ladder / height work' },
+    { value: 'narrow_or_difficult_access', label: 'Narrow or difficult access' },
+    { value: 'other', label: 'Other (explain in description)' },
+];
+
 const siteVisitChoice = ref('no');
 
 const form = useForm({
@@ -566,12 +769,15 @@ const form = useForm({
     estimated_hours: null,
     team_size: 'solo',
     site_visits_allowed: false,
+    site_access_level: '',
+    pets_on_site: null,
+    pets_detail: '',
     promotion_tier: 'standard',
     auto_listing_expiry_days: null,
     max_offers: null,
-    slug: '',
     traffic_source: '',
     publish_now: true,
+    accepted_terms: false,
     tagged_freelancer_ids: [],
     files: [],
 });
@@ -600,10 +806,152 @@ const lgaSelectOptions = computed(() => lgaOptions.value.map((lg) => ({ value: l
 
 const completionDayOptions = computed(() => completionPresets.map((d) => ({ value: d, label: `${d} days` })));
 
+const finishDateMin = computed(() => {
+    if (form.start_timing === 'scheduled' && form.scheduled_start_date) {
+        return form.scheduled_start_date;
+    }
+
+    return '';
+});
+
+watch(
+    () => [form.start_timing, form.scheduled_start_date, form.estimated_delivery_date],
+    () => {
+        if (
+            form.start_timing === 'scheduled'
+            && form.scheduled_start_date
+            && form.estimated_delivery_date
+            && form.estimated_delivery_date < form.scheduled_start_date
+        ) {
+            form.estimated_delivery_date = form.scheduled_start_date;
+        }
+    },
+);
+
+const statsHintsByCategory = computed(() => props.quest_stats_hints?.by_category ?? {});
+
+const budgetStatsForSelection = computed(() => {
+    const id = form.quest_category_id;
+    const key = id ? String(id) : '';
+    const row = key ? statsHintsByCategory.value[key] : null;
+    const b = row?.budget;
+
+    return b?.sample_size ? b : props.quest_stats_hints?.global_budget ?? null;
+});
+
+const completionStatsForSelection = computed(() => {
+    const id = form.quest_category_id;
+    const key = id ? String(id) : '';
+    const row = key ? statsHintsByCategory.value[key] : null;
+    const c = row?.completion;
+
+    return c?.sample_size ? c : props.quest_stats_hints?.global_completion ?? null;
+});
+
+const budgetGuidanceCopy = computed(() => {
+    const b = budgetStatsForSelection.value;
+    if (!b?.sample_size) {
+        return '';
+    }
+
+    return `Open quests with a similar subcategory often budget between ${formatNgn(b.min_minor)} and ${formatNgn(b.max_minor)} (average ${formatNgn(b.avg_minor)}, from ${b.sample_size} live listings). This is guidance only — set what fits your scope.`;
+});
+
+const completionGuidanceCopy = computed(() => {
+    const c = completionStatsForSelection.value;
+    if (!c?.sample_size) {
+        return '';
+    }
+
+    return `Typical timelines cluster around ${Math.round(c.avg_days)} days for comparable work (${c.min_days}–${c.max_days} day range across ${c.sample_size} quests). Pick what matches your delivery reality.`;
+});
+
 const taggedDisplay = computed(() => form.tagged_freelancer_ids.map((id) => ({ id, label: tagLabelById.value[id] || `#${id}` })));
+
+const freelancerNetworkGroups = computed(() => {
+    const groups = [];
+    const mapUser = (u) => ({
+        value: u.id,
+        label: u.first_name ? `${String(u.first_name).trim()} · ${u.name}` : u.name,
+        hint: u.slug ? `@${u.slug}` : undefined,
+    });
+    if (props.freelancersYouFollow?.length) {
+        groups.push({
+            label: 'Freelancers you follow',
+            options: props.freelancersYouFollow.map(mapUser),
+        });
+    }
+    if (props.freelancersFollowingYou?.length) {
+        groups.push({
+            label: 'Freelancers following you',
+            options: props.freelancersFollowingYou.map(mapUser),
+        });
+    }
+
+    return groups;
+});
+
+function clampBudgetMinor(n) {
+    const minB = props.minBudgetMinor;
+    const maxB = props.maxBudgetMinor;
+    const x = Number(n);
+    if (!Number.isFinite(x)) {
+        return minB;
+    }
+
+    return Math.min(maxB, Math.max(minB, x));
+}
+
+const budgetSliderStep = computed(() => {
+    const span = props.maxBudgetMinor - props.minBudgetMinor;
+    if (span <= 500_000) {
+        return 10_000;
+    }
+    if (span <= 5_000_000) {
+        return 50_000;
+    }
+
+    return 100_000;
+});
+
+const budgetSliderModel = computed({
+    get() {
+        return clampBudgetMinor(form.budget_amount_minor);
+    },
+    set(v) {
+        form.budget_amount_minor = clampBudgetMinor(v);
+    },
+});
+
+const clampedBudgetMinor = computed(() => clampBudgetMinor(form.budget_amount_minor));
+
+const budgetNairaText = ref('');
+
+watch(
+    clampedBudgetMinor,
+    (m) => {
+        budgetNairaText.value = String(Math.round(m / 100));
+    },
+    { immediate: true },
+);
+
+function commitBudgetNairaFromInput() {
+    const raw = String(budgetNairaText.value || '')
+        .replace(/,/g, '')
+        .trim();
+    const n = Math.round(Number(raw));
+    if (!Number.isFinite(n) || n < 0) {
+        budgetNairaText.value = String(Math.round(clampedBudgetMinor.value / 100));
+
+        return;
+    }
+    form.budget_amount_minor = clampBudgetMinor(n * 100);
+    budgetNairaText.value = String(Math.round(form.budget_amount_minor / 100));
+}
 
 watch(step, (s) => {
     maxReachedStep.value = Math.max(maxReachedStep.value, s);
+    clientStepBanner.value = '';
 });
 
 const continueLabel = computed(() => {
@@ -681,7 +1029,13 @@ const previewBlocks = computed(() => {
                 { label: 'Domain', value: parentDomainName() },
                 { label: 'Subcategory', value: leafCategoryName() },
                 { label: 'Title', value: String(form.title || '').trim() || '—' },
-                { label: 'Description', value: String(form.description || '').trim() ? `${String(form.description).slice(0, 220)}${String(form.description).length > 220 ? '…' : ''}` : '—' },
+                {
+                    label: 'Description',
+                    value: (() => {
+                        const plain = htmlToPlainText(form.description);
+                        return plain ? `${plain.slice(0, 220)}${plain.length > 220 ? '…' : ''}` : '—';
+                    })(),
+                },
             ],
         },
         {
@@ -694,7 +1048,7 @@ const previewBlocks = computed(() => {
                     ? [{ label: 'Availability', value: optionLabel(availabilityOptions, form.availability_need) }]
                     : []),
                 { label: 'Traffic source', value: String(form.traffic_source || '').trim() || '—' },
-                { label: 'UTM', value: [utm.utm_source, utm.utm_medium, utm.utm_campaign].filter(Boolean).join(' · ') || '—' },
+                { label: 'Campaign tracking', value: [utm.utm_source, utm.utm_medium, utm.utm_campaign].filter(Boolean).join(' · ') || '—' },
             ],
         },
         {
@@ -714,8 +1068,8 @@ const previewBlocks = computed(() => {
                 ...(form.start_timing === 'scheduled'
                     ? [{ label: 'Start date', value: String(form.scheduled_start_date || '').trim() || '—' }]
                     : []),
-                { label: 'Completion', value: `${form.estimated_completion_days} days` },
-                { label: 'Delivery target', value: String(form.estimated_delivery_date || '').trim() || '—' },
+                { label: 'Estimated duration', value: `${form.estimated_completion_days} days` },
+                { label: 'Planned finish', value: String(form.estimated_delivery_date || '').trim() || '—' },
                 { label: 'Budget cap', value: formatNgn(form.budget_amount_minor) },
             ],
         },
@@ -725,6 +1079,18 @@ const previewBlocks = computed(() => {
             rows: [
                 ...(fieldProfile.show_site_visit
                     ? [{ label: 'Site visits', value: form.site_visits_allowed ? 'Allowed / expected' : 'Not expected' }]
+                    : []),
+                ...(fieldProfile.show_site_access
+                    ? [
+                          { label: 'Location access', value: optionLabel(siteAccessOptions, form.site_access_level) },
+                          {
+                              label: 'Pets on site',
+                              value: form.pets_on_site === true ? 'Yes' : form.pets_on_site === false ? 'No' : '—',
+                          },
+                          ...(String(form.pets_detail || '').trim()
+                              ? [{ label: 'Pet notes', value: String(form.pets_detail).trim() }]
+                              : []),
+                      ]
                     : []),
                 { label: 'Project type', value: optionLabel(projectTypeOptions, form.project_type) },
                 ...(fieldProfile.show_hourly_fields && form.project_type === 'hourly'
@@ -739,8 +1105,7 @@ const previewBlocks = computed(() => {
             rows: [
                 { label: 'Promotion', value: optionLabel(promotionOptions, form.promotion_tier) },
                 { label: 'Auto-expiry (days)', value: form.auto_listing_expiry_days != null && form.auto_listing_expiry_days !== '' ? String(form.auto_listing_expiry_days) : '—' },
-                { label: 'Max offers', value: form.max_offers != null && form.max_offers !== '' ? String(form.max_offers) : '—' },
-                { label: 'Slug', value: String(form.slug || '').trim() || 'Auto from title' },
+                { label: 'Max proposals', value: form.max_offers != null && form.max_offers !== '' ? String(form.max_offers) : '—' },
                 { label: 'Tagged freelancers', value: taggedDisplay.value.map((t) => t.label).join(', ') || '—' },
                 { label: 'Files', value: form.files?.length ? `${form.files.length} attached` : 'None' },
             ],
@@ -758,6 +1123,7 @@ function validationDeps() {
         categoryTree: props.categoryTree,
         locations: props.locations,
         maxBudgetMinor: props.maxBudgetMinor,
+        minBudgetMinor: props.minBudgetMinor,
     };
 }
 
@@ -816,14 +1182,54 @@ watch(siteVisitChoice, (v) => {
     form.site_visits_allowed = v === 'yes';
 });
 
-watch(parentCategoryId, () => {
+function onParentCategoryChange(value) {
+    const next = Number(value);
+    if (next === Number(parentCategoryId.value)) {
+        return;
+    }
+    parentCategoryId.value = next;
     form.quest_category_id = 0;
+}
+
+function syncParentCategoryFromLeaf() {
+    const leafId = Number(form.quest_category_id);
+    if (!leafId) {
+        return;
+    }
+    for (const p of props.categoryTree) {
+        const children = p.children || [];
+        if (children.some((c) => Number(c.id) === leafId)) {
+            const pid = Number(p.id);
+            if (Number(parentCategoryId.value) !== pid) {
+                parentCategoryId.value = pid;
+            }
+
+            return;
+        }
+    }
+}
+
+watch(
+    () => [form.quest_category_id, props.categoryTree],
+    () => {
+        syncParentCategoryFromLeaf();
+    },
+    { deep: true },
+);
+
+onMounted(() => {
+    syncParentCategoryFromLeaf();
 });
 
 watch(
     () => form.state_id,
-    () => {
-        form.local_government_id = 0;
+    (newId, oldId) => {
+        if (oldId === undefined) {
+            return;
+        }
+        if (Number(newId) !== Number(oldId)) {
+            form.local_government_id = 0;
+        }
     },
 );
 
@@ -836,6 +1242,11 @@ watch(
         try {
             const { data } = await axios.get(props.fieldProfileUrl, { params: { quest_category_id: id } });
             Object.assign(fieldProfile, data);
+            if (!fieldProfile.show_site_access) {
+                form.site_access_level = '';
+                form.pets_on_site = null;
+                form.pets_detail = '';
+            }
             if (!fieldProfile.show_site_visit) {
                 siteVisitChoice.value = 'no';
                 form.site_visits_allowed = false;
@@ -864,12 +1275,32 @@ watch(tagQuery, (q) => {
     tagTimer = window.setTimeout(async () => {
         try {
             const { data } = await axios.get(route('users.freelancers.search'), { params: { q: q.trim() } });
-            tagResults.value = (data.users || []).filter((u) => !form.tagged_freelancer_ids.includes(u.id));
+            tagResults.value = (data.users || []).filter((u) => !form.tagged_freelancer_ids.some((x) => Number(x) === Number(u.id)));
         } catch {
             tagResults.value = [];
         }
     }, 280);
 });
+
+watch(
+    () => [...form.tagged_freelancer_ids],
+    () => {
+        const next = { ...tagLabelById.value };
+        const pool = [...(props.freelancersYouFollow || []), ...(props.freelancersFollowingYou || [])];
+        for (const rawId of form.tagged_freelancer_ids) {
+            const id = Number(rawId);
+            if (!Number.isFinite(id) || next[id]) {
+                continue;
+            }
+            const u = pool.find((x) => Number(x.id) === id);
+            if (u) {
+                next[id] = u.first_name ? `${String(u.first_name).trim()} · ${u.name}` : u.name;
+            }
+        }
+        tagLabelById.value = next;
+    },
+    { deep: true },
+);
 
 function buildPayload() {
     const raw = { ...form.data() };
@@ -893,32 +1324,50 @@ function buildPayload() {
     };
 }
 
+function scrollToStepAlert() {
+    nextTick(() => {
+        document.getElementById('quest-create-alert')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+}
+
 function next() {
     const deps = validationDeps();
     if (fromPreview.value) {
         for (let s = 1; s <= 6; s += 1) {
             const { ok, errors } = validateQuestCreateStep(s, deps);
             if (!ok) {
+                const msg = Object.values(errors)[0];
+                clientStepBanner.value = typeof msg === 'string' ? msg : 'Please fix the highlighted fields.';
                 applyClientErrors(errors);
                 step.value = s;
+                scrollToStepAlert();
+
                 return;
             }
         }
         form.clearErrors();
+        clientStepBanner.value = '';
         fromPreview.value = false;
         step.value = 7;
+
         return;
     }
 
     const { ok, errors } = validateQuestCreateStep(step.value, deps);
     if (!ok) {
+        const msg = Object.values(errors)[0];
+        clientStepBanner.value = typeof msg === 'string' ? msg : 'Please fix the highlighted fields.';
         applyClientErrors(errors);
+        scrollToStepAlert();
+
         return;
     }
 
     form.clearErrors();
+    clientStepBanner.value = '';
     if (step.value === 6) {
         step.value = 7;
+
         return;
     }
     if (step.value < 6) {
@@ -960,14 +1409,30 @@ function addTag(u) {
     if (form.tagged_freelancer_ids.length >= 20) {
         return;
     }
-    form.tagged_freelancer_ids.push(u.id);
-    tagLabelById.value = { ...tagLabelById.value, [u.id]: u.label || u.name };
+    const id = Number(u.id);
+    if (form.tagged_freelancer_ids.some((x) => Number(x) === id)) {
+        return;
+    }
+    form.tagged_freelancer_ids.push(id);
+    tagLabelById.value = { ...tagLabelById.value, [id]: u.label || u.name };
     tagResults.value = [];
     tagQuery.value = '';
 }
 
 function removeTag(id) {
-    form.tagged_freelancer_ids = form.tagged_freelancer_ids.filter((x) => x !== id);
+    form.tagged_freelancer_ids = form.tagged_freelancer_ids.filter((x) => Number(x) !== Number(id));
+}
+
+function formatFileSize(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) {
+        return `${n} B`;
+    }
+    if (n < 1024 * 1024) {
+        return `${(n / 1024).toFixed(1)} KB`;
+    }
+
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function pushFiles(list) {
@@ -976,7 +1441,26 @@ function pushFiles(list) {
             break;
         }
         form.files.push(file);
+        const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+        const url = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+        fileRowKey += 1;
+        fileRows.value.push({
+            key: fileRowKey,
+            name: file.name,
+            size: file.size,
+            url,
+            isPdf,
+        });
     }
+}
+
+function removeFile(index) {
+    const row = fileRows.value[index];
+    if (row?.url) {
+        URL.revokeObjectURL(row.url);
+    }
+    fileRows.value.splice(index, 1);
+    form.files.splice(index, 1);
 }
 
 function onFileInput(e) {
@@ -989,6 +1473,14 @@ function onDrop(e) {
     pushFiles(e.dataTransfer?.files);
 }
 
+onUnmounted(() => {
+    for (const row of fileRows.value) {
+        if (row.url) {
+            URL.revokeObjectURL(row.url);
+        }
+    }
+});
+
 function submit() {
     if (step.value !== 7) {
         return;
@@ -997,8 +1489,12 @@ function submit() {
     for (let s = 1; s <= 6; s += 1) {
         const { ok, errors } = validateQuestCreateStep(s, deps);
         if (!ok) {
+            const msg = Object.values(errors)[0];
+            clientStepBanner.value = typeof msg === 'string' ? msg : 'Please fix the highlighted fields.';
             applyClientErrors(errors);
             step.value = s;
+            scrollToStepAlert();
+
             return;
         }
     }
@@ -1006,24 +1502,35 @@ function submit() {
     if (form.visibility === 'invite_only' && form.tagged_freelancer_ids.length < 1) {
         form.clearErrors();
         form.setError('tagged_freelancer_ids', 'Add at least one freelancer for invite-only quests.');
+        clientStepBanner.value = 'Invite-only quests need at least one tagged freelancer.';
         step.value = 6;
+        scrollToStepAlert();
 
         return;
     }
+    if (!form.accepted_terms) {
+        form.clearErrors();
+        form.setError('accepted_terms', 'Please confirm you agree to the Terms of Service and Privacy Policy.');
+        clientStepBanner.value = 'Confirm the legal checkboxes before submitting.';
+        scrollToStepAlert();
+
+        return;
+    }
+    clientStepBanner.value = '';
     form
         .transform((data) => ({
             ...data,
             site_visits_allowed: !!data.site_visits_allowed,
             publish_now: !!data.publish_now,
+            accepted_terms: !!data.accepted_terms,
             traffic_utm: buildPayload().traffic_utm,
-            tagged_freelancer_ids: data.tagged_freelancer_ids.length ? data.tagged_freelancer_ids : [],
+            tagged_freelancer_ids: data.tagged_freelancer_ids.length ? data.tagged_freelancer_ids.map((x) => Number(x)) : [],
             availability_need: data.availability_need || null,
             project_type: data.project_type || null,
             estimated_hours: data.estimated_hours || null,
             team_size: data.team_size || null,
             auto_listing_expiry_days: data.auto_listing_expiry_days || null,
             max_offers: data.max_offers || null,
-            slug: data.slug?.trim() || null,
             traffic_source: data.traffic_source?.trim() || null,
             estimated_delivery_date: data.estimated_delivery_date || null,
             scheduled_start_date: data.scheduled_start_date || null,
@@ -1048,5 +1555,54 @@ function submit() {
 .fade-slide-leave-to {
     opacity: 0;
     transform: translateX(-12px);
+}
+
+.budget-range {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 2.75rem;
+    background: transparent;
+    touch-action: manipulation;
+}
+
+.budget-range:focus {
+    outline: none;
+}
+
+.budget-range:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 4px rgb(20 184 166 / 0.35);
+}
+
+.budget-range::-webkit-slider-runnable-track {
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: linear-gradient(to right, rgb(226 232 240), rgb(203 213 225));
+}
+
+.budget-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 1.375rem;
+    height: 1.375rem;
+    margin-top: -0.4375rem;
+    border-radius: 9999px;
+    border: 3px solid #fff;
+    background: linear-gradient(145deg, rgb(13 148 136), rgb(59 130 246));
+    box-shadow: 0 2px 10px rgb(15 23 42 / 0.22);
+}
+
+.budget-range::-moz-range-track {
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: linear-gradient(to right, rgb(226 232 240), rgb(203 213 225));
+}
+
+.budget-range::-moz-range-thumb {
+    width: 1.375rem;
+    height: 1.375rem;
+    border-radius: 9999px;
+    border: 3px solid #fff;
+    background: linear-gradient(145deg, rgb(13 148 136), rgb(59 130 246));
+    box-shadow: 0 2px 10px rgb(15 23 42 / 0.22);
 }
 </style>

@@ -6,6 +6,7 @@ use App\Enums\QuestStatus;
 use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -19,7 +20,7 @@ class DashboardListController extends Controller
         'freelancer-active-quests',
         'freelancer-completed-quests',
         'freelancer-income-quests',
-        'freelancer-offers-sent',
+        'freelancer-proposals-sent',
     ];
 
     /** @var list<string> */
@@ -27,11 +28,21 @@ class DashboardListController extends Controller
         'client-live-quests',
         'client-all-quests',
         'client-escrow-activity',
-        'client-offers-inbox',
+        'client-proposals-inbox',
     ];
+
+    protected function canonicalListKey(string $list): string
+    {
+        return match ($list) {
+            'freelancer-offers-sent' => 'freelancer-proposals-sent',
+            'client-offers-inbox' => 'client-proposals-inbox',
+            default => $list,
+        };
+    }
 
     public function show(Request $request, string $list): Response|JsonResponse
     {
+        $list = $this->canonicalListKey($list);
         $user = $request->user();
         $user->loadMissing('role');
         $slug = $user->role?->slug ?? 'client';
@@ -101,7 +112,7 @@ class DashboardListController extends Controller
             'freelancer-active-quests' => [
                 'title' => __('Active quests'),
                 'subtitle' => __('Work you are delivering right now — statuses update as milestones move.'),
-                'empty' => __('You have no active quests yet. Explore open briefs and send an offer.'),
+                'empty' => __('You have no active quests yet. Explore open briefs and send a proposal.'),
             ],
             'freelancer-completed-quests' => [
                 'title' => __('Completed quests'),
@@ -113,10 +124,10 @@ class DashboardListController extends Controller
                 'subtitle' => __('Escrow releases recorded on completed or archived quests.'),
                 'empty' => __('No payout history yet — completed quests with releases appear here.'),
             ],
-            'freelancer-offers-sent' => [
-                'title' => __('Offers you sent'),
+            'freelancer-proposals-sent' => [
+                'title' => __('Proposals you sent'),
                 'subtitle' => __('Pitches and quotes you have shared on open quests.'),
-                'empty' => __('You have not sent offers yet — browse matched quests to pitch sponsors.'),
+                'empty' => __('You have not sent proposals yet — browse matched quests to pitch sponsors.'),
             ],
             'client-live-quests' => [
                 'title' => __('Live quests'),
@@ -133,17 +144,17 @@ class DashboardListController extends Controller
                 'subtitle' => __('Quests where funds have moved through escrow milestones.'),
                 'empty' => __('No escrow activity yet — releases appear as freelancers deliver.'),
             ],
-            'client-offers-inbox' => [
-                'title' => __('Offers on your quests'),
+            'client-proposals-inbox' => [
+                'title' => __('Proposals on your quests'),
                 'subtitle' => __('Freelancer responses waiting for your review.'),
-                'empty' => __('No offers yet — when freelancers pitch, they appear here.'),
+                'empty' => __('No proposals yet — when freelancers pitch, they appear here.'),
             ],
             default => null,
         };
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Builder<Quest|QuestOffer>
+     * @return Builder<Quest|QuestOffer>
      */
     protected function queryForList(string $list, User $user)
     {
@@ -190,9 +201,9 @@ class DashboardListController extends Controller
                 ->where('paid_out_minor', '>', 0)
                 ->latest('updated_at'),
 
-            'freelancer-offers-sent' => QuestOffer::query()
+            'freelancer-proposals-sent' => QuestOffer::query()
                 ->where('freelancer_id', $user->id)
-                ->with(['quest:id,uuid,title,status'])
+                ->with(['quest:id,uuid,slug,title,status'])
                 ->latest('updated_at'),
 
             'client-live-quests' => Quest::query()
@@ -210,9 +221,9 @@ class DashboardListController extends Controller
                 ->where('paid_out_minor', '>', 0)
                 ->latest('updated_at'),
 
-            'client-offers-inbox' => QuestOffer::query()
+            'client-proposals-inbox' => QuestOffer::query()
                 ->whereHas('quest', fn ($q) => $q->where('client_id', $user->id))
-                ->with(['quest:id,uuid,title,status', 'freelancer:id,first_name,name'])
+                ->with(['quest:id,uuid,slug,title,status', 'freelancer:id,first_name,name,avatar_url'])
                 ->latest('updated_at'),
 
             default => Quest::query()->whereRaw('1 = 0'),
@@ -220,22 +231,35 @@ class DashboardListController extends Controller
     }
 
     /**
-     * @param  Quest|QuestOffer  $row
      * @return array<string, mixed>
      */
     protected function serializeRow(string $list, Quest|QuestOffer $row): array
     {
         if ($row instanceof QuestOffer) {
+            $quest = $row->quest;
+            $routeKey = $quest ? ($quest->slug ?: $quest->uuid) : null;
+            $href = $routeKey ? route('quests.proposals.show', [$routeKey, $row->id]) : null;
+            $quotedMinor = (int) ($row->quoted_amount_minor ?? 0);
+
             return [
-                'kind' => 'offer',
+                'kind' => 'proposal',
                 'id' => $row->id,
                 'status' => $row->status,
+                'title' => $row->quest?->title,
+                'submitted_at' => $row->created_at?->timezone('Africa/Lagos')->toIso8601String(),
                 'updated_at' => $row->updated_at?->timezone('Africa/Lagos')->toIso8601String(),
                 'quest_title' => $row->quest?->title,
                 'quest_status' => $row->quest?->status?->value,
-                'freelancer_label' => $list === 'client-offers-inbox'
+                'quest_slug' => $row->quest?->slug,
+                'quest_uuid' => $row->quest?->uuid,
+                'freelancer_label' => $list === 'client-proposals-inbox'
                     ? ($row->freelancer?->first_name ?: $row->freelancer?->name)
                     : null,
+                'freelancer_avatar_url' => $list === 'client-proposals-inbox'
+                    ? $row->freelancer?->avatar_url
+                    : null,
+                'quoted_amount_display' => $this->formatNgnFromMinor($quotedMinor),
+                'href' => $href,
             ];
         }
 
@@ -243,6 +267,7 @@ class DashboardListController extends Controller
             'kind' => 'quest',
             'id' => $row->id,
             'uuid' => $row->uuid,
+            'slug' => $row->slug,
             'title' => $row->title,
             'status' => $row->status->value,
             'updated_at' => $row->updated_at?->timezone('Africa/Lagos')->toIso8601String(),

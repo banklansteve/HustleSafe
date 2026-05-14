@@ -3,60 +3,78 @@
         <Head title="Explore quests" />
 
         <div
-            v-if="workspace.enabled && workspacePanelLines.length"
+            v-if="workspace.enabled && workspacePanelItems.length"
             class="mb-8 rounded-2xl border border-secondary-200/80 bg-gradient-to-r from-secondary-50 via-amber-50/90 to-secondary-50 p-5 shadow-sm ring-1 ring-secondary-100 sm:p-6"
             role="status"
         >
             <p class="text-xs font-black uppercase tracking-[0.2em] text-secondary-800">
                 Profile & verification
             </p>
-            <ul class="mt-3 list-inside list-disc space-y-1.5 text-sm font-semibold text-secondary-950">
-                <li v-for="(line, i) in workspacePanelLines" :key="i">
-                    {{ line }}
+            <ul class="mt-3 space-y-3">
+                <li
+                    v-for="(item, i) in workspacePanelItems"
+                    :key="i"
+                    class="list-none rounded-xl border border-secondary-100/80 bg-white/60 px-3 py-2.5 text-sm font-semibold text-secondary-950 ring-1 ring-white/60"
+                >
+                    <p class="leading-snug">
+                        {{ item.message }}
+                    </p>
+                    <Link
+                        v-if="item.action_url"
+                        :href="item.action_url"
+                        class="mt-2 inline-flex items-center gap-1 text-xs font-black uppercase tracking-wide text-secondary-900 underline decoration-secondary-400 underline-offset-2 hover:text-secondary-700"
+                    >
+                        {{ item.action_label || 'Fix this' }}
+                        <span aria-hidden="true">→</span>
+                    </Link>
                 </li>
             </ul>
-            <div class="mt-4 flex flex-wrap gap-3">
-                <Link
-                    :href="route('account.show', { tab: 'overview' })"
-                    class="inline-flex items-center rounded-full bg-secondary-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-secondary-700"
-                >
-                    Account settings
-                </Link>
-                <Link
-                    :href="route('verifications.index')"
-                    class="inline-flex items-center rounded-full border border-secondary-300 bg-white px-4 py-2 text-xs font-bold text-secondary-900 shadow-sm hover:bg-secondary-50"
-                >
-                    Trust & verifications
-                </Link>
-            </div>
             <p
-                v-if="workspace.tier === 'limited' && workspace.can_submit_offers"
+                v-if="workspace.tier === 'limited' && workspace.can_submit_proposals"
                 class="mt-3 text-xs font-semibold text-secondary-900/90"
             >
                 Until your ID is approved you can send up to {{ workspace.limited_slots_remaining }} more modest
-                offers (see budget cap on each quest).
+                proposals (see budget cap on each quest).
             </p>
         </div>
 
         <div class="rounded-[2rem] bg-gradient-to-br from-primary-800 via-slate-900 to-slate-950 px-6 py-10 text-white shadow-xl ring-1 ring-white/10 sm:px-10">
             <p class="text-xs font-bold uppercase tracking-[0.25em] text-teal-200/90">
-                For you
+                {{ explore_mode === 'client' ? 'Market pulse' : 'For you' }}
             </p>
             <h1 class="font-display mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-                Matched open quests
+                {{ explore_mode === 'client' ? 'Open quests on the marketplace' : 'Matched open quests' }}
             </h1>
             <p class="mt-4 max-w-2xl text-base font-semibold leading-relaxed text-teal-50">
-                Ranked by your categories, distance, and how fresh the brief is. More signals (exact coordinates on quests)
-                make this sharper over time.
+                <template v-if="explore_mode === 'client'">
+                    Browse live public briefs for inspiration on how sponsors scope work, budgets, and timelines — without leaving HustleSafe.
+                </template>
+                <template v-else>
+                    Ranked by your categories, distance, and how fresh the brief is. More signals (exact coordinates on quests)
+                    make this sharper over time.
+                </template>
             </p>
         </div>
 
         <div class="mt-10 space-y-5">
+            <ListSearchSortBar
+                v-if="rawQuests.length"
+                v-model:search="search"
+                v-model:sort="sortKey"
+                class="mb-2"
+                placeholder="Search title, category, location, match…"
+                :sort-options="sortOptions"
+            />
+
             <div
-                v-for="q in quests"
-                :key="q.uuid"
-                class="rounded-[1.5rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 transition hover:border-primary-200 hover:shadow-md sm:p-8"
+                v-for="q in visibleQuests"
+                :key="q.slug || q.uuid"
+                class="overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-sm ring-1 ring-slate-100 transition hover:border-primary-200 hover:shadow-md"
             >
+                <div class="relative aspect-[21/9] w-full overflow-hidden bg-slate-100 sm:aspect-[24/9]">
+                    <img :src="q.cover_url" alt="" class="h-full w-full object-cover" loading="lazy" />
+                </div>
+                <div class="space-y-4 p-6 sm:p-8">
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div class="min-w-0 flex-1">
                         <p class="font-display text-lg font-bold text-slate-900 sm:text-xl">
@@ -64,10 +82,11 @@
                         </p>
                         <div class="mt-3 flex flex-wrap gap-2 text-sm font-semibold text-slate-600">
                             <span
-                                v-if="q.category"
+                                v-if="q.parent_category || q.category"
                                 class="rounded-full bg-primary-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-primary-900 ring-1 ring-primary-100"
                             >
-                                {{ q.category }}
+                                <template v-if="q.parent_category && q.category">{{ q.parent_category }} · {{ q.category }}</template>
+                                <template v-else>{{ q.category }}</template>
                             </span>
                             <span v-if="q.city || q.state" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
                                 {{ [q.city, q.state].filter(Boolean).join(' · ') }}
@@ -103,121 +122,66 @@
                 </p>
                 <div class="mt-5 flex flex-wrap items-center gap-3">
                     <Link
-                        :href="route('quests.show', q.uuid)"
+                        :href="route('quests.show', q.slug || q.uuid)"
                         class="inline-flex items-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-800 shadow-sm hover:border-primary-200 hover:bg-primary-50"
                     >
                         View quest
                     </Link>
-                    <button
-                        type="button"
-                        class="inline-flex items-center rounded-full bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-primary-900/20 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        :disabled="!workspace.can_submit_offers || !q.category_match"
-                        @click="openOfferModal(q)"
+                    <Link
+                        v-if="workspace.can_submit_proposals && q.category_match"
+                        :href="route('quests.proposals.create', q.slug || q.uuid)"
+                        class="inline-flex items-center rounded-full bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-primary-900/20 hover:bg-primary-700"
                     >
-                        Send offer
+                        Send proposal
+                    </Link>
+                    <button
+                        v-else
+                        type="button"
+                        disabled
+                        class="inline-flex cursor-not-allowed items-center rounded-full bg-slate-200 px-5 py-2.5 text-sm font-bold text-slate-500 opacity-70"
+                    >
+                        Send proposal
                     </button>
-                    <p v-if="!workspace.can_submit_offers" class="self-center text-xs font-semibold text-rose-700">
-                        Complete the checklist above to unlock offers.
+                    <p v-if="!workspace.can_submit_proposals" class="self-center text-xs font-semibold text-rose-700">
+                        Complete the checklist above to unlock proposals.
                     </p>
                     <p v-else-if="!q.category_match" class="self-center text-xs font-semibold text-amber-800">
-                        Add this quest’s subcategory to your profile to send an offer.
+                        Add this quest’s subcategory to your profile to send a proposal.
                     </p>
+                </div>
                 </div>
             </div>
 
             <p
-                v-if="quests.length === 0"
+                v-if="rawQuests.length === 0"
                 class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-12 text-center text-base font-semibold text-slate-600"
             >
                 No open quests right now — check back soon or widen your categories in profile.
             </p>
-        </div>
-
-        <Teleport to="body">
-            <div
-                v-if="offerTarget"
-                class="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/50 p-4 sm:items-center"
-                role="dialog"
-                aria-modal="true"
-                :aria-label="`Offer: ${offerTarget.title}`"
-                @click.self="closeOfferModal"
+            <p
+                v-else-if="rawQuests.length && !sortedFiltered.length"
+                class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm font-semibold text-slate-600"
             >
-                <div
-                    class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl sm:p-8"
-                    @click.stop
+                No quests match your search.
+            </p>
+
+            <div v-if="sortedFiltered.length > visibleLimit" class="flex justify-center pt-2">
+                <button
+                    type="button"
+                    class="inline-flex min-h-[48px] w-full max-w-sm items-center justify-center rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-black text-slate-800 shadow-sm transition hover:border-primary-300 hover:bg-primary-50 sm:w-auto"
+                    @click="loadMoreChunk"
                 >
-                    <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Offer for</p>
-                            <p class="font-display text-lg font-bold text-slate-900">
-                                {{ offerTarget.title }}
-                            </p>
-                        </div>
-                        <button
-                            type="button"
-                            class="rounded-full p-2 text-slate-500 hover:bg-slate-100"
-                            aria-label="Close"
-                            @click="closeOfferModal"
-                        >
-                            ✕
-                        </button>
-                    </div>
-                    <form class="mt-6 space-y-4" @submit.prevent="submitOffer">
-                        <div>
-                            <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Your pitch</label>
-                            <textarea
-                                v-model="offerForm.pitch"
-                                required
-                                rows="5"
-                                class="mt-1 w-full rounded-xl border-slate-200 text-sm font-medium shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                                placeholder="How you will deliver, timeline, and what is included."
-                            />
-                            <InputError class="mt-1" :message="offerForm.errors.pitch" />
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">
-                                Quote (₦, optional)
-                            </label>
-                            <input
-                                v-model.number="offerForm.quoted_ngn"
-                                type="number"
-                                min="0"
-                                step="1"
-                                class="mt-1 w-full rounded-xl border-slate-200 text-sm font-medium shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                                placeholder="e.g. 75000"
-                            />
-                            <p class="mt-1 text-xs font-medium text-slate-500">Whole naira. Leave blank if you want to align in chat first.</p>
-                            <InputError class="mt-1" :message="offerForm.errors.quoted_amount_minor" />
-                        </div>
-                        <InputError class="mt-1" :message="offerForm.errors.offer" />
-                        <InputError class="mt-1" :message="offerForm.errors.workspace" />
-                        <div class="flex flex-wrap gap-3 pt-2">
-                            <button
-                                type="submit"
-                                class="rounded-full bg-primary-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-primary-700 disabled:opacity-50"
-                                :disabled="offerForm.processing"
-                            >
-                                Submit offer
-                            </button>
-                            <button
-                                type="button"
-                                class="rounded-full border border-slate-200 px-6 py-2.5 text-sm font-bold text-slate-800 hover:bg-slate-50"
-                                @click="closeOfferModal"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </form>
-                </div>
+                    Load more ({{ visibleLimit }} / {{ sortedFiltered.length }})
+                </button>
             </div>
-        </Teleport>
+        </div>
     </AppShell>
 </template>
 
 <script setup>
-import InputError from '@/Components/InputError.vue';
+import ListSearchSortBar from '@/Components/Ui/ListSearchSortBar.vue';
 import AppShell from '@/Layouts/AppShell.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -229,71 +193,117 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    explore_mode: {
+        type: String,
+        default: 'freelancer',
+    },
 });
 
-const workspacePanelLines = computed(() => {
+const rawQuests = ref([...props.quests]);
+const search = ref('');
+const sortKey = ref('match_desc');
+const visibleLimit = ref(12);
+
+const sortOptions = [
+    { value: 'match_desc', label: 'Best match' },
+    { value: 'posted_desc', label: 'Newest posted' },
+    { value: 'budget_desc', label: 'Highest budget' },
+    { value: 'title_asc', label: 'Title A–Z' },
+];
+
+watch(
+    () => props.quests,
+    (v) => {
+        rawQuests.value = [...(v || [])];
+    },
+    { deep: true },
+);
+
+watch([search, sortKey], () => {
+    visibleLimit.value = 12;
+});
+
+const sortedFiltered = computed(() => {
+    const q = search.value.trim().toLowerCase();
+    let rows = rawQuests.value.slice();
+    if (q) {
+        rows = rows.filter((row) => {
+            const blob = [
+                row.title,
+                row.category,
+                row.parent_category,
+                row.city,
+                row.state,
+                String(row.match_score ?? ''),
+                ...(row.reasons || []),
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+
+            return blob.includes(q);
+        });
+    }
+    const sk = sortKey.value;
+    rows.sort((a, b) => {
+        if (sk === 'title_asc') {
+            return String(a.title || '').localeCompare(String(b.title || ''));
+        }
+        if (sk === 'budget_desc') {
+            return (Number(b.budget_minor) || 0) - (Number(a.budget_minor) || 0);
+        }
+        if (sk === 'posted_desc') {
+            return ts(b.posted_at) - ts(a.posted_at);
+        }
+
+        return (Number(b.match_score) || 0) - (Number(a.match_score) || 0);
+    });
+
+    return rows;
+});
+
+const visibleQuests = computed(() => sortedFiltered.value.slice(0, visibleLimit.value));
+
+function ts(iso) {
+    if (!iso) {
+        return 0;
+    }
+    const n = Date.parse(iso);
+
+    return Number.isFinite(n) ? n : 0;
+}
+
+function loadMoreChunk() {
+    visibleLimit.value = Math.min(sortedFiltered.value.length, visibleLimit.value + 12);
+}
+
+const workspacePanelItems = computed(() => {
     const ws = props.workspace;
     if (!ws?.enabled) {
         return [];
     }
-    const lines = [];
+    const items = [];
     for (const b of ws.blockers || []) {
         if (b?.message) {
-            lines.push(b.message);
+            items.push({
+                message: b.message,
+                action_label: b.action_label,
+                action_url: b.action_url,
+            });
         }
     }
     for (const h of ws.hints || []) {
         if (h?.message) {
-            lines.push(h.message);
+            items.push({
+                message: h.message,
+                action_label: h.action_label,
+                action_url: h.action_url,
+            });
         }
     }
 
-    return lines;
+    return items.slice(0, 5);
 });
-
-const offerTarget = ref(null);
-
-const offerForm = useForm({
-    pitch: '',
-    quoted_ngn: null,
-});
-
-watch(offerTarget, (q) => {
-    if (!q) {
-        offerForm.reset();
-        offerForm.clearErrors();
-    }
-});
-
-function openOfferModal(q) {
-    if (!props.workspace.can_submit_offers || !q.category_match) {
-        return;
-    }
-    offerTarget.value = q;
-    offerForm.clearErrors();
-}
-
-function closeOfferModal() {
-    offerTarget.value = null;
-}
-
-function submitOffer() {
-    if (!offerTarget.value) {
-        return;
-    }
-    offerForm
-        .transform((data) => ({
-            pitch: data.pitch,
-            quoted_amount_minor:
-                data.quoted_ngn !== null && data.quoted_ngn !== '' && !Number.isNaN(Number(data.quoted_ngn))
-                    ? Math.round(Number(data.quoted_ngn) * 100)
-                    : null,
-        }))
-        .post(route('quests.offers.store', offerTarget.value.uuid), {
-            preserveScroll: true,
-            onSuccess: () => closeOfferModal(),
-        });
-}
 
 function formatBudget(minor) {
     const n = Number(minor) / 100;

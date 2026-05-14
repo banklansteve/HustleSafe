@@ -21,6 +21,7 @@
                         Log in
                     </Link>
                     <Link
+                        v-if="show_freelancer_join_cta"
                         :href="route('register', { intent: 'earn' })"
                         class="rounded-xl bg-primary-600 px-4 py-2 text-sm font-bold text-white shadow-md shadow-primary-900/15 ring-1 ring-primary-500/30"
                     >
@@ -112,7 +113,13 @@
                                         v-if="social.followers_count != null"
                                         class="rounded-full bg-black/25 px-3 py-1.5 text-xs font-bold ring-1 ring-white/15"
                                     >
-                                        {{ formatCompact(social.followers_count) }} followers
+                                        {{ formatCountPair(social.followers_count, 'followers') }}
+                                    </span>
+                                    <span
+                                        v-if="social.following_count != null"
+                                        class="rounded-full bg-black/25 px-3 py-1.5 text-xs font-bold ring-1 ring-white/15"
+                                    >
+                                        {{ formatCountPair(social.following_count, 'following') }}
                                     </span>
                                 </div>
                             </div>
@@ -124,6 +131,7 @@
                                 :user-slug="profile.slug"
                                 :initial-following="social.is_following"
                                 :initial-followers-count="social.followers_count"
+                                :initial-following-count="social.following_count"
                                 :is-authenticated="is_authenticated"
                                 :viewer-can-follow="social.viewer_can_follow"
                             />
@@ -135,13 +143,16 @@
                                     Community
                                 </p>
                                 <p class="mt-1 font-display text-2xl font-black tabular-nums text-white">
-                                    {{ formatCompact(social.followers_count) }}
+                                    {{ formatCountPair(social.followers_count, 'followers') }}
                                 </p>
-                                <p class="text-xs font-semibold text-teal-100/80">
-                                    followers
+                                <p class="mt-2 font-display text-lg font-black tabular-nums text-teal-50">
+                                    {{ formatCountPair(social.following_count, 'following') }}
                                 </p>
                                 <p v-if="!is_authenticated" class="mt-3 text-[11px] font-medium leading-snug text-teal-100/70">
                                     Clients can follow freelancers they trust — log in to follow.
+                                </p>
+                                <p v-else class="mt-3 text-[11px] font-medium leading-snug text-teal-100/75">
+                                    Follows are private — the other party is not notified. You only see updates (like new quests) based on your own settings and categories.
                                 </p>
                             </div>
                         </div>
@@ -467,7 +478,7 @@
 <script setup>
 import TrustHalfDonut from '@/Components/Home/TrustHalfDonut.vue';
 import UserFollowButton from '@/Components/Profile/UserFollowButton.vue';
-import { formatCompactCount } from '@/utils/formatCompactCount';
+import { formatCompactCount, formatCompactCountWithFull } from '@/utils/formatCompactCount';
 import {
     ArrowRightIcon,
     BriefcaseIcon,
@@ -494,6 +505,10 @@ const props = defineProps({
         }),
     },
 });
+
+const show_freelancer_join_cta = computed(
+    () => !props.is_authenticated || props.viewer_role_slug === 'freelancer',
+);
 
 const initials = computed(() => {
     const n = props.profile.name || '';
@@ -524,6 +539,10 @@ function formatCac(s) {
 
 function formatCredType(t) {
     return String(t || '').replaceAll('_', ' ');
+}
+
+function formatCountPair(n, label) {
+    return `${formatCompactCountWithFull(n)} ${label}`;
 }
 
 function formatCompact(n) {

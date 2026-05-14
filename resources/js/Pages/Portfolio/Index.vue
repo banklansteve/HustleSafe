@@ -53,20 +53,7 @@
             </div>
             <div class="w-full sm:w-44">
                 <label class="text-xs font-bold uppercase tracking-wide text-slate-500">Sort</label>
-                <select
-                    v-model="localSort"
-                    class="mt-1 w-full rounded-lg border-slate-200 text-sm font-bold shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                >
-                    <option value="latest">
-                        Newest
-                    </option>
-                    <option value="popular">
-                        Most liked
-                    </option>
-                    <option value="oldest">
-                        Oldest
-                    </option>
-                </select>
+                <UiSelect v-model="localSort" class="mt-1" :options="gallerySortOptions" placeholder="Sort" />
             </div>
             <button
                 type="submit"
@@ -163,9 +150,16 @@
 
 <script setup>
 import AppShell from '@/Layouts/AppShell.vue';
+import UiSelect from '@/Components/Ui/UiSelect.vue';
 import { formatCompactCount } from '@/utils/formatCompactCount';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+
+const gallerySortOptions = [
+    { value: 'latest', label: 'Newest' },
+    { value: 'popular', label: 'Most liked' },
+    { value: 'oldest', label: 'Oldest' },
+];
 
 const page = usePage();
 

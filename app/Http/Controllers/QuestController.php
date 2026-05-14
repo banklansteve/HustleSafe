@@ -15,37 +15,63 @@ use App\Http\Requests\Quests\UpdateQuestRequest;
 use App\Models\Quest;
 use App\Models\QuestBookmark;
 use App\Models\QuestCategory;
+use App\Models\QuestConversationThread;
 use App\Models\QuestFile;
+use App\Models\QuestOffer;
 use App\Models\State;
 use App\Models\User;
+use App\Notifications\QuestBriefUpdatedNotification;
+use App\Notifications\QuestListingPulseNotification;
+use App\Notifications\QuestPublishedClientConfirmationNotification;
 use App\Services\FreelancerWorkspaceReadinessService;
+use App\Services\QuestCoverService;
+use App\Services\QuestFileStorageService;
+use App\Services\QuestFormFieldProfileService;
 use App\Services\QuestPublishedNotificationService;
 use App\Services\QuestSlugService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class QuestController extends Controller
 {
-    public function index(Request $request): Response|RedirectResponse
+    public function index(Request $request): Response|RedirectResponse|JsonResponse
     {
         $user = $request->user();
         if (! $user?->can('create', Quest::class) && ! in_array($user->role?->slug, ['admin', 'super_admin'], true)) {
             return redirect()->route('dashboard');
         }
 
-        $quests = Quest::query()
+        $base = Quest::query()
             ->where('client_id', $user->id)
-            ->with(['questCategory:id,name', 'stateModel:id,name'])
-            ->latest('updated_at')
-            ->paginate(12)
-            ->through(fn (Quest $q) => $this->questListRow($q));
+            ->with(['questCategory.parent:id,name', 'stateModel:id,name'])
+            ->withCount('offers')
+            ->latest('updated_at');
+
+        if ($request->wantsJson()) {
+            $page = max(1, (int) $request->query('page', 1));
+            $paginator = (clone $base)->paginate(12, ['*'], 'page', $page);
+
+            return response()->json([
+                'data' => $paginator->getCollection()->map(fn (Quest $q) => $this->questListRow($q))->values()->all(),
+                'meta' => [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'has_more' => $paginator->hasMorePages(),
+                ],
+            ]);
+        }
+
+        $quests = (clone $base)->paginate(12)->through(fn (Quest $q) => $this->questListRow($q));
 
         return Inertia::render('Quests/Index', [
             'quests' => $quests,
@@ -64,20 +90,28 @@ class QuestController extends Controller
             'categoryTree' => $this->categoryTreePayload(),
             'startTimingOptions' => $this->startTimingOptions(),
             'maxBudgetMinor' => 100_000_000,
+            'minBudgetMinor' => 10_000,
             'fieldProfileUrl' => route('quests.field-profile'),
+            'freelancersYouFollow' => $this->questCreateFreelancerNetworkFollowing($user),
+            'freelancersFollowingYou' => $this->questCreateFreelancerNetworkFollowers($user),
+            'quest_stats_hints' => $this->questCreateStatsHints(),
         ]);
     }
 
-    public function store(StoreQuestRequest $request, QuestPublishedNotificationService $notifier, QuestSlugService $slugService): RedirectResponse
-    {
+    public function store(
+        StoreQuestRequest $request,
+        QuestPublishedNotificationService $notifier,
+        QuestSlugService $slugService,
+        QuestFileStorageService $questFiles,
+        QuestCoverService $cover,
+    ): RedirectResponse {
         $user = $request->user();
         $data = $request->validated();
         $publish = $request->boolean('publish_now', true);
         $status = $publish ? QuestStatus::Open : QuestStatus::Draft;
         $tagged = array_values(array_unique(array_map('intval', $data['tagged_freelancer_ids'] ?? [])));
 
-        $slugInput = trim((string) ($data['slug'] ?? ''));
-        $slug = $slugInput !== '' ? $slugInput : $slugService->uniqueSlugFromTitle($data['title']);
+        $slug = $slugService->uniqueSlugFromTitle($data['title']);
 
         $trafficUtm = $data['traffic_utm'] ?? null;
         if (is_array($trafficUtm)) {
@@ -87,12 +121,20 @@ class QuestController extends Controller
             $trafficUtm = null;
         }
 
-        $quest = DB::transaction(function () use ($request, $user, $data, $status, $tagged, $slug, $publish, $trafficUtm): Quest {
+        $uploadedFiles = array_values(array_filter($request->file('files', [])));
+
+        $quest = DB::transaction(function () use ($request, $user, $data, $status, $tagged, $slug, $publish, $trafficUtm, $questFiles, $uploadedFiles): Quest {
             $dueAt = now()->addDays((int) $data['estimated_completion_days']);
 
             $listingExpiresAt = null;
             if ($publish && ! empty($data['auto_listing_expiry_days'])) {
                 $listingExpiresAt = now()->addDays((int) $data['auto_listing_expiry_days']);
+            }
+
+            $clientEditUntil = null;
+            if ($publish) {
+                $hours = max(1, (int) config('quests.client_edit_window_hours', 48));
+                $clientEditUntil = now()->addHours($hours);
             }
 
             $quest = Quest::query()->create([
@@ -120,33 +162,29 @@ class QuestController extends Controller
                 'promotion_tier' => QuestPromotionTier::from($data['promotion_tier']),
                 'auto_listing_expiry_days' => $data['auto_listing_expiry_days'] ?? null,
                 'listing_expires_at' => $listingExpiresAt,
+                'client_edit_until' => $clientEditUntil,
                 'max_offers' => $data['max_offers'] ?? null,
                 'traffic_source' => $data['traffic_source'] ?? null,
                 'traffic_utm' => $trafficUtm,
+                'terms_accepted_at' => $request->boolean('accepted_terms') ? now() : null,
                 'budget_amount_minor' => $data['budget_amount_minor'],
                 'start_timing' => QuestStartTiming::from($data['start_timing']),
                 'estimated_completion_days' => $data['estimated_completion_days'],
                 'estimated_delivery_date' => $data['estimated_delivery_date'] ?? null,
                 'site_visits_allowed' => $request->boolean('site_visits_allowed'),
+                'site_access_level' => $data['site_access_level'] ?? null,
+                'pets_on_site' => $request->has('pets_on_site') ? $request->boolean('pets_on_site') : null,
+                'pets_detail' => $data['pets_detail'] ?? null,
                 'scheduled_start_date' => $data['scheduled_start_date'] ?? null,
                 'due_at' => $dueAt,
             ]);
 
             $sort = 0;
-            foreach ($request->file('files', []) as $uploaded) {
+            foreach ($uploadedFiles as $uploaded) {
                 if ($uploaded === null) {
                     continue;
                 }
-                $path = $uploaded->store("quests/{$quest->id}", 'public');
-                QuestFile::query()->create([
-                    'quest_id' => $quest->id,
-                    'disk' => 'public',
-                    'path' => $path,
-                    'original_name' => $uploaded->getClientOriginalName(),
-                    'mime_type' => $uploaded->getClientMimeType(),
-                    'size_bytes' => $uploaded->getSize() ?: 0,
-                    'sort_order' => $sort++,
-                ]);
+                $questFiles->store($quest, $uploaded, $sort++);
             }
 
             if ($tagged !== []) {
@@ -156,23 +194,37 @@ class QuestController extends Controller
             return $quest->fresh(['files']);
         });
 
+        $cover->sync($quest);
+
         if ($status === QuestStatus::Open) {
             $notifier->notifyAudiences($quest, $tagged);
+            $user->notify(new QuestPublishedClientConfirmationNotification($quest));
         }
 
-        return redirect()
+        $redirect = redirect()
             ->route('quests.show', $quest)
             ->with('success', $publish
                 ? __('Your quest is live — freelancers have been alerted.')
                 : __('Draft saved. Publish when you are ready.'));
+
+        if ($publish) {
+            $redirect->with('quest_submitted_next_steps', true);
+        }
+
+        return $redirect;
     }
 
     public function show(Request $request, Quest $quest, FreelancerWorkspaceReadinessService $workspace): Response|SymfonyResponse
     {
         $this->authorize('view', $quest);
 
+        if (($quest->slug ?? '') !== '' && (string) $request->segment(2) === $quest->uuid) {
+            return redirect()->route('quests.show', $quest, 301);
+        }
+
         $quest->load([
-            'client:id,first_name,name,slug,avatar_url,username',
+            'client:id,first_name,name,slug,avatar_url,username,role_id',
+            'client.role:id,slug',
             'questCategory:id,name,parent_id',
             'questCategory.parent:id,name',
             'stateModel:id,name',
@@ -182,10 +234,14 @@ class QuestController extends Controller
         ]);
 
         $user = $request->user();
-        if ($user && $user->id !== $quest->client_id) {
+        if ($user && (int) $user->id !== (int) $quest->client_id && $user->role?->slug === 'freelancer') {
             $cacheKey = 'quest-view:'.$quest->id.':'.$user->id;
             if (Cache::add($cacheKey, 1, now()->addYear())) {
                 $quest->increment('views_count');
+                $vc = (int) $quest->fresh()->views_count;
+                if (in_array($vc, [1, 3, 5, 10, 20, 50], true)) {
+                    $quest->client?->notify(new QuestListingPulseNotification($quest->fresh(), $vc));
+                }
             }
         }
 
@@ -197,12 +253,16 @@ class QuestController extends Controller
 
         $canOffer = $user
             && $user->role?->slug === 'freelancer'
-            && ($summary['can_submit_offers'] ?? false)
+            && ($summary['can_submit_proposals'] ?? false)
             && ($workspace->matchesQuestCategory($user, $quest) || $inviteOffer);
 
         $myOffer = null;
         if ($user && $user->role?->slug === 'freelancer') {
-            $myOffer = $quest->offers()->where('freelancer_id', $user->id)->first();
+            $myOffer = $quest->offers()
+                ->where('freelancer_id', $user->id)
+                ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
+                ->first()
+                ?? $quest->offers()->where('freelancer_id', $user->id)->latest('id')->first();
         }
 
         $isBookmarked = false;
@@ -249,8 +309,73 @@ class QuestController extends Controller
             ])
             ->all();
 
+        $fromClientQuests = Quest::query()
+            ->where('id', '<>', $quest->id)
+            ->where('client_id', $quest->client_id)
+            ->where('status', QuestStatus::Open)
+            ->where('visibility', QuestVisibility::Public)
+            ->whereNull('freelancer_id')
+            ->with(['questCategory:id,name', 'stateModel:id,name'])
+            ->latest('created_at')
+            ->limit(4)
+            ->get()
+            ->map(fn (Quest $q) => $this->questCardPayload($q));
+
+        $categoryQuestsOtherAreas = Quest::query()
+            ->where('id', '<>', $quest->id)
+            ->where('quest_category_id', $quest->quest_category_id)
+            ->where('state_id', '<>', $quest->state_id)
+            ->where('status', QuestStatus::Open)
+            ->where('visibility', QuestVisibility::Public)
+            ->whereNull('freelancer_id')
+            ->with(['questCategory:id,name', 'stateModel:id,name'])
+            ->latest('created_at')
+            ->limit(4)
+            ->get()
+            ->map(fn (Quest $q) => $this->questCardPayload($q));
+
+        $canUseQuestMessaging = $user
+            && $user->role?->slug === 'freelancer'
+            && $workspace->freelancerMayUseQuestMessaging($user, $quest);
+
+        $questMessageThreads = [];
+        if ($user && (int) $user->id === (int) $quest->client_id) {
+            $offerFreelancerIds = QuestOffer::query()
+                ->where('quest_id', $quest->id)
+                ->pluck('freelancer_id');
+
+            $threadFreelancerIds = QuestConversationThread::query()
+                ->where('quest_id', $quest->id)
+                ->pluck('freelancer_id');
+
+            $invitedIds = $quest->invitedFreelancers->pluck('id');
+
+            $ids = $offerFreelancerIds->merge($threadFreelancerIds)->merge($invitedIds)->unique()->filter()->values();
+
+            if ($ids->isNotEmpty()) {
+                $questMessageThreads = User::query()
+                    ->whereIn('id', $ids)
+                    ->whereRelation('role', 'slug', 'freelancer')
+                    ->whereNotNull('slug')
+                    ->orderBy('first_name')
+                    ->get(['id', 'name', 'first_name', 'slug', 'avatar_url'])
+                    ->map(fn (User $fr) => [
+                        'name' => $fr->name,
+                        'first_name' => $fr->first_name,
+                        'slug' => $fr->slug,
+                        'avatar_url' => $fr->avatar_url,
+                        'messages_url' => route('quests.messages.show', [$quest->getRouteKey(), $fr->slug]),
+                    ])
+                    ->values()
+                    ->all();
+            }
+        }
+
+        $isQuestOwner = $user && (int) $user->id === (int) $quest->client_id;
+
         return Inertia::render('Quests/Show', [
-            'quest' => $this->questDetailPayload($quest),
+            'quest' => $this->questDetailPayload($quest, $user),
+            'is_quest_owner' => (bool) ($user && $user->id === $quest->client_id),
             'can_edit' => $user?->can('update', $quest) ?? false,
             'can_offer' => $canOffer,
             'workspace' => $summary ? array_merge(['enabled' => true], $summary) : ['enabled' => false],
@@ -259,10 +384,18 @@ class QuestController extends Controller
                 'status' => $myOffer->status,
                 'pitch' => $myOffer->pitch,
                 'quoted_amount_minor' => $myOffer->quoted_amount_minor,
+                'show_url' => route('quests.proposals.show', [$quest, $myOffer]),
             ] : null,
             'is_bookmarked' => $isBookmarked,
             'similar_quests' => $similar,
+            'from_client_quests' => $fromClientQuests,
+            'category_quests_other_areas' => $categoryQuestsOtherAreas,
             'top_freelancers' => $topFreelancers,
+            'quest_field_profile' => app(QuestFormFieldProfileService::class)->profileForLeafCategoryId((int) $quest->quest_category_id),
+            'field_profile_url' => route('quests.field-profile'),
+            'can_use_quest_messaging' => $canUseQuestMessaging,
+            'messages_url' => $canUseQuestMessaging ? route('quests.messages.show', [$quest->getRouteKey()]) : null,
+            'quest_message_threads' => $questMessageThreads,
             'start_timing_options' => $this->startTimingOptions(),
             'form_options' => ($user?->can('update', $quest) ?? false)
                 ? [
@@ -270,6 +403,8 @@ class QuestController extends Controller
                     'category_tree' => $this->categoryTreePayload(),
                 ]
                 : null,
+            'client_proposals' => $isQuestOwner ? $this->clientProposalSummariesForQuest($quest) : [],
+            'client_proposals_hub_url' => $isQuestOwner ? route('quests.client.proposals.index', $quest) : null,
         ]);
     }
 
@@ -299,6 +434,23 @@ class QuestController extends Controller
 
         $quest->save();
 
+        if ($quest->status === QuestStatus::Open
+            && $quest->client_id === $request->user()->id) {
+            $recipientIds = QuestOffer::query()
+                ->where('quest_id', $quest->id)
+                ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
+                ->pluck('freelancer_id')
+                ->unique()
+                ->values();
+
+            if ($recipientIds->isNotEmpty()) {
+                $recipients = User::query()->whereIn('id', $recipientIds)->get();
+                foreach ($recipients as $recipient) {
+                    $recipient->notify(new QuestBriefUpdatedNotification($quest));
+                }
+            }
+        }
+
         return back()->with('success', __('Quest updated.'));
     }
 
@@ -306,9 +458,6 @@ class QuestController extends Controller
     {
         $this->authorize('delete', $quest);
 
-        foreach ($quest->files as $file) {
-            Storage::disk($file->disk)->delete($file->path);
-        }
         $quest->delete();
 
         return redirect()->route('quests.index')->with('success', __('Quest removed.'));
@@ -348,20 +497,84 @@ class QuestController extends Controller
     }
 
     /**
+     * @return list<array{id: int, name: string, first_name: ?string, slug: ?string, avatar_url: ?string}>
+     */
+    protected function questCreateFreelancerNetworkFollowing(User $client): array
+    {
+        if (! Schema::hasTable('user_follows')) {
+            return [];
+        }
+
+        return $client->followingUsers()
+            ->whereRelation('role', 'slug', 'freelancer')
+            ->orderBy('first_name')
+            ->orderBy('name')
+            ->limit(200)
+            ->get(['users.id', 'first_name', 'name', 'slug', 'avatar_url'])
+            ->map(fn (User $u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'first_name' => $u->first_name,
+                'slug' => $u->slug,
+                'avatar_url' => $u->avatar_url,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array{id: int, name: string, first_name: ?string, slug: ?string, avatar_url: ?string}>
+     */
+    protected function questCreateFreelancerNetworkFollowers(User $client): array
+    {
+        if (! Schema::hasTable('user_follows')) {
+            return [];
+        }
+
+        return $client->followers()
+            ->whereRelation('role', 'slug', 'freelancer')
+            ->orderBy('first_name')
+            ->orderBy('name')
+            ->limit(200)
+            ->get(['users.id', 'first_name', 'name', 'slug', 'avatar_url'])
+            ->map(fn (User $u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'first_name' => $u->first_name,
+                'slug' => $u->slug,
+                'avatar_url' => $u->avatar_url,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function questListRow(Quest $q): array
     {
+        $cat = $q->questCategory;
+        $parent = $cat?->parent;
+        $user = auth()->user();
+
         return [
             'uuid' => $q->uuid,
+            'slug' => $q->slug,
             'reference_code' => $q->reference_code,
             'title' => $q->title,
             'status' => $q->status->value,
-            'category' => $q->questCategory?->name,
+            'parent_category' => $parent?->name,
+            'subcategory' => $cat?->name,
+            'category' => $cat?->name,
             'state' => $q->stateModel?->name,
             'city' => $q->city,
             'budget_minor' => (int) ($q->budget_amount_minor ?? 0),
+            'cover_url' => $q->displayCoverUrl(),
             'updated_at' => $q->updated_at?->timezone('Africa/Lagos')->toIso8601String(),
+            'published_at' => $q->created_at?->timezone('Africa/Lagos')->toIso8601String(),
+            'proposals_count' => (int) ($q->offers_count ?? 0),
+            'client_edit_until' => $q->client_edit_until?->timezone('Africa/Lagos')->toIso8601String(),
+            'can_client_edit' => $user !== null && Gate::forUser($user)->allows('update', $q),
         ];
     }
 
@@ -372,21 +585,137 @@ class QuestController extends Controller
     {
         return [
             'uuid' => $q->uuid,
+            'slug' => $q->slug,
             'title' => $q->title,
             'category' => $q->questCategory?->name,
             'state' => $q->stateModel?->name,
             'city' => $q->city,
             'budget_minor' => (int) ($q->budget_amount_minor ?? 0),
+            'cover_url' => $q->displayCoverUrl(),
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    protected function questDetailPayload(Quest $quest): array
+    public function questCreateStatsHints(): array
     {
-        return [
+        $empty = [
+            'by_category' => [],
+            'global_budget' => null,
+            'global_completion' => null,
+        ];
+
+        if (! Schema::hasTable('quests')) {
+            return $empty;
+        }
+
+        try {
+            $budgetRows = Quest::query()
+                ->where('status', QuestStatus::Open)
+                ->whereNotNull('quest_category_id')
+                ->groupBy('quest_category_id')
+                ->selectRaw('quest_category_id')
+                ->selectRaw('COUNT(*) as sample_size')
+                ->selectRaw('AVG(budget_amount_minor) as avg_minor')
+                ->selectRaw('MIN(budget_amount_minor) as min_minor')
+                ->selectRaw('MAX(budget_amount_minor) as max_minor')
+                ->get();
+
+            $budgetByCat = [];
+            foreach ($budgetRows as $r) {
+                $cid = (string) (int) $r->quest_category_id;
+                $budgetByCat[$cid] = [
+                    'sample_size' => (int) $r->sample_size,
+                    'avg_minor' => (int) round((float) $r->avg_minor),
+                    'min_minor' => (int) $r->min_minor,
+                    'max_minor' => (int) $r->max_minor,
+                ];
+            }
+
+            $complRows = Quest::query()
+                ->where('status', QuestStatus::Open)
+                ->whereNotNull('quest_category_id')
+                ->where('estimated_completion_days', '>', 0)
+                ->groupBy('quest_category_id')
+                ->selectRaw('quest_category_id')
+                ->selectRaw('COUNT(*) as sample_size')
+                ->selectRaw('AVG(estimated_completion_days) as avg_days')
+                ->selectRaw('MIN(estimated_completion_days) as min_days')
+                ->selectRaw('MAX(estimated_completion_days) as max_days')
+                ->get();
+
+            $complByCat = [];
+            foreach ($complRows as $r) {
+                $cid = (string) (int) $r->quest_category_id;
+                $complByCat[$cid] = [
+                    'sample_size' => (int) $r->sample_size,
+                    'avg_days' => round((float) $r->avg_days, 1),
+                    'min_days' => (int) $r->min_days,
+                    'max_days' => (int) $r->max_days,
+                ];
+            }
+
+            $byCategory = [];
+            foreach (array_unique(array_merge(array_keys($budgetByCat), array_keys($complByCat))) as $cid) {
+                $byCategory[$cid] = [
+                    'budget' => $budgetByCat[$cid] ?? null,
+                    'completion' => $complByCat[$cid] ?? null,
+                ];
+            }
+
+            $gBudget = Quest::query()
+                ->where('status', QuestStatus::Open)
+                ->whereNotNull('budget_amount_minor')
+                ->selectRaw('COUNT(*) as sample_size')
+                ->selectRaw('AVG(budget_amount_minor) as avg_minor')
+                ->selectRaw('MIN(budget_amount_minor) as min_minor')
+                ->selectRaw('MAX(budget_amount_minor) as max_minor')
+                ->first();
+
+            $gCompl = Quest::query()
+                ->where('status', QuestStatus::Open)
+                ->where('estimated_completion_days', '>', 0)
+                ->selectRaw('COUNT(*) as sample_size')
+                ->selectRaw('AVG(estimated_completion_days) as avg_days')
+                ->selectRaw('MIN(estimated_completion_days) as min_days')
+                ->selectRaw('MAX(estimated_completion_days) as max_days')
+                ->first();
+
+            return [
+                'by_category' => $byCategory,
+                'global_budget' => $gBudget && (int) $gBudget->sample_size > 0 ? [
+                    'sample_size' => (int) $gBudget->sample_size,
+                    'avg_minor' => (int) round((float) $gBudget->avg_minor),
+                    'min_minor' => (int) $gBudget->min_minor,
+                    'max_minor' => (int) $gBudget->max_minor,
+                ] : null,
+                'global_completion' => $gCompl && (int) $gCompl->sample_size > 0 ? [
+                    'sample_size' => (int) $gCompl->sample_size,
+                    'avg_days' => round((float) $gCompl->avg_days, 1),
+                    'min_days' => (int) $gCompl->min_days,
+                    'max_days' => (int) $gCompl->max_days,
+                ] : null,
+            ];
+        } catch (\Throwable) {
+            return $empty;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function questDetailPayload(Quest $quest, ?User $viewer = null): array
+    {
+        $isStaff = $viewer && in_array($viewer->role?->slug, ['admin', 'super_admin'], true);
+        $isOwner = $viewer && (int) $viewer->id === (int) $quest->client_id;
+        $showInternalCodes = $isOwner || $isStaff;
+
+        $data = [
+            'id' => $quest->id,
             'slug' => $quest->slug,
+            'canonical_url' => route('quests.show', $quest, absolute: true),
+            'meta_description' => Str::limit(trim(preg_replace('/\s+/u', ' ', strip_tags((string) $quest->description))), 160) ?: null,
             'visibility' => $quest->visibility?->value,
             'freelancer_location_pref' => $quest->freelancer_location_pref?->value,
             'availability_need' => $quest->availability_need?->value,
@@ -396,22 +725,31 @@ class QuestController extends Controller
             'promotion_tier' => $quest->promotion_tier?->value,
             'auto_listing_expiry_days' => $quest->auto_listing_expiry_days,
             'listing_expires_at' => $quest->listing_expires_at?->timezone('Africa/Lagos')->toIso8601String(),
+            'client_edit_until' => $quest->client_edit_until?->timezone('Africa/Lagos')->toIso8601String(),
+            'is_client_edit_locked' => $quest->status === QuestStatus::Open
+                && $quest->client_edit_until !== null
+                && now()->greaterThan($quest->client_edit_until),
             'max_offers' => $quest->max_offers,
             'views_count' => (int) $quest->views_count,
             'offers_count' => (int) $quest->offers_count,
             'saves_count' => (int) $quest->saves_count,
-            'traffic_source' => $quest->traffic_source,
-            'traffic_utm' => $quest->traffic_utm,
+            'traffic_source' => $showInternalCodes ? $quest->traffic_source : null,
+            'traffic_utm' => $showInternalCodes ? $quest->traffic_utm : null,
             'estimated_delivery_date' => $quest->estimated_delivery_date?->toDateString(),
             'uuid' => $quest->uuid,
+            'route_key' => $quest->getRouteKey(),
             'reference_code' => $quest->reference_code,
             'title' => $quest->title,
             'description' => $quest->description,
+            'cover_url' => $quest->displayCoverUrl(),
             'status' => $quest->status->value,
             'budget_minor' => (int) ($quest->budget_amount_minor ?? 0),
             'start_timing' => $quest->start_timing?->value,
             'estimated_completion_days' => $quest->estimated_completion_days,
             'site_visits_allowed' => (bool) $quest->site_visits_allowed,
+            'site_access_level' => $quest->site_access_level,
+            'pets_on_site' => $quest->pets_on_site,
+            'pets_detail' => $quest->pets_detail,
             'scheduled_start_date' => $quest->scheduled_start_date?->toDateString(),
             'due_at' => $quest->due_at?->timezone('Africa/Lagos')->toIso8601String(),
             'category' => $quest->questCategory ? [
@@ -434,6 +772,7 @@ class QuestController extends Controller
                 'username' => $quest->client?->username,
                 'slug' => $quest->client?->slug,
                 'avatar_url' => $quest->client?->avatar_url,
+                'role_slug' => $quest->client?->role?->slug,
             ],
             'files' => $quest->files->map(fn (QuestFile $f) => [
                 'id' => $f->id,
@@ -449,6 +788,15 @@ class QuestController extends Controller
                 'avatar_url' => $u->avatar_url,
             ])->values()->all(),
         ];
+
+        if (! $showInternalCodes) {
+            unset($data['reference_code']);
+            if (($quest->slug ?? '') !== '') {
+                unset($data['uuid']);
+            }
+        }
+
+        return $data;
     }
 
     /**
@@ -503,5 +851,21 @@ class QuestController extends Controller
             ->with(['localGovernments:id,state_id,name'])
             ->orderBy('name')
             ->get(['id', 'code', 'name']);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function clientProposalSummariesForQuest(Quest $quest): array
+    {
+        return QuestOffer::query()
+            ->where('quest_id', $quest->id)
+            ->with(['freelancer:id,first_name,name,slug,avatar_url,headline'])
+            ->latest('created_at')
+            ->limit(120)
+            ->get()
+            ->map(fn (QuestOffer $o) => QuestClientProposalsController::proposalRow($quest, $o))
+            ->values()
+            ->all();
     }
 }

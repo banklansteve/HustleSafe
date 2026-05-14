@@ -9,6 +9,7 @@ use App\Models\QuestCategory;
 use App\Models\State;
 use App\Models\User;
 use App\Services\TrustScoreOrchestrator;
+use App\Support\TextCasing;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -44,17 +45,25 @@ class RegisteredUserController extends Controller
     {
         $data = $request->validated();
 
+        $first = TextCasing::titleWords($data['first_name']) ?? '';
+        $last = TextCasing::titleWords($data['last_name']) ?? '';
+        $city = TextCasing::titleWords($data['city']) ?? '';
+        $addressLine = TextCasing::capitalizeFirstAlphabetic($data['address_line']) ?? '';
+        $company = isset($data['company_name']) && $data['company_name'] !== null && $data['company_name'] !== ''
+            ? TextCasing::titleWords($data['company_name'])
+            : null;
+
         $user = User::create([
-            'name' => $data['first_name'].' '.$data['last_name'],
-            'first_name' => $data['first_name'],
-            'last_name' => $data['last_name'],
+            'name' => trim($first.' '.$last),
+            'first_name' => $first,
+            'last_name' => $last,
             'gender' => $data['gender'] ?? null,
             'date_of_birth' => $data['date_of_birth'] ?? null,
-            'company_name' => $data['company_name'] ?? null,
+            'company_name' => $company,
             'email' => $data['email'],
             'phone' => $data['phone'],
-            'address_line' => $data['address_line'],
-            'city' => $data['city'],
+            'address_line' => $addressLine,
+            'city' => $city,
             'state_id' => $data['state_id'],
             'local_government_id' => $data['local_government_id'],
             'account_type' => $data['account_type'],

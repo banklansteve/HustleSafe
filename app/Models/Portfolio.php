@@ -40,6 +40,16 @@ class Portfolio extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::deleting(function (Portfolio $portfolio): void {
+            $portfolio->loadMissing('files');
+            foreach ($portfolio->files as $file) {
+                $file->purgeFromStorage();
+            }
+        });
+    }
+
     public function getRouteKeyName(): string
     {
         return 'slug';
@@ -47,11 +57,20 @@ class Portfolio extends Model
 
     public function coverUrl(): ?string
     {
-        if ($this->cover_path === null || $this->cover_path === '') {
+        $p = $this->cover_path;
+        if ($p === null || $p === '') {
             return null;
         }
 
-        return Storage::disk('public')->url($this->cover_path);
+        if (preg_match('#^https?://#i', $p)) {
+            return $p;
+        }
+
+        if (str_starts_with($p, '//')) {
+            return 'https:'.$p;
+        }
+
+        return Storage::disk('public')->url($p);
     }
 
     /**

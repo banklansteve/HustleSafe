@@ -17,18 +17,14 @@
         <main class="mx-auto max-w-6xl space-y-8 px-4 py-10 sm:px-6 sm:py-12">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div class="flex items-center gap-4">
-                    <img
-                        v-if="profile.avatar_url"
+                    <UserProfileAvatar
+                        :href="route('freelancers.public', profile.slug)"
                         :src="profile.avatar_url"
+                        :name="profile.name"
                         :alt="profile.name"
-                        class="h-14 w-14 rounded-2xl border border-slate-200 object-cover shadow-sm"
+                        frame-class="h-14 w-14 text-lg"
+                        radius-class="rounded-2xl border border-slate-200 shadow-sm"
                     />
-                    <div
-                        v-else
-                        class="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 text-lg font-black text-slate-600"
-                    >
-                        {{ initials }}
-                    </div>
                     <div>
                         <h1 class="font-display text-2xl font-black text-slate-900 sm:text-3xl">
                             Portfolio
@@ -55,20 +51,7 @@
                 </div>
                 <div class="w-full sm:w-48">
                     <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Sort</label>
-                    <select
-                        v-model="form.sort"
-                        class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                    >
-                        <option value="latest">
-                            Newest
-                        </option>
-                        <option value="oldest">
-                            Oldest
-                        </option>
-                        <option value="popular">
-                            Most liked
-                        </option>
-                    </select>
+                    <UiSelect v-model="form.sort" class="mt-1" :options="portfolioPublicSortOptions" placeholder="Sort" />
                 </div>
                 <div class="flex gap-2">
                     <button
@@ -156,10 +139,18 @@
 
 <script setup>
 import { formatCompactCount } from '@/utils/formatCompactCount';
+import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
+import UiSelect from '@/Components/Ui/UiSelect.vue';
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline';
 import { PhotoIcon } from '@heroicons/vue/24/solid';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { computed, reactive } from 'vue';
+import { reactive } from 'vue';
+
+const portfolioPublicSortOptions = [
+    { value: 'latest', label: 'Newest' },
+    { value: 'oldest', label: 'Oldest' },
+    { value: 'popular', label: 'Most liked' },
+];
 
 const props = defineProps({
     profile: { type: Object, required: true },
@@ -170,13 +161,6 @@ const props = defineProps({
 const form = reactive({
     q: props.filters.q || '',
     sort: props.filters.sort || 'latest',
-});
-
-const initials = computed(() => {
-    const n = props.profile.name || '';
-    const parts = n.trim().split(/\s+/);
-
-    return ((parts[0]?.[0] || 'H') + (parts[1]?.[0] || '')).toUpperCase();
 });
 
 function applyFilters() {

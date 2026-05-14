@@ -46,36 +46,27 @@
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div class="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-100">
                         <label class="text-xs font-bold uppercase tracking-wide text-slate-500">Category</label>
-                        <select
-                            v-model.number="form.category_id"
-                            class="mt-1 w-full rounded-lg border-slate-200 text-sm font-bold shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                            required
-                            @change="onCategoryChange"
-                        >
-                            <option disabled :value="null">
-                                Choose…
-                            </option>
-                            <option v-for="c in categoryTree" :key="c.id" :value="c.id">
-                                {{ c.name }}
-                            </option>
-                        </select>
+                        <UiSelect
+                            v-model="form.category_id"
+                            class="mt-1"
+                            :options="categorySelectOptions"
+                            placeholder="Choose…"
+                            :invalid="!!form.errors.category_id"
+                            @update:model-value="form.subcategory_id = null"
+                        />
                         <p v-if="form.errors.category_id" class="mt-1 text-xs font-bold text-rose-600">
                             {{ form.errors.category_id }}
                         </p>
                     </div>
                     <div class="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-100">
                         <label class="text-xs font-bold uppercase tracking-wide text-slate-500">Subcategory</label>
-                        <select
-                            v-model.number="form.subcategory_id"
-                            class="mt-1 w-full rounded-lg border-slate-200 text-sm font-bold shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                        >
-                            <option :value="null">
-                                Optional
-                            </option>
-                            <option v-for="ch in subcategories" :key="ch.id" :value="ch.id">
-                                {{ ch.name }}
-                            </option>
-                        </select>
+                        <UiSelect
+                            v-model="form.subcategory_id"
+                            class="mt-1"
+                            :options="subcategorySelectOptions"
+                            placeholder="Optional"
+                            :invalid="!!form.errors.subcategory_id"
+                        />
                         <p v-if="form.errors.subcategory_id" class="mt-1 text-xs font-bold text-rose-600">
                             {{ form.errors.subcategory_id }}
                         </p>
@@ -84,17 +75,12 @@
 
                 <div class="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-6">
                     <label class="text-xs font-bold uppercase tracking-wide text-slate-500">Linked quest (optional)</label>
-                    <select
-                        v-model.number="form.quest_id"
-                        class="mt-1 w-full rounded-lg border-slate-200 text-sm font-bold shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                    >
-                        <option :value="null">
-                            No quest link
-                        </option>
-                        <option v-for="q in completedQuests" :key="q.id" :value="q.id">
-                            {{ q.title }}
-                        </option>
-                    </select>
+                    <UiSelect
+                        v-model="form.quest_id"
+                        class="mt-1"
+                        :options="questLinkSelectOptions"
+                        placeholder="No quest link"
+                    />
                     <p class="mt-2 text-xs font-medium text-slate-500">
                         Pulls in the client review for this showcase when available.
                     </p>
@@ -248,6 +234,7 @@
 
 <script setup>
 import AppShell from '@/Layouts/AppShell.vue';
+import UiSelect from '@/Components/Ui/UiSelect.vue';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed, onUnmounted, ref, watch } from 'vue';
@@ -303,6 +290,29 @@ const subcategories = computed(() => {
     return row?.children ?? [];
 });
 
+const categorySelectOptions = computed(() =>
+    props.categoryTree.map((c) => ({
+        value: c.id,
+        label: c.name,
+    })),
+);
+
+const subcategorySelectOptions = computed(() => [
+    { value: null, label: 'Optional' },
+    ...subcategories.value.map((ch) => ({
+        value: ch.id,
+        label: ch.name,
+    })),
+]);
+
+const questLinkSelectOptions = computed(() => [
+    { value: null, label: 'No quest link' },
+    ...props.completedQuests.map((q) => ({
+        value: q.id,
+        label: q.title,
+    })),
+]);
+
 watch(
     () => form.category_id,
     () => {
@@ -312,10 +322,6 @@ watch(
         }
     },
 );
-
-function onCategoryChange() {
-    form.subcategory_id = null;
-}
 
 function onPick(e) {
     addFiles(e.target.files);

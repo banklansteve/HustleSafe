@@ -12,6 +12,8 @@ class QuestFile extends Model
         'quest_id',
         'disk',
         'path',
+        'cloudinary_public_id',
+        'cloudinary_resource_type',
         'original_name',
         'mime_type',
         'size_bytes',
@@ -28,7 +30,26 @@ class QuestFile extends Model
 
     public function url(): string
     {
-        return Storage::disk($this->disk)->url($this->path);
+        $path = trim((string) $this->path);
+        if ($path === '') {
+            return '';
+        }
+
+        if (preg_match('#^https?://#i', $path)) {
+            return $path;
+        }
+
+        if (str_starts_with($path, '//')) {
+            return 'https:'.$path;
+        }
+
+        $generated = Storage::disk($this->disk)->url($path);
+
+        if (preg_match('#^https?://#i', $generated)) {
+            return $generated;
+        }
+
+        return url($generated);
     }
 
     public function isImage(): bool
