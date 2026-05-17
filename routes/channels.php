@@ -31,3 +31,7 @@ Broadcast::channel('quest-threads.{threadId}', function ($user, string $threadId
     return (int) $user->id === (int) $thread->client_id
         || (int) $user->id === (int) $thread->freelancer_id;
 });
+
+Broadcast::channel('admin.live-activity', function ($user) {
+    return $user !== null && $user->role?->slug === 'super_admin';
+});

@@ -3,9 +3,13 @@
 namespace App\Http\Middleware;
 
 use App\Services\ClientOutstandingActionsService;
+use App\Support\Admin\AdminManagementRegistry;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\UserNotificationPresenter;
+use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -32,6 +36,22 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $impersonation = $request->session()->get('impersonation');
+        if (is_array($impersonation) && isset($impersonation['admin_id'], $impersonation['last_activity_at'])) {
+            $lastActivity = Carbon::parse($impersonation['last_activity_at']);
+            if ($lastActivity->lt(now()->subMinutes(30))) {
+                $admin = User::query()->find($impersonation['admin_id']);
+                if ($admin !== null) {
+                    Auth::login($admin);
+                }
+                $request->session()->forget('impersonation');
+                $impersonation = null;
+            } else {
+                $impersonation['last_activity_at'] = now()->toIso8601String();
+                $request->session()->put('impersonation', $impersonation);
+            }
+        }
+
         return [
             ...parent::share($request),
             'auth' => [
@@ -76,6 +96,31 @@ class HandleInertiaRequests extends Middleware
 
                 return app(ClientOutstandingActionsService::class)->items($user);
             },
+            'admin_entry_url' => static function () use ($request) {
+                $user = $request->user();
+                if ($user === null || $user->role?->slug !== 'super_admin') {
+                    return null;
+                }
+
+                return route('admin.dashboard');
+            },
+            'operations_entry_url' => static function () use ($request) {
+                $user = $request->user();
+                if ($user === null || $user->role?->slug !== 'admin') {
+                    return null;
+                }
+
+                return route('operations.dashboard');
+            },
+            'admin_management_nav' => static function () use ($request) {
+                $user = $request->user();
+                if ($user === null || $user->role?->slug !== 'super_admin') {
+                    return null;
+                }
+
+                return AdminManagementRegistry::sidebarNavigation();
+            },
+            'impersonation' => fn () => $impersonation,
         ];
     }
 }

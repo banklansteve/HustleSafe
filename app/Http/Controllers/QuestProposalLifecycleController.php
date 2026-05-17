@@ -11,6 +11,7 @@ use App\Notifications\ProposalDeclinedFreelancerNotification;
 use App\Notifications\ProposalEscrowFundedFreelancerNotification;
 use App\Notifications\ProposalShortlistedFreelancerNotification;
 use App\Notifications\ProposalWithdrawnClientNotification;
+use App\Services\Admin\AdminActivityFeedService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -171,6 +172,28 @@ class QuestProposalLifecycleController extends Controller
 
         $quest->client?->notify(new ProposalAcceptedClientNotification($offer));
         $offer->freelancer?->notify(new ProposalAcceptedFreelancerNotification($offer));
+        $quest->loadMissing(['client', 'questCategory', 'stateModel']);
+        $offer->loadMissing('freelancer');
+        app(AdminActivityFeedService::class)->record(
+            'financial',
+            'contract.started',
+            'Contract started',
+            "{$quest->client?->name} accepted {$offer->freelancer?->name} for {$quest->title}",
+            app(AdminActivityFeedService::class)->entities([
+                ['type' => 'user', 'id' => $quest->client_id, 'label' => $quest->client?->name],
+                ['type' => 'user', 'id' => $offer->freelancer_id, 'label' => $offer->freelancer?->name],
+                ['type' => 'quest', 'id' => $quest->id, 'label' => $quest->title],
+            ]),
+            ['category' => $quest->questCategory?->name, 'state' => $quest->stateModel?->name],
+            (int) ($offer->quoted_amount_minor ?? $quest->budget_amount_minor ?? 0),
+            $request->user(),
+            QuestOffer::class,
+            $offer->id,
+            $quest->state_id,
+            $quest->local_government_id,
+            $quest->quest_category_id,
+            'info',
+        );
 
         return back()->with('success', __('Proposal accepted. Fund escrow to authorise work — both parties were emailed with next steps.'));
     }
@@ -202,9 +225,32 @@ class QuestProposalLifecycleController extends Controller
         $quest->update([
             'escrow_status' => 'funded',
             'status' => QuestStatus::InProgress,
+            'escrow_funded_at' => now(),
         ]);
 
         $offer->freelancer?->notify(new ProposalEscrowFundedFreelancerNotification($offer));
+        $quest->loadMissing(['client', 'questCategory', 'stateModel']);
+        $offer->loadMissing('freelancer');
+        app(AdminActivityFeedService::class)->record(
+            'financial',
+            'escrow.funded',
+            'Escrow funded',
+            "{$quest->client?->name} funded escrow for {$quest->title}",
+            app(AdminActivityFeedService::class)->entities([
+                ['type' => 'user', 'id' => $quest->client_id, 'label' => $quest->client?->name],
+                ['type' => 'user', 'id' => $offer->freelancer_id, 'label' => $offer->freelancer?->name],
+                ['type' => 'quest', 'id' => $quest->id, 'label' => $quest->title],
+            ]),
+            ['category' => $quest->questCategory?->name, 'state' => $quest->stateModel?->name],
+            (int) ($offer->quoted_amount_minor ?? $quest->budget_amount_minor ?? 0),
+            $request->user(),
+            Quest::class,
+            $quest->id,
+            $quest->state_id,
+            $quest->local_government_id,
+            $quest->quest_category_id,
+            'success',
+        );
 
         return back()->with('success', __('Escrow marked funded — the freelancer is cleared to start work.'));
     }

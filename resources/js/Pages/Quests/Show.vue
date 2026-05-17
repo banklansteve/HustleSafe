@@ -590,6 +590,47 @@
                 </section>
 
                 <section
+                    v-if="quest.commerce"
+                    class="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/70 p-5 shadow-md ring-1 ring-emerald-100"
+                >
+                    <h2 class="font-display text-lg font-bold text-slate-900">
+                        Escrow & disputes
+                    </h2>
+                    <p class="mt-1 text-xs font-semibold text-emerald-950/80">
+                        Payments and rulings activate once the gateway is connected — timers and evidence still run today.
+                    </p>
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        <button
+                            v-if="quest.commerce.show_fund_button && quest.commerce.funding_post_url"
+                            type="button"
+                            class="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-800 disabled:opacity-50"
+                            :disabled="fundingIntentForm.processing"
+                            @click="submitFundingIntent"
+                        >
+                            <ReLoader4Line v-if="fundingIntentForm.processing" class="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+                            Fund via gateway
+                        </button>
+                        <Link
+                            v-if="quest.commerce.active_dispute"
+                            :href="quest.commerce.active_dispute.url"
+                            class="inline-flex items-center rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900 shadow-sm hover:bg-emerald-50"
+                        >
+                            Open dispute
+                        </Link>
+                        <Link
+                            v-else-if="quest.commerce.can_open_dispute && quest.commerce.dispute_create_url"
+                            :href="quest.commerce.dispute_create_url"
+                            class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-950 shadow-sm hover:bg-amber-100"
+                        >
+                            Open dispute
+                        </Link>
+                    </div>
+                    <p v-if="quest.commerce.dispute_block_reason && !quest.commerce.can_open_dispute && !quest.commerce.active_dispute" class="mt-3 text-xs font-semibold text-amber-900">
+                        {{ quest.commerce.dispute_block_reason }}
+                    </p>
+                </section>
+
+                <section
                     v-if="is_quest_owner && client_proposals.length"
                     class="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50/90 via-white to-fuchsia-50/70 p-5 shadow-md ring-1 ring-violet-100"
                 >
@@ -799,6 +840,7 @@ import TextInput from '@/Components/TextInput.vue';
 import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { ChatBubbleLeftRightIcon } from '@heroicons/vue/24/outline';
 import axios from 'axios';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -910,6 +952,14 @@ const viewerInsightLines = computed(() => {
 });
 
 const uploadForm = useForm({ file: null });
+const fundingIntentForm = useForm({});
+function submitFundingIntent() {
+    const url = props.quest?.commerce?.funding_post_url;
+    if (!url) {
+        return;
+    }
+    fundingIntentForm.post(url, { preserveScroll: true });
+}
 const showEditQuestForm = ref(false);
 const inviteQuery = ref('');
 const inviteHits = ref([]);

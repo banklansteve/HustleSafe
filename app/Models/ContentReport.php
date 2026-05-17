@@ -10,6 +10,7 @@ class ContentReport extends Model
 {
     protected $fillable = [
         'user_id',
+        'moderation_case_id',
         'reportable_type',
         'reportable_id',
         'reason',
@@ -26,6 +27,14 @@ class ContentReport extends Model
     public function reporter(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /**
+     * @return BelongsTo<ModerationCase, $this>
+     */
+    public function moderationCase(): BelongsTo
+    {
+        return $this->belongsTo(ModerationCase::class);
     }
 
     /**

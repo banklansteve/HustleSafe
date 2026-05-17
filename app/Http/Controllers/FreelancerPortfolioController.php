@@ -7,6 +7,7 @@ use App\Enums\QuestStatus;
 use App\Enums\ReviewStatus;
 use App\Http\Requests\Portfolio\StorePortfolioRequest;
 use App\Http\Requests\Portfolio\UpdatePortfolioRequest;
+use App\Jobs\ScanContentForModerationJob;
 use App\Models\Portfolio;
 use App\Models\Quest;
 use App\Models\QuestCategory;
@@ -163,6 +164,8 @@ class FreelancerPortfolioController extends Controller
             ? __('Portfolio published — it is live in the gallery.')
             : __('Draft saved — only you can see it until you publish.');
 
+        ScanContentForModerationJob::dispatch(Portfolio::class, (int) $portfolio->id)->afterResponse();
+
         return redirect()->route('portfolio.show', $portfolio)->with('success', $msg);
     }
 
@@ -261,6 +264,8 @@ class FreelancerPortfolioController extends Controller
         });
 
         $portfolio->refresh();
+
+        ScanContentForModerationJob::dispatch(Portfolio::class, (int) $portfolio->id)->afterResponse();
 
         return redirect()->route('portfolio.show', $portfolio)->with('success', __('Portfolio updated.'));
     }

@@ -25,6 +25,22 @@
                 </div>
             </div>
 
+            <div
+                class="mt-6 rounded-2xl border border-slate-200/90 bg-white px-4 py-4 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-slate-100 sm:px-5"
+                role="region"
+                aria-label="Disputes and escrow"
+            >
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Fair resolution</p>
+                <p class="mt-2 leading-relaxed text-slate-700">
+                    Every funded quest runs on escrow and a documented dispute path if expectations diverge. Skim how disputes work before you publish —
+                    <Link :href="route('disputes.index')" class="font-black text-primary-800 underline decoration-primary-300 underline-offset-2">Disputes centre</Link>
+                    ·
+                    <a href="/docs/dispute-workflow.md" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline decoration-primary-300 underline-offset-2">Workflow (Markdown)</a>
+                    ·
+                    <Link :href="route('legal.terms')" class="font-black text-primary-800 underline decoration-primary-300 underline-offset-2">Terms</Link>.
+                </p>
+            </div>
+
             <div class="mt-8 flex flex-wrap gap-2">
                 <button
                     v-for="(s, i) in stepTitles"

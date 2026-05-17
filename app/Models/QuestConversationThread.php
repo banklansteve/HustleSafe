@@ -16,6 +16,10 @@ class QuestConversationThread extends Model
         'last_message_at',
         'freelancer_last_read_at',
         'client_last_read_at',
+        'admin_hidden_at',
+        'admin_deleted_at',
+        'admin_visibility_reason',
+        'admin_visibility_changed_by',
     ];
 
     /**
@@ -27,6 +31,8 @@ class QuestConversationThread extends Model
             'last_message_at' => 'datetime',
             'freelancer_last_read_at' => 'datetime',
             'client_last_read_at' => 'datetime',
+            'admin_hidden_at' => 'datetime',
+            'admin_deleted_at' => 'datetime',
         ];
     }
 
@@ -61,5 +67,15 @@ class QuestConversationThread extends Model
     {
         return $this->hasMany(QuestConversationMessage::class, 'quest_conversation_thread_id')
             ->orderBy('created_at');
+    }
+
+    public function adminVisibilityChangedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'admin_visibility_changed_by');
+    }
+
+    public function isBlockedByAdmin(): bool
+    {
+        return $this->admin_hidden_at !== null || $this->admin_deleted_at !== null;
     }
 }

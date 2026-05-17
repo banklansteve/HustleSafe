@@ -6,11 +6,13 @@ use App\Enums\ReviewStatus;
 use App\Enums\ReviewType;
 use App\Http\Requests\Review\StoreReviewRequest;
 use App\Http\Requests\Review\UpdateReviewRequest;
+use App\Jobs\ScanContentForModerationJob;
 use App\Models\ActivityLog;
 use App\Models\Quest;
 use App\Models\Review;
 use App\Models\ReviewAttachment;
 use App\Services\ReviewEligibilityService;
+use App\Services\Admin\AdminActivityFeedService;
 use App\Services\TrustScoreOrchestrator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
@@ -100,6 +102,7 @@ class ReviewController extends Controller
         });
 
         $this->trustScores->recalculate($reviewee->fresh());
+        ScanContentForModerationJob::dispatch(Review::class, (int) $review->id)->afterResponse();
 
         ActivityLog::query()->create([
             'subject_user_id' => $reviewee->id,
@@ -110,6 +113,31 @@ class ReviewController extends Controller
             'meta' => ['quest_id' => $quest->id, 'review_id' => $review->id],
             'created_at' => now(),
         ]);
+
+        if ($review->rating !== null && (int) $review->rating < 3) {
+            $quest->loadMissing(['questCategory', 'stateModel']);
+            app(AdminActivityFeedService::class)->record(
+                'reviews',
+                'review.low_rating',
+                'Low rating submitted',
+                "{$user->name} left a {$review->rating}-star review for {$reviewee->name}",
+                app(AdminActivityFeedService::class)->entities([
+                    ['type' => 'user', 'id' => $user->id, 'label' => $user->name],
+                    ['type' => 'user', 'id' => $reviewee->id, 'label' => $reviewee->name],
+                    ['type' => 'quest', 'id' => $quest->id, 'label' => $quest->title],
+                    ['type' => 'review', 'id' => $review->id, 'label' => 'Review #'.$review->id],
+                ]),
+                ['rating' => $review->rating, 'category' => $quest->questCategory?->name, 'state' => $quest->stateModel?->name],
+                null,
+                $user,
+                Review::class,
+                $review->id,
+                $quest->state_id,
+                $quest->local_government_id,
+                $quest->quest_category_id,
+                'warning',
+            );
+        }
 
         return back()->with('success', __('Thanks — your feedback strengthens trust on HustleSafe.'));
     }
@@ -137,6 +165,7 @@ class ReviewController extends Controller
         $review->save();
 
         $this->trustScores->recalculate($review->reviewee->fresh());
+        ScanContentForModerationJob::dispatch(Review::class, (int) $review->id)->afterResponse();
 
         return back()->with('success', __('Review updated.'));
     }

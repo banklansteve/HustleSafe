@@ -135,6 +135,8 @@
 import {
     ArrowRightOnRectangleIcon,
     BriefcaseIcon,
+    ChartBarIcon,
+    ChartPieIcon,
     ChevronDownIcon,
     ClipboardDocumentListIcon,
     HomeIcon,
@@ -165,7 +167,7 @@ const initials = computed(() => {
 
 const roleSlug = computed(() => user.value?.role?.slug ?? '');
 const isFreelancer = computed(() => roleSlug.value === 'freelancer');
-const showClientTools = computed(() => ['client', 'admin', 'super_admin'].includes(roleSlug.value));
+const showClientTools = computed(() => ['client', 'super_admin'].includes(roleSlug.value));
 
 const mobileQuickLinks = computed(() => {
     const items = [
@@ -176,6 +178,22 @@ const mobileQuickLinks = computed(() => {
             isActive: (path) => path === '/dashboard',
         },
     ];
+    if (roleSlug.value === 'super_admin' && page.props.admin_entry_url) {
+        items.push({
+            href: page.props.admin_entry_url,
+            label: 'Super admin',
+            icon: ChartPieIcon,
+            isActive: (path) => path.startsWith('/admin'),
+        });
+    }
+    if (roleSlug.value === 'admin' && page.props.operations_entry_url) {
+        items.push({
+            href: page.props.operations_entry_url,
+            label: 'Operations',
+            icon: ChartBarIcon,
+            isActive: (path) => path.startsWith('/operations'),
+        });
+    }
     if (showClientTools.value) {
         items.push({
             href: route('quests.index'),
@@ -224,26 +242,47 @@ function accountHubActive(p) {
     return p === '/account' || p.startsWith('/account/credentials');
 }
 
-const menuLinks = computed(() => [
-    {
-        href: route('account.show'),
-        label: 'Account & profile',
-        icon: UserCircleIcon,
-        isActive: (p) => accountHubActive(p),
-    },
-    {
-        href: route('account.security.edit'),
-        label: 'Security & photo',
-        icon: WrenchScrewdriverIcon,
-        isActive: (p) => p.startsWith('/account/security'),
-    },
-    {
-        href: route('verifications.index'),
-        label: 'Trust & verifications',
-        icon: ShieldCheckIcon,
-        isActive: (p) => p.startsWith('/verifications'),
-    },
-]);
+const menuLinks = computed(() => {
+    const items = [
+        {
+            href: route('account.show'),
+            label: 'Account & profile',
+            icon: UserCircleIcon,
+            isActive: (p) => accountHubActive(p),
+        },
+        {
+            href: route('account.security.edit'),
+            label: 'Security & photo',
+            icon: WrenchScrewdriverIcon,
+            isActive: (p) => p.startsWith('/account/security'),
+        },
+        {
+            href: route('verifications.index'),
+            label: 'Trust & verifications',
+            icon: ShieldCheckIcon,
+            isActive: (p) => p.startsWith('/verifications'),
+        },
+    ];
+
+    if (roleSlug.value === 'super_admin' && page.props.admin_entry_url) {
+        items.push({
+            href: page.props.admin_entry_url,
+            label: 'Super admin console',
+            icon: ChartPieIcon,
+            isActive: (p) => p.startsWith('/admin'),
+        });
+    }
+    if (roleSlug.value === 'admin' && page.props.operations_entry_url) {
+        items.push({
+            href: page.props.operations_entry_url,
+            label: 'Operations console',
+            icon: ChartBarIcon,
+            isActive: (p) => p.startsWith('/operations'),
+        });
+    }
+
+    return items;
+});
 
 const logoutForm = useForm({});
 

@@ -70,10 +70,12 @@
                 v-if="!proposal_edit?.offer_id"
                 class="rounded-2xl border border-teal-200/90 bg-gradient-to-r from-teal-50 via-white to-emerald-50 px-4 py-4 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-teal-100 sm:px-5"
             >
-                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-teal-800">Payouts & trust</p>
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-teal-800">Payouts, escrow & disputes</p>
                 <p class="mt-2 leading-relaxed text-slate-700">
-                    Client funds stay in escrow until they mark the job completed. You are only expected to start billable work after escrow is funded and
-                    confirmed — never accept off-platform prepayment. Disputes and eligible refunds are handled under our
+                    Client funds stay in escrow until they mark the job completed. Start billable work only after escrow is funded and confirmed — never accept off-platform prepayment. If something goes wrong after funding, both sides use the same dispute tools:
+                    <Link :href="route('disputes.index')" class="font-black text-teal-900 underline decoration-teal-400 underline-offset-2">Disputes centre</Link>,
+                    <a href="/docs/dispute-workflow.md" target="_blank" rel="noopener noreferrer" class="font-black text-teal-900 underline decoration-teal-400 underline-offset-2">workflow doc</a>,
+                    and our
                     <a :href="route('legal.terms')" target="_blank" rel="noopener noreferrer" class="font-black text-teal-900 underline decoration-teal-400 underline-offset-2">Terms</a>.
                 </p>
             </section>

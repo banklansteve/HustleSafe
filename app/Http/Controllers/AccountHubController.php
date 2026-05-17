@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Enums\PortfolioStatus;
 use App\Enums\ReviewStatus;
+use App\Enums\QuestDisputeStatus;
 use App\Models\Portfolio;
+use App\Models\Quest;
 use App\Models\QuestCategory;
+use App\Models\QuestDispute;
 use App\Models\Review;
 use App\Models\State;
 use App\Models\UserFollow;
@@ -220,6 +223,22 @@ class AccountHubController extends Controller
                 ])
                 ->values()
                 ->all(),
+            'commerce_hub' => [
+                'disputes_index_url' => route('disputes.index'),
+                'open_disputes_count' => Schema::hasTable('quest_disputes')
+                    ? QuestDispute::query()
+                        ->whereHas('quest', function ($q) use ($user): void {
+                            $q->where('client_id', $user->id)->orWhere('freelancer_id', $user->id);
+                        })
+                        ->whereNotIn('status', [QuestDisputeStatus::Resolved, QuestDisputeStatus::ClosedWithdrawn])
+                        ->count()
+                    : 0,
+                'pending_funding_quests_count' => Quest::query()
+                    ->where('client_id', $user->id)
+                    ->where('escrow_status', 'awaiting_funding')
+                    ->whereNotNull('accepted_quest_offer_id')
+                    ->count(),
+            ],
         ]);
     }
 }

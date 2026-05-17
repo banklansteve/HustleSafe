@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Listeners\RecordUserLogin;
 use App\Models\Portfolio;
 use App\Models\Quest;
+use App\Models\QuestDispute;
 use App\Models\QuestOffer;
 use App\Models\Review;
 use App\Models\User;
@@ -13,6 +14,7 @@ use App\Observers\PortfolioObserver;
 use App\Observers\UserObserver;
 use App\Observers\UserVerificationObserver;
 use App\Policies\PortfolioPolicy;
+use App\Policies\QuestDisputePolicy;
 use App\Policies\QuestOfferPolicy;
 use App\Policies\QuestPolicy;
 use App\Policies\ReviewPolicy;
@@ -26,6 +28,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -34,11 +37,17 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $scheme = config('app.url_scheme');
+        if (is_string($scheme) && in_array($scheme, ['http', 'https'], true)) {
+            URL::forceScheme($scheme);
+        }
+
         Gate::policy(Review::class, ReviewPolicy::class);
         Gate::policy(UserVerification::class, UserVerificationPolicy::class);
         Gate::policy(Portfolio::class, PortfolioPolicy::class);
         Gate::policy(Quest::class, QuestPolicy::class);
         Gate::policy(QuestOffer::class, QuestOfferPolicy::class);
+        Gate::policy(QuestDispute::class, QuestDisputePolicy::class);
 
         Route::bind('contact', function (?string $value) {
             if ($value === null || $value === '') {

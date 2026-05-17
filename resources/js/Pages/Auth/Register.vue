@@ -145,11 +145,11 @@
                             </div>
                             <div>
                                 <InputLabel for="date_of_birth" value="Date of birth (optional)" />
-                                <TextInput
+                                <PremiumDatePicker
                                     id="date_of_birth"
                                     v-model="form.date_of_birth"
-                                    type="date"
-                                    class="mt-2 block w-full rounded-xl border-slate-200 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                    class="mt-2"
+                                    placeholder="DD/MM/YYYY"
                                 />
                                 <InputError class="mt-2" :message="fieldError('date_of_birth')" />
                             </div>
@@ -365,6 +365,7 @@ import GoogleSignInButton from '@/Components/Auth/GoogleSignInButton.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
+import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
 import AuthSplitLayout from '@/Layouts/Auth/AuthSplitLayout.vue';
 import { FaRegBuilding } from '@kalimahapps/vue-icons/fa';

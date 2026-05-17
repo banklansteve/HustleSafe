@@ -243,7 +243,7 @@ const user = computed(() => page.props.auth?.user ?? null);
 const isAuthenticated = computed(() => !!user.value);
 const roleSlug = computed(() => user.value?.role?.slug ?? '');
 const isFreelancer = computed(() => roleSlug.value === 'freelancer');
-const showClientTools = computed(() => ['client', 'admin', 'super_admin'].includes(roleSlug.value));
+const showClientTools = computed(() => ['client', 'super_admin'].includes(roleSlug.value));
 
 const mobileOpen = ref(false);
 

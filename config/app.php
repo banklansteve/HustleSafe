@@ -56,6 +56,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Force HTTPS (middleware)
+    |--------------------------------------------------------------------------
+    |
+    | When true, non-secure requests are redirected to HTTPS in production-like
+    | environments. Set FORCE_HTTPS=false in .env for local HTTP (e.g. Laragon).
+    |
+    */
+
+    'force_https' => filter_var(
+        env('FORCE_HTTPS', env('APP_ENV') === 'production'),
+        FILTER_VALIDATE_BOOLEAN
+    ),
+
+    /*
+    |--------------------------------------------------------------------------
+    | URL scheme for generated URLs (optional)
+    |--------------------------------------------------------------------------
+    |
+    | Set APP_URL_SCHEME=http when APP_URL is https but you browse over HTTP in
+    | development, so Ziggy and signed URLs match your browser.
+    |
+    */
+
+    'url_scheme' => env('APP_URL_SCHEME'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

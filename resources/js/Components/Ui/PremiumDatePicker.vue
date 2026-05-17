@@ -205,19 +205,11 @@ const displayValue = computed(() => {
     if (!p) {
         return '';
     }
-    try {
-        const dt = new Date(p.y, p.m - 1, p.d);
 
-        return dt.toLocaleDateString('en-NG', {
-            weekday: 'short',
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-            timeZone: 'Africa/Lagos',
-        });
-    } catch {
-        return props.modelValue;
-    }
+    const day = String(p.d).padStart(2, '0');
+    const month = String(p.m).padStart(2, '0');
+
+    return `${day}/${month}/${p.y}`;
 });
 
 const monthTitle = computed(() => {

@@ -26,6 +26,10 @@ use App\Http\Controllers\QuestBookmarkController;
 use App\Http\Controllers\QuestContentReportController;
 use App\Http\Controllers\QuestController;
 use App\Http\Controllers\QuestConversationController;
+use App\Http\Controllers\QuestDisputeController;
+use App\Http\Controllers\QuestDisputeMessageController;
+use App\Http\Controllers\QuestDisputeMutualResolveController;
+use App\Http\Controllers\QuestDisputeSettlementController;
 use App\Http\Controllers\QuestExploreController;
 use App\Http\Controllers\QuestFieldProfileController;
 use App\Http\Controllers\QuestFileController;
@@ -34,12 +38,15 @@ use App\Http\Controllers\QuestOfferController;
 use App\Http\Controllers\QuestProposalController;
 use App\Http\Controllers\QuestProposalLifecycleController;
 use App\Http\Controllers\QuestProposalPdfController;
+use App\Http\Controllers\QuestProposalFundingIntentController;
 use App\Http\Controllers\QuestWizardController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\UserFollowController;
 use App\Http\Controllers\UserFreelancerSearchController;
 use App\Http\Controllers\UserVerificationController;
+use App\Http\Controllers\Auth\OperationsStaffInvitationController;
+use App\Http\Controllers\Admin\AdminUsersController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/terms-of-service', [LegalPageController::class, 'terms'])->name('legal.terms');
@@ -59,9 +66,20 @@ Route::get('/freelancers/{slug}', PublicFreelancerProfileController::class)->nam
 
 Route::get('/portfolio', [FreelancerPortfolioController::class, 'index'])->name('portfolio.index');
 
+Route::middleware(['signed', 'throttle:12,1'])->group(function (): void {
+    Route::get('/operations-invitation/{user}', [OperationsStaffInvitationController::class, 'show'])
+        ->name('operations.invitation.show');
+    Route::post('/operations-invitation/{user}', [OperationsStaffInvitationController::class, 'update'])
+        ->name('operations.invitation.update');
+});
+
 Route::get('/dashboard', DashboardController::class)->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::post('/impersonation/stop', [AdminUsersController::class, 'stopImpersonating'])
+        ->middleware('throttle:20,1')
+        ->name('impersonation.stop');
+
     // GET avoids duplicate POST handling and reduces concurrent DB/session pressure (helps on Windows dev stacks).
     Route::get('/notifications/{id}/next', NotificationReadController::class)
         ->whereUuid('id')
@@ -92,6 +110,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/dashboard/lists/{list}', [DashboardListController::class, 'show'])->name('dashboard.lists.show');
     Route::get('/dashboard/guides/trust', DashboardTrustGuideController::class)->name('dashboard.trust-guide');
+
+    Route::get('/disputes', [QuestDisputeController::class, 'index'])->name('disputes.index');
+    Route::get('/disputes/{dispute}', [QuestDisputeController::class, 'show'])->name('disputes.show');
+    Route::post('/disputes/{dispute}/messages', [QuestDisputeMessageController::class, 'store'])
+        ->middleware('throttle:45,1')
+        ->name('disputes.messages.store');
+    Route::post('/disputes/{dispute}/settlement-offers', [QuestDisputeSettlementController::class, 'store'])
+        ->middleware('throttle:20,1')
+        ->name('disputes.settlement-offers.store');
+    Route::post('/disputes/{dispute}/settlement-offers/{settlement_offer}/accept', [QuestDisputeSettlementController::class, 'accept'])
+        ->middleware('throttle:20,1')
+        ->whereNumber('settlement_offer')
+        ->name('disputes.settlement-offers.accept');
+    Route::post('/disputes/{dispute}/settlement-offers/{settlement_offer}/decline', [QuestDisputeSettlementController::class, 'decline'])
+        ->middleware('throttle:20,1')
+        ->whereNumber('settlement_offer')
+        ->name('disputes.settlement-offers.decline');
+    Route::post('/disputes/{dispute}/mutual-resolve', [QuestDisputeMutualResolveController::class, 'store'])
+        ->middleware('throttle:20,1')
+        ->name('disputes.mutual-resolve.store');
 
     Route::get('/quests/explore', QuestExploreController::class)->name('quests.explore');
     Route::get('/quests', [QuestController::class, 'index'])->name('quests.index');
@@ -157,6 +195,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('throttle:10,1')
         ->whereNumber('offer')
         ->name('quests.proposals.escrow-funded');
+    Route::post('/quests/{quest}/proposals/{offer}/funding-intent', [QuestProposalFundingIntentController::class, 'store'])
+        ->middleware('throttle:20,1')
+        ->whereNumber('offer')
+        ->name('quests.proposals.funding-intent.store');
     Route::post('/quests/{quest}/proposals/{offer}/withdraw', [QuestProposalLifecycleController::class, 'withdraw'])
         ->middleware(['freelancer', 'throttle:10,1'])
         ->whereNumber('offer')
@@ -167,6 +209,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/quests/{quest}/proposals/{offer}', [QuestProposalController::class, 'show'])
         ->whereNumber('offer')
         ->name('quests.proposals.show');
+    Route::get('/quests/{quest}/disputes/create', [QuestDisputeController::class, 'create'])->name('quests.disputes.create');
+    Route::post('/quests/{quest}/disputes', [QuestDisputeController::class, 'store'])
+        ->middleware('throttle:12,1')
+        ->name('quests.disputes.store');
     Route::get('/quests/{quest}/messages/{contact?}', [QuestConversationController::class, 'show'])
         ->name('quests.messages.show');
     Route::post('/quests/{quest}/messages/{contact?}', [QuestConversationController::class, 'store'])
@@ -234,7 +280,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/portfolio/{portfolio}', [FreelancerPortfolioController::class, 'update'])->name('portfolio.update');
         Route::delete('/portfolio/{portfolio}', [FreelancerPortfolioController::class, 'destroy'])->name('portfolio.destroy');
     });
+
+    Route::middleware(['redirect_operations_staff_from_admin', 'super_admin', 'throttle:240,1'])
+        ->prefix('admin')
+        ->name('admin.')
+        ->group(base_path('routes/admin.php'));
+
+    Route::middleware(['operations_staff', 'throttle:240,1'])
+        ->prefix('operations')
+        ->name('operations.')
+        ->group(base_path('routes/operations.php'));
 });
+
+Route::redirect('/hq', '/admin', 301);
+Route::redirect('/hq/', '/admin/', 301);
+Route::get('/hq/{path}', function (string $path) {
+    return redirect('/admin/'.$path, 301);
+})->where('path', '.*');
 
 Route::get('/portfolio/{portfolio}', [FreelancerPortfolioController::class, 'show'])->name('portfolio.show');
 

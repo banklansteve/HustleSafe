@@ -6,6 +6,7 @@ use App\Enums\UserVerificationCategory;
 use App\Enums\UserVerificationStatus;
 use App\Http\Requests\Verification\StoreUserVerificationRequest;
 use App\Models\UserVerification;
+use App\Services\Kyc\KycCaseIntakeService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -36,7 +37,7 @@ class UserVerificationController extends Controller
         ]);
     }
 
-    public function store(StoreUserVerificationRequest $request): RedirectResponse
+    public function store(StoreUserVerificationRequest $request, KycCaseIntakeService $kycIntake): RedirectResponse
     {
         $this->authorize('create', UserVerification::class);
 
@@ -83,6 +84,8 @@ class UserVerificationController extends Controller
             $metadata = [
                 'id_type' => $data['id_type'] ?? null,
                 'identifier_number' => $data['identifier_number'] ?? null,
+                'cac_number' => $data['cac_number'] ?? null,
+                'registered_business_name' => $data['registered_business_name'] ?? null,
                 'documents' => [],
             ];
             foreach ($fileList as $i => $file) {
@@ -99,15 +102,23 @@ class UserVerificationController extends Controller
             }
         }
 
-        UserVerification::query()->create([
+        $verification = UserVerification::query()->create([
             'user_id' => $request->user()->id,
             'category' => $category,
+            'target_tier' => $this->targetTierFor($category, $data['id_type'] ?? null),
             'freelancer_credential_id' => $data['freelancer_credential_id'] ?? null,
             'status' => UserVerificationStatus::Pending,
             'document_paths' => $paths,
             'metadata' => $metadata,
+            'queue_reason' => $this->queueReasonFor($category, $request->user()),
+            'attempt_count' => UserVerification::query()
+                ->where('user_id', $request->user()->id)
+                ->where('category', $category)
+                ->count() + 1,
             'submitted_at' => now(),
         ]);
+
+        $kycIntake->createFromVerification($verification, $verification->queue_reason ?: 'manual_review');
 
         return redirect()
             ->route('verifications.index')
@@ -120,7 +131,43 @@ class UserVerificationController extends Controller
             UserVerificationCategory::Identity => __('Government ID'),
             UserVerificationCategory::Address => __('Proof of address'),
             UserVerificationCategory::Qualification => __('Qualification'),
+            UserVerificationCategory::Business => __('Business verification'),
             UserVerificationCategory::LivePresence => __('Selfie + ID'),
         };
+    }
+
+    protected function targetTierFor(UserVerificationCategory $c, ?string $idType = null): int
+    {
+        if ($c === UserVerificationCategory::Identity && $idType === 'bvn') {
+            return 4;
+        }
+
+        return match ($c) {
+            UserVerificationCategory::Identity => 2,
+            UserVerificationCategory::Address => 3,
+            UserVerificationCategory::LivePresence => 4,
+            UserVerificationCategory::Qualification => 4,
+            UserVerificationCategory::Business => 5,
+        };
+    }
+
+    protected function queueReasonFor(UserVerificationCategory $c, $user): string
+    {
+        if ($c === UserVerificationCategory::Identity) {
+            $identifier = (string) request('identifier_number');
+            $duplicate = $identifier !== '' && UserVerification::query()
+                ->where('user_id', '<>', $user->id)
+                ->where('metadata->identifier_number', $identifier)
+                ->where('status', UserVerificationStatus::Approved)
+                ->exists();
+
+            return $duplicate ? 'duplicate_identity' : 'manual_escalation';
+        }
+
+        if ($c === UserVerificationCategory::Business) {
+            return 'cac_review_required';
+        }
+
+        return $c === UserVerificationCategory::LivePresence ? 'liveness_review' : 'manual_review';
     }
 }

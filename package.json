@@ -36,6 +36,9 @@
         "@vueuse/core": "^14.3.0",
         "laravel-echo": "^2.3.4",
         "pusher-js": "^8.5.0",
-        "swiper": "^12.1.4"
+        "swiper": "^12.1.4",
+        "@tanstack/vue-table": "8.21.3",
+        "apexcharts": "3.54.1",
+        "vue3-apexcharts": "1.5.3"
     }
 }

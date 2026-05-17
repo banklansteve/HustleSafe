@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Account\AccountDetailsUpdateRequest;
 use App\Http\Requests\Account\AccountVisibilityUpdateRequest;
+use App\Jobs\ScanContentForModerationJob;
+use App\Models\User;
 use App\Services\TrustScoreOrchestrator;
 use App\Support\TextCasing;
 use Illuminate\Http\RedirectResponse;
@@ -22,6 +24,7 @@ class AccountUpdateController extends Controller
         $user->fill(array_filter($data, fn ($v) => $v !== null && $v !== ''));
         $user->save();
         $trustScores->recalculate($user->fresh());
+        ScanContentForModerationJob::dispatch(User::class, (int) $user->id)->afterResponse();
 
         return redirect()->route('account.show', ['tab' => 'overview'])->with('success', __('Profile updated.'));
     }

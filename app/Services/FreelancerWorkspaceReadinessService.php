@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\UserVerification;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use App\Services\Kyc\KycTierGateService;
 
 /**
  * Centralises freelancer readiness for proposals, matching, and (future) withdrawals.
@@ -201,6 +202,12 @@ class FreelancerWorkspaceReadinessService
         if ($quest->status !== QuestStatus::Open || $quest->freelancer_id !== null) {
             throw ValidationException::withMessages([
                 'proposal' => [__('This quest is not accepting new proposals right now.')],
+            ]);
+        }
+
+        if (! app(KycTierGateService::class)->allows($user, 'submit_proposal')) {
+            throw ValidationException::withMessages([
+                'verification' => [__('Verify your email and phone number before submitting proposals.')],
             ]);
         }
 

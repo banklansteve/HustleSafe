@@ -140,13 +140,36 @@
                     (including fees in the breakdown) before the freelancer is expected to start. Nothing is released to them until you mark the job
                     completed.
                 </p>
-                <button
-                    type="button"
-                    class="mt-3 rounded-full bg-amber-700 px-5 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-amber-800"
-                    @click="openModal('escrow')"
-                >
-                    I have funded escrow
-                </button>
+                <div v-if="commerce?.show_fund_button && commerce?.funding_post_url" class="mt-3 flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        class="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-800 disabled:opacity-50"
+                        :disabled="fundingIntentForm.processing"
+                        @click="submitFundingIntent"
+                    >
+                        <ReLoader4Line v-if="fundingIntentForm.processing" class="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+                        Fund via gateway
+                    </button>
+                </div>
+                <div v-if="commerce && (!observer_mode && (is_client || is_author))" class="mt-3 flex flex-wrap gap-2">
+                    <Link
+                        v-if="commerce.active_dispute"
+                        :href="commerce.active_dispute.url"
+                        class="inline-flex rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-800 hover:bg-slate-50"
+                    >
+                        Open dispute
+                    </Link>
+                    <Link
+                        v-else-if="commerce.can_open_dispute && commerce.dispute_create_url"
+                        :href="commerce.dispute_create_url"
+                        class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-950 hover:bg-amber-100"
+                    >
+                        Open dispute
+                    </Link>
+                </div>
+                <p v-if="commerce?.dispute_block_reason && !commerce?.can_open_dispute && !commerce?.active_dispute" class="mt-2 text-xs font-semibold text-amber-900">
+                    {{ commerce.dispute_block_reason }}
+                </p>
             </section>
 
             <section
@@ -489,9 +512,19 @@ const props = defineProps({
     observer_mode: { type: Boolean, default: false },
     can_download_pdf: { type: Boolean, default: true },
     conversation_with_freelancer_url: { type: String, default: null },
+    commerce: { type: Object, default: null },
 });
 
 const page = usePage();
+
+const fundingIntentForm = useForm({});
+function submitFundingIntent() {
+    const url = props.commerce?.funding_post_url;
+    if (!url) {
+        return;
+    }
+    fundingIntentForm.post(url, { preserveScroll: true });
+}
 
 const activeModal = ref(null);
 
@@ -516,7 +549,8 @@ const anyModalFormProcessing = computed(
         || declineForm.processing
         || acceptForm.processing
         || escrowForm.processing
-        || withdrawForm.processing,
+        || withdrawForm.processing
+        || fundingIntentForm.processing,
 );
 
 const clientDecisionOffer = computed(

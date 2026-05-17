@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Carbon\Carbon;
 use Illuminate\Support\Str;
 
 class Quest extends Model
@@ -63,9 +64,17 @@ class Quest extends Model
         'scheduled_start_date',
         'budget_amount_minor',
         'paid_out_minor',
+        'refunded_minor',
         'due_at',
+        'escrow_funded_at',
+        'escrow_held_at',
+        'escrow_hold_reason',
+        'escrow_hold_expected_resolution_at',
+        'escrow_frozen_at',
+        'escrow_freeze_reason',
         'delivered_at',
         'completed_at',
+        'auto_completed_at',
         'completed_on_time',
         'dispute_opened',
         'closure_type',
@@ -175,6 +184,10 @@ class Quest extends Model
             'client_edit_until' => 'datetime',
             'terms_accepted_at' => 'datetime',
             'due_at' => 'datetime',
+            'escrow_funded_at' => 'datetime',
+            'escrow_held_at' => 'datetime',
+            'escrow_hold_expected_resolution_at' => 'datetime',
+            'escrow_frozen_at' => 'datetime',
             'delivered_at' => 'datetime',
             'completed_at' => 'datetime',
             'completed_on_time' => 'boolean',
@@ -270,6 +283,51 @@ class Quest extends Model
     public function localGovernment(): BelongsTo
     {
         return $this->belongsTo(LocalGovernment::class, 'local_government_id');
+    }
+
+    /**
+     * @return HasMany<QuestDispute, $this>
+     */
+    public function disputes(): HasMany
+    {
+        return $this->hasMany(QuestDispute::class);
+    }
+
+    /**
+     * @return HasMany<QuestLifecycleEmailLog, $this>
+     */
+    public function lifecycleEmailLogs(): HasMany
+    {
+        return $this->hasMany(QuestLifecycleEmailLog::class);
+    }
+
+    /**
+     * @return HasMany<AdminFinancialLedgerEntry, $this>
+     */
+    public function adminFinancialLedgerEntries(): HasMany
+    {
+        return $this->hasMany(AdminFinancialLedgerEntry::class)->orderBy('occurred_at');
+    }
+
+    public function featuredListings(): HasMany
+    {
+        return $this->hasMany(FeaturedQuestListing::class);
+    }
+
+    public function activeFeaturedListing(): HasMany
+    {
+        return $this->hasMany(FeaturedQuestListing::class)
+            ->where('status', 'active')
+            ->where('starts_at', '<=', now())
+            ->where('expires_at', '>', now());
+    }
+
+    /**
+     * Best-effort anchor for engagement / reminder emails (due date, delivery date, or planned finish).
+     */
+    public function expectedCompletionAnchor(): ?Carbon
+    {
+        return app(\App\Services\QuestEngagementLifecycleService::class)->expectedCompletionAt($this);
     }
 
     /**

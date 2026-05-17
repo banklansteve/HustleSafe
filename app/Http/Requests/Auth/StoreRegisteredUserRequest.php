@@ -56,6 +56,7 @@ class StoreRegisteredUserRequest extends FormRequest
                 Rule::exists('quest_categories', 'id')->whereNotNull('parent_id')->where('is_active', true),
             ],
             'password' => ['required', 'confirmed', Password::defaults()],
+            'referral_code' => ['nullable', 'string', 'max:24'],
         ];
     }
 

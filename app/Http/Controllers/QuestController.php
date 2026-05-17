@@ -12,7 +12,9 @@ use App\Enums\QuestTeamSize;
 use App\Enums\QuestVisibility;
 use App\Http\Requests\Quests\StoreQuestRequest;
 use App\Http\Requests\Quests\UpdateQuestRequest;
+use App\Jobs\ScanContentForModerationJob;
 use App\Models\Quest;
+use App\Models\FeaturedQuestListing;
 use App\Models\QuestBookmark;
 use App\Models\QuestCategory;
 use App\Models\QuestConversationThread;
@@ -24,11 +26,14 @@ use App\Notifications\QuestBriefUpdatedNotification;
 use App\Notifications\QuestListingPulseNotification;
 use App\Notifications\QuestPublishedClientConfirmationNotification;
 use App\Services\FreelancerWorkspaceReadinessService;
+use App\Services\Admin\AdminActivityFeedService;
 use App\Services\QuestCoverService;
 use App\Services\QuestFileStorageService;
 use App\Services\QuestFormFieldProfileService;
 use App\Services\QuestPublishedNotificationService;
 use App\Services\QuestSlugService;
+use App\Services\Kyc\KycTierGateService;
+use App\Support\QuestCommerceUi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -104,9 +109,19 @@ class QuestController extends Controller
         QuestSlugService $slugService,
         QuestFileStorageService $questFiles,
         QuestCoverService $cover,
+        KycTierGateService $kycGate,
     ): RedirectResponse {
         $user = $request->user();
         $data = $request->validated();
+        if (! $kycGate->allows($user, 'post_quest')) {
+            return back()->withErrors(['verification' => __('Verify your email and phone number before posting quests.')]);
+        }
+        $questLimit = $kycGate->clientQuestLimitMinor($user);
+        if ((int) ($data['budget_amount_minor'] ?? 0) > $questLimit) {
+            return back()->withErrors(['budget_amount_minor' => __('Your current verification tier allows quests up to :amount. Complete the next KYC tier to post higher-value work.', [
+                'amount' => '₦'.number_format($questLimit / 100, 0, '.', ','),
+            ])]);
+        }
         $publish = $request->boolean('publish_now', true);
         $status = $publish ? QuestStatus::Open : QuestStatus::Draft;
         $tagged = array_values(array_unique(array_map('intval', $data['tagged_freelancer_ids'] ?? [])));
@@ -199,7 +214,33 @@ class QuestController extends Controller
         if ($status === QuestStatus::Open) {
             $notifier->notifyAudiences($quest, $tagged);
             $user->notify(new QuestPublishedClientConfirmationNotification($quest));
+            $quest->loadMissing(['client', 'questCategory', 'stateModel']);
+            app(AdminActivityFeedService::class)->record(
+                'jobs',
+                'quest.posted',
+                'New quest posted',
+                "{$user->name} posted {$quest->title}",
+                app(AdminActivityFeedService::class)->entities([
+                    ['type' => 'user', 'id' => $user->id, 'label' => $user->name],
+                    ['type' => 'quest', 'id' => $quest->id, 'label' => $quest->title],
+                ]),
+                [
+                    'budget' => '₦'.number_format(((int) $quest->budget_amount_minor) / 100, 2),
+                    'category' => $quest->questCategory?->name,
+                    'state' => $quest->stateModel?->name,
+                    'location' => $quest->city,
+                ],
+                (int) $quest->budget_amount_minor,
+                $user,
+                Quest::class,
+                $quest->id,
+                $quest->state_id,
+                $quest->local_government_id,
+                $quest->quest_category_id,
+            );
         }
+
+        ScanContentForModerationJob::dispatch(Quest::class, (int) $quest->id)->afterResponse();
 
         $redirect = redirect()
             ->route('quests.show', $quest)
@@ -231,6 +272,7 @@ class QuestController extends Controller
             'localGovernment:id,name',
             'files',
             'invitedFreelancers:id,first_name,name,slug,avatar_url',
+            'acceptedOffer',
         ]);
 
         $user = $request->user();
@@ -373,8 +415,21 @@ class QuestController extends Controller
 
         $isQuestOwner = $user && (int) $user->id === (int) $quest->client_id;
 
+        $questPayload = $this->questDetailPayload($quest, $user);
+        if ($user !== null && $quest->isParty($user)) {
+            $questPayload = array_merge($questPayload, [
+                'escrow_status' => $quest->escrow_status,
+                'accepted_quest_offer_id' => $quest->accepted_quest_offer_id,
+            ]);
+            $commerce = QuestCommerceUi::disputeForQuest($quest, $user);
+            if ($quest->acceptedOffer !== null) {
+                $commerce = array_merge($commerce, QuestCommerceUi::fundingForOffer($quest, $quest->acceptedOffer, $user));
+            }
+            $questPayload['commerce'] = $commerce;
+        }
+
         return Inertia::render('Quests/Show', [
-            'quest' => $this->questDetailPayload($quest, $user),
+            'quest' => $questPayload,
             'is_quest_owner' => (bool) ($user && $user->id === $quest->client_id),
             'can_edit' => $user?->can('update', $quest) ?? false,
             'can_offer' => $canOffer,
@@ -433,6 +488,8 @@ class QuestController extends Controller
         }
 
         $quest->save();
+
+        ScanContentForModerationJob::dispatch(Quest::class, (int) $quest->id)->afterResponse();
 
         if ($quest->status === QuestStatus::Open
             && $quest->client_id === $request->user()->id) {
@@ -592,6 +649,13 @@ class QuestController extends Controller
             'city' => $q->city,
             'budget_minor' => (int) ($q->budget_amount_minor ?? 0),
             'cover_url' => $q->displayCoverUrl(),
+            'featured' => FeaturedQuestListing::query()
+                ->where('quest_id', $q->id)
+                ->where('status', 'active')
+                ->where('starts_at', '<=', now())
+                ->where('expires_at', '>', now())
+                ->latest('id')
+                ->value('tier'),
         ];
     }
 

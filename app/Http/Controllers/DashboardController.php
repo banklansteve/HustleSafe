@@ -18,19 +18,21 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request): Response
+    public function __invoke(Request $request): Response|RedirectResponse
     {
         $user = $request->user();
         $user->loadMissing('role');
 
         return match ($user->role?->slug) {
             'freelancer' => $this->freelancerHome($user),
-            'admin', 'super_admin' => $this->adminHome($user),
+            'admin' => redirect()->route('operations.dashboard'),
+            'super_admin' => $this->adminHome($user),
             default => $this->clientHome($user),
         };
     }

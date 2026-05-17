@@ -8,6 +8,9 @@ enum UserVerificationCategory: string
     case Address = 'address';
     case Qualification = 'qualification';
 
+    /** CAC registration and business identity verification for company accounts. */
+    case Business = 'business';
+
     /** Selfie holding an approved ID — required for high-value quest proposals after document ID is approved. */
     case LivePresence = 'live_presence';
 }

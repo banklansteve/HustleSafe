@@ -22,3 +22,32 @@
     }
 }
 
+/* Super admin console — fallback if utility classes are purged */
+.admin-theme-dark {
+    color-scheme: dark;
+}
+
+.admin-theme-dark [data-admin-sidebar] {
+    background-color: #020617;
+    border-color: rgb(30 41 59);
+    color: #fff;
+}
+
+.admin-theme-light {
+    color-scheme: light;
+}
+
+.admin-theme-light [data-admin-sidebar] {
+    background-color: #fff;
+    border-color: rgb(226 232 240);
+    color: rgb(15 23 42);
+}
+
+.admin-theme-dark .admin-main-surface {
+    background-color: #0f172a;
+}
+
+.admin-theme-light .admin-main-surface {
+    background-color: #f1f5f9;
+}
+

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Events\QuestConversationMessageSent;
 use App\Http\Requests\Quests\StoreQuestConversationMessageRequest;
+use App\Jobs\ScanContentForModerationJob;
 use App\Models\Quest;
 use App\Models\QuestConversationMessage;
 use App\Models\QuestConversationThread;
@@ -61,6 +62,12 @@ class QuestConversationController extends Controller
                 'client_id' => $quest->client_id,
             ],
         );
+
+        if ($thread->isBlockedByAdmin()) {
+            return redirect()
+                ->route('quests.show', $quest)
+                ->with('status', __('This conversation thread is no longer available.'));
+        }
 
         $this->markThreadReadFor($thread, $user);
 
@@ -130,6 +137,10 @@ class QuestConversationController extends Controller
             ],
         );
 
+        if ($thread->isBlockedByAdmin()) {
+            abort(403, __('This conversation thread is no longer available.'));
+        }
+
         if ($thread->messages_count >= $maxPerThread) {
             if ($request->expectsJson()) {
                 return response()->json([
@@ -144,6 +155,7 @@ class QuestConversationController extends Controller
             'user_id' => $user->id,
             'body' => $request->validated()['body'],
         ]);
+        ScanContentForModerationJob::dispatch(QuestConversationMessage::class, (int) $message->id)->afterResponse();
 
         $thread->increment('messages_count');
         $thread->forceFill(['last_message_at' => now()])->save();

@@ -9,6 +9,7 @@ use App\Models\QuestOffer;
 use App\Notifications\ProposalViewedMilestoneNotification;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\QuestProposalPricingHintService;
+use App\Support\QuestCommerceUi;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -152,6 +153,7 @@ class QuestProposalController extends Controller
             'questCategory.parent:id,name',
             'stateModel:id,name',
             'localGovernment:id,name',
+            'acceptedOffer',
         ]);
         $offer->loadMissing(['freelancer:id,first_name,name,slug,avatar_url,username,headline']);
 
@@ -172,6 +174,9 @@ class QuestProposalController extends Controller
             }
         }
 
+        $commerce = QuestCommerceUi::disputeForQuest($quest, $user);
+        $commerce = array_merge($commerce, QuestCommerceUi::fundingForOffer($quest, $offer, $user));
+
         return Inertia::render('Quests/Proposals/Show', [
             'quest' => $this->questComposerPayload($quest),
             'offer' => $this->offerPayload($offer, $quest, $isObserver),
@@ -182,6 +187,7 @@ class QuestProposalController extends Controller
             'conversation_with_freelancer_url' => $isClient && $offer->freelancer?->slug
                 ? route('quests.messages.show', [$quest->getRouteKey(), $offer->freelancer->slug])
                 : null,
+            'commerce' => $commerce,
         ]);
     }
 

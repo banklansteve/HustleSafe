@@ -169,7 +169,13 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    /*
+    | When SESSION_SECURE_COOKIE is unset, only use secure cookies in production so
+    | local HTTP stacks (e.g. Laragon) still receive the session cookie on /admin.
+    */
+    'secure' => (($v = env('SESSION_SECURE_COOKIE')) !== null && $v !== '')
+        ? filter_var($v, FILTER_VALIDATE_BOOL)
+        : env('APP_ENV', 'local') === 'production',
 
     /*
     |--------------------------------------------------------------------------

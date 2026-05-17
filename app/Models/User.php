@@ -28,11 +28,16 @@ class User extends Authenticatable implements MustVerifyEmail
         'username',
         'slug',
         'uid',
+        'referral_code',
+        'referred_by_user_id',
+        'referral_program_blocked_at',
         'name',
         'first_name',
         'last_name',
         'email',
         'phone',
+        'nin',
+        'bvn',
         'gender',
         'date_of_birth',
         'company_name',
@@ -53,6 +58,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'years_experience',
         'availability',
         'verification_tier',
+        'kyc_tier',
+        'kyc_status',
+        'kyc_verified_at',
         'response_time_hours',
         'job_title',
         'company_size',
@@ -62,11 +70,17 @@ class User extends Authenticatable implements MustVerifyEmail
         'last_active_at',
         'freelancer_last_setup_reminder_at',
         'suspended_at',
+        'under_review_at',
+        'banned_at',
+        'ban_reason',
         'google_id',
         'avatar_url',
         'public_profile_settings',
         'hide_online_presence',
         'password',
+        'operations_staff_invited_at',
+        'operations_staff_invited_by',
+        'operations_staff_password_set_at',
     ];
 
     protected $with = [
@@ -104,6 +118,8 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'phone_verified_at' => 'datetime',
+            'referral_program_blocked_at' => 'datetime',
             'password' => 'hashed',
             'date_of_birth' => 'date',
             'hourly_rate_min' => 'decimal:2',
@@ -111,8 +127,13 @@ class User extends Authenticatable implements MustVerifyEmail
             'last_active_at' => 'datetime',
             'freelancer_last_setup_reminder_at' => 'datetime',
             'suspended_at' => 'datetime',
+            'under_review_at' => 'datetime',
+            'banned_at' => 'datetime',
             'deactivated_at' => 'datetime',
+            'operations_staff_invited_at' => 'datetime',
+            'operations_staff_password_set_at' => 'datetime',
             'geocoded_at' => 'datetime',
+            'kyc_verified_at' => 'datetime',
             'latitude' => 'float',
             'longitude' => 'float',
             'public_profile_settings' => 'array',
@@ -126,6 +147,16 @@ class User extends Authenticatable implements MustVerifyEmail
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
+    }
+
+    /**
+     * Super admin who invited this operations staff member (if any).
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function operationsStaffInvitedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'operations_staff_invited_by');
     }
 
     /**
@@ -158,6 +189,61 @@ class User extends Authenticatable implements MustVerifyEmail
     public function userVerifications(): HasMany
     {
         return $this->hasMany(UserVerification::class);
+    }
+
+    public function kycReviewCases(): HasMany
+    {
+        return $this->hasMany(KycReviewCase::class);
+    }
+
+    /**
+     * @return HasMany<AdminUserNote, $this>
+     */
+    public function adminNotes(): HasMany
+    {
+        return $this->hasMany(AdminUserNote::class);
+    }
+
+    /**
+     * @return BelongsToMany<AdminUserTag, $this>
+     */
+    public function adminTags(): BelongsToMany
+    {
+        return $this->belongsToMany(AdminUserTag::class, 'admin_user_tag_user')->withTimestamps();
+    }
+
+    /**
+     * @return BelongsToMany<AdminUserBadge, $this>
+     */
+    public function adminBadges(): BelongsToMany
+    {
+        return $this->belongsToMany(AdminUserBadge::class, 'admin_user_badge_user')->withTimestamps();
+    }
+
+    public function promotionBadges(): BelongsToMany
+    {
+        return $this->belongsToMany(PromotionBadge::class, 'promotion_badge_user')
+            ->withPivot(['awarded_by_admin_id', 'justification', 'awarded_at', 'expires_at', 'revoked_at'])
+            ->wherePivotNull('revoked_at')
+            ->withTimestamps();
+    }
+
+    public function referralsMade(): HasMany
+    {
+        return $this->hasMany(UserReferral::class, 'referrer_user_id');
+    }
+
+    public function referralReceived(): HasMany
+    {
+        return $this->hasMany(UserReferral::class, 'referred_user_id');
+    }
+
+    /**
+     * @return HasMany<AdminUserSanction, $this>
+     */
+    public function sanctions(): HasMany
+    {
+        return $this->hasMany(AdminUserSanction::class);
     }
 
     /**
@@ -301,6 +387,10 @@ class User extends Authenticatable implements MustVerifyEmail
                 $user->uid = static::generateUniqueUid();
             }
 
+            if (empty($user->referral_code)) {
+                $user->referral_code = static::generateReferralCode();
+            }
+
             if (empty($user->username) && ! empty($user->email)) {
                 $user->username = static::generateUniqueUsername((string) $user->email);
             }
@@ -312,8 +402,9 @@ class User extends Authenticatable implements MustVerifyEmail
 
             if ($user->role_id === null && $user->account_type !== null) {
                 $roleSlug = match ($user->account_type) {
-                    'hustler' => 'freelancer',
-                    'sponsor' => 'client',
+                    'admin' => 'admin',
+                    'freelancer', 'hustler' => 'freelancer',
+                    'client', 'sponsor' => 'client',
                     default => 'client',
                 };
                 $user->role_id = Role::query()->where('slug', $roleSlug)->value('id');
@@ -341,6 +432,15 @@ class User extends Authenticatable implements MustVerifyEmail
         } while (static::query()->where('uid', $uid)->exists());
 
         return $uid;
+    }
+
+    public static function generateReferralCode(): string
+    {
+        do {
+            $code = strtoupper(Str::random(8));
+        } while (static::query()->where('referral_code', $code)->exists());
+
+        return $code;
     }
 
     public static function generateUniqueUsername(string $email): string

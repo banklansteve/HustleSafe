@@ -45,13 +45,16 @@ class StoreUserVerificationRequest extends FormRequest
 
         if ($cat === UserVerificationCategory::Identity->value) {
             return array_merge($base, $doc, [
-                'id_type' => ['required', Rule::in(['nin', 'passport', 'drivers_licence'])],
+                'id_type' => ['required', Rule::in(['nin', 'bvn', 'passport', 'drivers_licence'])],
                 'identifier_number' => ['required', 'string', 'max:64'],
             ]);
         }
 
-        if ($cat === UserVerificationCategory::Address->value || $cat === UserVerificationCategory::Qualification->value) {
-            return array_merge($base, $doc);
+        if (in_array($cat, [UserVerificationCategory::Address->value, UserVerificationCategory::Qualification->value, UserVerificationCategory::Business->value], true)) {
+            return array_merge($base, $doc, $cat === UserVerificationCategory::Business->value ? [
+                'cac_number' => ['required', 'string', 'max:80'],
+                'registered_business_name' => ['required', 'string', 'max:255'],
+            ] : []);
         }
 
         return $base;
@@ -73,6 +76,7 @@ class StoreUserVerificationRequest extends FormRequest
                 UserVerificationCategory::Identity->value,
                 UserVerificationCategory::Address->value,
                 UserVerificationCategory::Qualification->value,
+                UserVerificationCategory::Business->value,
             ], true)) {
                 return;
             }

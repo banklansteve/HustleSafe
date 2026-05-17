@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Events\QuestProposalListUpdated;
 use App\Http\Requests\Quests\StoreQuestProposalRequest;
 use App\Http\Requests\Quests\UpdateQuestProposalRequest;
+use App\Jobs\ScanContentForModerationJob;
 use App\Jobs\DeliverQuestOfferClientNotification;
 use App\Models\Quest;
 use App\Models\QuestOffer;
+use App\Services\Admin\AdminActivityFeedService;
 use App\Services\FreelancerWorkspaceReadinessService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Carbon;
@@ -65,6 +67,29 @@ class QuestOfferController extends Controller
         broadcast(new QuestProposalListUpdated((int) $quest->id));
 
         DeliverQuestOfferClientNotification::dispatch($offer->id, 'new')->afterResponse();
+        ScanContentForModerationJob::dispatch(QuestOffer::class, (int) $offer->id)->afterResponse();
+
+        if ($grand >= (int) config('quests.high_value_proposal_minor', 5_000_000)) {
+            $quest->loadMissing(['client', 'questCategory', 'stateModel']);
+            app(AdminActivityFeedService::class)->record(
+                'financial',
+                'proposal.high_value_submitted',
+                'High-value proposal submitted',
+                "{$user->name} submitted a proposal on {$quest->title}",
+                app(AdminActivityFeedService::class)->entities([
+                    ['type' => 'user', 'id' => $user->id, 'label' => $user->name],
+                    ['type' => 'quest', 'id' => $quest->id, 'label' => $quest->title],
+                ]),
+                ['category' => $quest->questCategory?->name, 'state' => $quest->stateModel?->name],
+                $grand,
+                $user,
+                QuestOffer::class,
+                $offer->id,
+                $quest->state_id,
+                $quest->local_government_id,
+                $quest->quest_category_id,
+            );
+        }
 
         return redirect()
             ->route('quests.proposals.show', [$quest, $offer])
@@ -116,6 +141,7 @@ class QuestOfferController extends Controller
         ]);
 
         DeliverQuestOfferClientNotification::dispatch($offer->id, 'updated')->afterResponse();
+        ScanContentForModerationJob::dispatch(QuestOffer::class, (int) $offer->id)->afterResponse();
 
         return redirect()
             ->route('quests.proposals.show', [$quest, $offer])

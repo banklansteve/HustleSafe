@@ -41,6 +41,28 @@
                         <HomeIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
                         Dashboard
                     </Link>
+                    <Link
+                        v-if="adminEntryUrl"
+                        :href="adminEntryUrl"
+                        prefetch="false"
+                        preserve-scroll
+                        class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                        :class="pillClass(adminActive)"
+                    >
+                        <ChartPieIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                        Admin
+                    </Link>
+                    <Link
+                        v-if="operationsEntryUrl"
+                        :href="operationsEntryUrl"
+                        prefetch="false"
+                        preserve-scroll
+                        class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                        :class="pillClass(operationsConsoleActive)"
+                    >
+                        <ChartBarIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                        Operations
+                    </Link>
                     <template v-if="showClientTools">
                         <Link
                             :href="route('quests.index')"
@@ -200,6 +222,19 @@
 
         <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
             <div
+                v-if="impersonation"
+                class="mb-6 flex flex-col gap-3 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-4 text-sm font-bold text-rose-950 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                role="alert"
+            >
+                <span>
+                    Impersonation active: {{ impersonation.admin_name }} is viewing the platform as
+                    <span class="font-black">{{ impersonation.user_name }}</span>.
+                </span>
+                <button type="button" class="rounded-xl bg-rose-600 px-4 py-2 text-xs font-black uppercase text-white" @click="stopImpersonation">
+                    End impersonation
+                </button>
+            </div>
+            <div
                 v-if="page.props.flash?.proposal_next_steps && isFreelancer"
                 class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50/95 px-4 py-4 text-sm font-semibold text-emerald-950 shadow-sm ring-1 ring-emerald-100 sm:px-5"
                 role="status"
@@ -280,7 +315,7 @@ import AppToastHost from '@/Components/Ui/AppToastHost.vue';
 import { useNotificationVisit } from '@/composables/useNotificationVisit';
 import { pathMatches, usePathname } from '@/composables/usePathname';
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { BellAlertIcon, BriefcaseIcon, ClipboardDocumentListIcon, HomeIcon, MagnifyingGlassIcon, PlusCircleIcon } from '@heroicons/vue/24/outline';
+import { BellAlertIcon, BriefcaseIcon, ChartBarIcon, ChartPieIcon, ClipboardDocumentListIcon, HomeIcon, MagnifyingGlassIcon, PlusCircleIcon } from '@heroicons/vue/24/outline';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
@@ -432,11 +467,18 @@ const clientNudgeItems = computed(() => {
 
 const roleSlug = computed(() => page.props.auth?.user?.role?.slug ?? '');
 const isFreelancer = computed(() => roleSlug.value === 'freelancer');
-const showClientTools = computed(() => ['client', 'admin', 'super_admin'].includes(roleSlug.value));
+const showClientTools = computed(() => ['client', 'super_admin'].includes(roleSlug.value));
+const adminEntryUrl = computed(() => page.props.admin_entry_url ?? null);
+const operationsEntryUrl = computed(() => page.props.operations_entry_url ?? null);
+const impersonation = computed(() => page.props.impersonation ?? null);
 
 const homeActive = computed(() => pathname.value === '/');
 
 const dashboardActive = computed(() => pathMatches(pathname, route('dashboard')));
+
+const adminActive = computed(() => pathname.value.startsWith('/admin'));
+
+const operationsConsoleActive = computed(() => pathname.value.startsWith('/operations'));
 
 const createQuestActive = computed(() => pathMatches(pathname, route('quests.create')));
 
@@ -457,5 +499,10 @@ function pillClass(active) {
     return active
         ? 'border-primary-400 bg-primary-50 text-primary-950 shadow-primary-900/5'
         : 'border-slate-200 border-opacity-100 bg-white text-slate-800 hover:border-primary-200 hover:bg-primary-50/60';
+}
+
+async function stopImpersonation() {
+    const { data } = await window.axios.post(route('impersonation.stop'));
+    window.location.href = data.redirect || route('admin.users.index');
 }
 </script>

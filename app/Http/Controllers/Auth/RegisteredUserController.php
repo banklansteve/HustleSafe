@@ -8,6 +8,8 @@ use App\Models\FreelancerBusinessProfile;
 use App\Models\QuestCategory;
 use App\Models\State;
 use App\Models\User;
+use App\Services\Admin\AdminActivityFeedService;
+use App\Services\Promotions\ReferralProgramService;
 use App\Services\TrustScoreOrchestrator;
 use App\Support\TextCasing;
 use Illuminate\Auth\Events\Registered;
@@ -82,6 +84,34 @@ class RegisteredUserController extends Controller
         }
 
         app(TrustScoreOrchestrator::class)->recalculate($user->fresh());
+        app(ReferralProgramService::class)->recordSignup(
+            $user,
+            $data['referral_code'] ?? $request->query('ref') ?? $request->cookie('referral_code'),
+            $request->ip(),
+            $request->header('X-Device-Fingerprint'),
+        );
+        $user->loadMissing(['stateModel', 'questCategoryPreferences']);
+        app(AdminActivityFeedService::class)->record(
+            'users',
+            'user.registered',
+            'New user registered',
+            "{$user->name} registered as {$user->account_type}",
+            app(AdminActivityFeedService::class)->entities([
+                ['type' => 'user', 'id' => $user->id, 'label' => $user->name],
+            ]),
+            [
+                'role' => $user->account_type,
+                'city' => $user->city,
+                'state' => $user->stateModel?->name,
+                'primary_skill' => $user->questCategoryPreferences->first()?->name,
+            ],
+            null,
+            $user,
+            User::class,
+            $user->id,
+            $user->state_id,
+            $user->local_government_id,
+        );
 
         event(new Registered($user));
 
