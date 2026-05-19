@@ -11,6 +11,7 @@ use App\Models\KycReviewCase;
 use App\Models\KycSetting;
 use App\Models\User;
 use App\Notifications\KycDecisionNotification;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -265,8 +266,7 @@ class KycCentreService
                 'rejection_reason' => null,
             ])->save();
 
-            $tier = max((int) ($user->kyc_tier ?? $user->verification_tier ?? 0), (int) $case->target_tier);
-            $user->forceFill(['kyc_tier' => $tier, 'verification_tier' => $tier, 'kyc_status' => 'verified', 'kyc_verified_at' => now()])->save();
+            app(VerificationEngineService::class)->recalculate($user, auth()->user(), 'KYC decision approved.');
 
             if ($action === 'approve_note' && ! empty($data['note'])) {
                 AdminUserNote::query()->create([
@@ -281,11 +281,13 @@ class KycCentreService
         if ($action === 'request_correction') {
             $verification?->forceFill(['status' => UserVerificationStatus::InReview, 'rejection_reason' => $data['reason_code']])->save();
             $user->forceFill(['kyc_status' => 'action_required'])->save();
+            app(VerificationEngineService::class)->recalculate($user, auth()->user(), 'KYC correction requested.');
         }
 
         if (in_array($action, ['reject', 'reject_investigate', 'reject_suspend'], true)) {
             $verification?->forceFill(['status' => UserVerificationStatus::Rejected, 'reviewed_by' => auth()->id(), 'reviewed_at' => now(), 'rejection_reason' => $data['reason_code']])->save();
             $user->forceFill(['kyc_status' => $action === 'reject_investigate' ? 'under_review' : 'rejected'])->save();
+            app(VerificationEngineService::class)->recalculate($user, auth()->user(), 'KYC verification rejected.');
 
             if ($action === 'reject_investigate') {
                 $user->forceFill(['under_review_at' => now()])->save();

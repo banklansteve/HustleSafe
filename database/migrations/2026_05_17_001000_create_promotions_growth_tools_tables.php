@@ -185,7 +185,6 @@ return new class extends Migration
         $badges = [
             ['Top Rated', 'top-rated', 'star', '4.8+ rating across 10 completed contracts in 90 days, with no active disputes.', true],
             ['Rising Talent', 'rising-talent', 'sparkles', 'Joined within 6 months, completed 3 contracts, 5-star average, zero disputes.', true],
-            ['Expert Verified', 'expert-verified', 'academic-cap', 'Passed category skill verification with 90% or higher.', true],
             ['Quest Champion', 'quest-champion', 'trophy', 'Client with 10+ quests and 4.5+ freelancer satisfaction.', true],
             ['Verified Pro', 'verified-pro', 'shield-check', 'Full KYC verification achieved.', true],
             ['Verified Business', 'verified-business', 'building-office', 'CAC business verification confirmed.', true],

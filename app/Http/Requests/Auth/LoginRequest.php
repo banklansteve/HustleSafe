@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class LoginRequest extends FormRequest
 {
@@ -69,12 +70,31 @@ class LoginRequest extends FormRequest
         if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
+            $staff = User::query()
+                ->where('email', $this->string('email')->lower()->toString())
+                ->whereHas('role', fn ($query) => $query->where('slug', 'admin'))
+                ->first();
+
+            if ($staff !== null
+                && $staff->operations_staff_password_set_at === null
+                && $staff->operations_staff_invited_at !== null) {
+                throw ValidationException::withMessages([
+                    'email' => __('This staff admin account has not completed password setup. Use the staff invitation link or ask a Super Admin to resend the setup invite.'),
+                ]);
+            }
+
             throw ValidationException::withMessages([
                 'email' => trans('auth.failed'),
             ]);
         }
 
-        $user = User::query()->find(Auth::id());
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        if ($user !== null) {
+            $this->finalizeStaffLoginState($user);
+        }
+
         if ($user !== null && $user->deactivated_at !== null) {
             Auth::logout();
 
@@ -84,6 +104,26 @@ class LoginRequest extends FormRequest
         }
 
         RateLimiter::clear($this->throttleKey());
+    }
+
+    private function finalizeStaffLoginState(User $user): void
+    {
+        if ($user->role?->slug !== 'admin') {
+            return;
+        }
+
+        if ($user->operations_staff_password_set_at !== null && $user->email_verified_at !== null) {
+            return;
+        }
+
+        try {
+            $user->forceFill([
+                'operations_staff_password_set_at' => $user->operations_staff_password_set_at ?? now(),
+                'email_verified_at' => $user->email_verified_at ?? now(),
+            ])->saveQuietly();
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 
     /**

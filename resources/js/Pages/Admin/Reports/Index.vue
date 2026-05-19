@@ -10,7 +10,7 @@
                     :key="tile.label"
                     :label="tile.label"
                     :value="tile.value"
-                    :hint="`${tile.change_pct}% vs previous period`"
+                    :hint="isZeroLike(tile.value) ? `0 / No ${tile.label.toLowerCase()} recorded yet.` : `${tile.change_pct}% vs previous period`"
                     :trend="`${tile.change_pct}%`"
                     :trend-positive="Number(tile.change_pct) >= 0"
                 />
@@ -38,10 +38,12 @@
                         <div class="rounded-2xl border p-4" :class="shell.card">
                             <p class="text-[10px] font-black uppercase tracking-[0.2em]" :class="shell.cardMuted">Saved reports</p>
                             <p class="mt-2 text-3xl font-black" :class="shell.cardTitle">{{ saved_reports.length }}</p>
+                            <p v-if="!saved_reports.length" class="mt-2 text-xs font-bold" :class="shell.cardMuted">0 / No saved reports yet.</p>
                         </div>
                         <div class="rounded-2xl border p-4" :class="shell.card">
                             <p class="text-[10px] font-black uppercase tracking-[0.2em]" :class="shell.cardMuted">Recent exports</p>
                             <p class="mt-2 text-3xl font-black" :class="shell.cardTitle">{{ recent_exports.length }}</p>
+                            <p v-if="!recent_exports.length" class="mt-2 text-xs font-bold" :class="shell.cardMuted">0 / No prepared exports yet.</p>
                         </div>
                     </div>
                 </div>
@@ -158,6 +160,7 @@
                             <div v-for="item in preview.summary" :key="item.label" class="rounded-2xl border p-4" :class="shell.card">
                                 <p class="text-[10px] font-black uppercase tracking-[0.2em]" :class="shell.cardMuted">{{ item.label }}</p>
                                 <p class="mt-2 text-2xl font-black" :class="shell.cardTitle">{{ item.value }}</p>
+                                <p v-if="isZeroLike(item.value)" class="mt-2 text-xs font-bold" :class="shell.cardMuted">0 / No {{ item.label.toLowerCase() }} found for this report scope.</p>
                             </div>
                         </div>
 
@@ -178,6 +181,11 @@
                                     <tbody class="divide-y" :class="shell.tableDivide">
                                         <tr v-for="(row, index) in preview.rows" :key="index">
                                             <td v-for="column in preview.columns" :key="column" class="px-4 py-3 font-semibold">{{ row[column] ?? '—' }}</td>
+                                        </tr>
+                                        <tr v-if="!preview.rows.length">
+                                            <td :colspan="preview.columns.length" class="px-4 py-8 text-center text-sm font-bold" :class="shell.cardMuted">
+                                                0 / No records match this report scope yet.
+                                            </td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -249,6 +257,10 @@ const saveOpen = ref(false);
 const saveRecipients = ref('');
 const saveForm = reactive({ name: '', description: '', schedule_frequency: '' });
 const filters = reactive({ state_id: '', local_government_id: '', category_id: '', user_id: '', user_search: '' });
+
+function isZeroLike(value) {
+    return value === 0 || value === '0' || String(value || '').startsWith('₦0');
+}
 let searchTimer;
 
 const quickTiles = computed(() => [

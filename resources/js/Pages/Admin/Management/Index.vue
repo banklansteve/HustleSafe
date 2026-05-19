@@ -142,8 +142,14 @@
                         placeholder="Why is this record being created?"
                     />
                 </label>
-                <button type="submit" class="w-full rounded-xl px-4 py-2 text-sm font-black uppercase" :class="shell.btnPrimary">
-                    Create record
+                <button
+                    type="submit"
+                    class="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-black uppercase disabled:cursor-wait disabled:opacity-70"
+                    :class="shell.btnPrimary"
+                    :disabled="createProcessing"
+                >
+                    <span v-if="createProcessing" class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                    {{ createProcessing ? 'Creating record...' : 'Create record' }}
                 </button>
             </form>
         </AdminSlideOver>
@@ -169,8 +175,14 @@
                         placeholder="Why is this change being made?"
                     />
                 </label>
-                <button type="submit" class="w-full rounded-xl px-4 py-2 text-sm font-black uppercase" :class="shell.btnPrimary">
-                    Save changes
+                <button
+                    type="submit"
+                    class="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-black uppercase disabled:cursor-wait disabled:opacity-70"
+                    :class="shell.btnPrimary"
+                    :disabled="editProcessing"
+                >
+                    <span v-if="editProcessing" class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                    {{ editProcessing ? 'Saving changes...' : 'Save changes' }}
                 </button>
             </form>
         </AdminSlideOver>
@@ -189,8 +201,9 @@
                         :class="shell.input"
                     />
                 </label>
-                <button type="submit" class="w-full rounded-xl bg-rose-600 px-4 py-2 text-sm font-black uppercase text-white" :disabled="deleteForm.processing">
-                    Confirm delete
+                <button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-black uppercase text-white disabled:cursor-wait disabled:opacity-70" :disabled="deleteForm.processing">
+                    <span v-if="deleteForm.processing" class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                    {{ deleteForm.processing ? 'Deleting record...' : 'Confirm delete' }}
                 </button>
             </form>
         </AdminSlideOver>
@@ -211,8 +224,14 @@
                         :class="shell.input"
                     />
                 </label>
-                <button type="submit" class="w-full rounded-xl px-4 py-2 text-sm font-black uppercase text-white" :class="suspendTarget.is_suspended ? 'bg-emerald-600' : 'bg-amber-600'">
-                    {{ suspendTarget.is_suspended ? 'Reinstate account' : 'Suspend account' }}
+                <button
+                    type="submit"
+                    class="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-black uppercase text-white disabled:cursor-wait disabled:opacity-70"
+                    :class="suspendTarget.is_suspended ? 'bg-emerald-600' : 'bg-amber-600'"
+                    :disabled="suspendForm.processing"
+                >
+                    <span v-if="suspendForm.processing" class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                    {{ suspendForm.processing ? 'Processing...' : (suspendTarget.is_suspended ? 'Reinstate account' : 'Suspend account') }}
                 </button>
             </form>
         </AdminSlideOver>
@@ -247,6 +266,8 @@ const suspendOpen = ref(false);
 const editing = ref(null);
 const deleting = ref(null);
 const suspendTarget = ref(null);
+const createProcessing = ref(false);
+const editProcessing = ref(false);
 
 const editFields = reactive({});
 const editReason = ref('');
@@ -314,6 +335,7 @@ function managementParams(extra = {}) {
 }
 
 function openCreate() {
+    createProcessing.value = false;
     props.definition.create_fields.forEach((field) => {
         const type = props.definition.fields[field]?.type;
         createForm[field] = type === 'boolean' ? false : '';
@@ -329,6 +351,7 @@ function recordById(id) {
 }
 
 function openEdit(row) {
+    editProcessing.value = false;
     const raw = recordById(row.id) ?? row;
     editing.value = raw;
     editReason.value = '';
@@ -370,15 +393,20 @@ function submitCreate() {
         payload.admin_creation_confirmation = createForm.admin_creation_confirmation;
     }
 
+    createProcessing.value = true;
     router.post(route('admin.management.store', { resource: props.resource_key }), payload, {
         preserveScroll: true,
         onSuccess: () => {
             createOpen.value = false;
         },
+        onFinish: () => {
+            createProcessing.value = false;
+        },
     });
 }
 
 function submitEdit() {
+    editProcessing.value = true;
     router.patch(
         route('admin.management.update', { resource: props.resource_key, record: editing.value.id }),
         {
@@ -389,6 +417,9 @@ function submitEdit() {
             preserveScroll: true,
             onSuccess: () => {
                 editOpen.value = false;
+            },
+            onFinish: () => {
+                editProcessing.value = false;
             },
         },
     );

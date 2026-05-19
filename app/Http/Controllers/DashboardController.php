@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AdminProposalStatus;
 use App\Enums\PortfolioStatus;
 use App\Enums\QuestStatus;
 use App\Models\ActivityLog;
@@ -17,6 +18,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -424,6 +426,7 @@ class DashboardController extends Controller
     {
         return QuestOffer::query()
             ->where('freelancer_id', $user->id)
+            ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
             ->with(['quest:id,uuid,title,status'])
             ->latest('updated_at')
             ->limit(5)
@@ -446,6 +449,7 @@ class DashboardController extends Controller
     {
         return QuestOffer::query()
             ->whereHas('quest', fn ($q) => $q->where('client_id', $user->id))
+            ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
             ->with(['quest:id,uuid,slug,title,status', 'freelancer:id,first_name,name,avatar_url'])
             ->latest('updated_at')
             ->limit(5)

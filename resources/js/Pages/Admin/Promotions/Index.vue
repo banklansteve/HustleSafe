@@ -5,19 +5,15 @@
     >
         <div class="space-y-5">
             <div class="grid gap-3 md:grid-cols-6">
-                <div v-for="tile in overviewTiles" :key="tile.label" class="rounded-3xl border border-orange-200/70 bg-gradient-to-br from-orange-50 to-amber-50 p-4 shadow-sm dark:border-orange-400/20 dark:from-orange-400/10 dark:to-amber-400/10">
-                    <p class="text-[10px] font-black uppercase tracking-wider text-orange-700 dark:text-orange-200">{{ tile.label }}</p>
+                <div v-for="tile in overviewTiles" :key="tile.label" class="rounded-3xl border border-primary-200/70 bg-gradient-to-br from-primary-50 to-white p-4 shadow-sm dark:border-primary-400/20 dark:from-primary-400/10 dark:to-slate-950">
+                    <p class="text-[10px] font-black uppercase tracking-wider text-primary-700 dark:text-primary-200">{{ tile.label }}</p>
                     <p class="mt-2 text-2xl font-black" :class="shell.title">{{ tile.value }}</p>
                 </div>
             </div>
 
-            <div class="flex gap-2 overflow-x-auto rounded-3xl border p-2" :class="shell.card">
-                <Link v-for="tab in tabs" :key="tab.key" :href="route('admin.promotions.index', { section: tab.key })" preserve-scroll preserve-state class="whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-black" :class="section === tab.key ? warmBtn : shell.btnGhost">
-                    {{ tab.label }}
-                </Link>
-            </div>
+            <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="promotions-tab" aria-label="Promotions sections" />
 
-            <section v-if="section === 'featured'" class="space-y-5">
+            <AdminTabPanel v-model="activeTab" value="featured" id-prefix="promotions-tab" class="space-y-5">
                 <div class="grid gap-3 md:grid-cols-3">
                     <div v-for="tile in featured.tiles" :key="tile.label" class="rounded-3xl border p-4" :class="shell.card">
                         <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ tile.label }}</p>
@@ -25,20 +21,37 @@
                     </div>
                 </div>
 
-                <AdminPanel title="Featured listing management" description="Active, expiring, expired, manually granted, and cancelled featured quest placements.">
+                <AdminPanel title="Boost package management" description="Admin-only Standard, Premium, and Elite quest boosts with expiry and placement controls.">
                     <template #actions>
-                        <button type="button" class="rounded-2xl px-4 py-2 text-xs font-black uppercase text-white" :class="warmBtn" @click="showFeaturedForm = !showFeaturedForm">Grant featured</button>
+                        <button type="button" class="rounded-2xl px-4 py-2 text-xs font-black uppercase text-white disabled:cursor-not-allowed disabled:opacity-50" :class="warmBtn" @click="showFeaturedForm = !showFeaturedForm">Grant boost</button>
                     </template>
                     <form v-if="showFeaturedForm" class="mb-5 grid gap-3 rounded-3xl border p-4 md:grid-cols-5" :class="shell.card" @submit.prevent="grantFeatured">
-                        <input v-model="featuredForm.quest_id" required type="number" placeholder="Quest ID" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
-                        <select v-model="featuredForm.tier" class="rounded-2xl border px-3 py-3 text-sm font-bold" :class="shell.input">
-                            <option value="standard">Standard</option>
-                            <option value="premium">Premium</option>
-                            <option value="elite">Elite</option>
-                        </select>
-                        <input v-model="featuredForm.duration_days" required type="number" placeholder="Days" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
-                        <input v-model="featuredForm.manual_grant_reason" required placeholder="Reason" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
-                        <button type="submit" class="rounded-2xl px-4 py-3 text-sm font-black text-white" :class="warmBtn">Grant</button>
+                        <label class="block">
+                            <input v-model="featuredForm.quest_id" required type="number" placeholder="Quest ID" class="w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
+                            <span v-if="featuredForm.errors.quest_id" class="mt-1 block text-xs font-bold text-rose-600">{{ featuredForm.errors.quest_id }}</span>
+                        </label>
+                        <label class="block">
+                            <select v-model="featuredForm.tier" class="w-full rounded-2xl border px-3 py-3 text-sm font-bold" :class="shell.input">
+                                <option value="standard">Standard</option>
+                                <option value="premium">Premium</option>
+                                <option value="elite">Elite</option>
+                            </select>
+                            <span v-if="featuredForm.errors.tier" class="mt-1 block text-xs font-bold text-rose-600">{{ featuredForm.errors.tier }}</span>
+                        </label>
+                        <label class="block">
+                            <select v-model.number="featuredForm.duration_days" class="w-full rounded-2xl border px-3 py-3 text-sm font-bold" :class="shell.input">
+                                <option :value="3">3 days</option>
+                                <option :value="7">7 days</option>
+                                <option :value="14">14 days</option>
+                                <option :value="30">30 days</option>
+                            </select>
+                            <span v-if="featuredForm.errors.duration_days" class="mt-1 block text-xs font-bold text-rose-600">{{ featuredForm.errors.duration_days }}</span>
+                        </label>
+                        <label class="block">
+                            <input v-model="featuredForm.manual_grant_reason" required placeholder="Reason" class="w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
+                            <span v-if="featuredForm.errors.manual_grant_reason" class="mt-1 block text-xs font-bold text-rose-600">{{ featuredForm.errors.manual_grant_reason }}</span>
+                        </label>
+                        <button type="submit" class="rounded-2xl px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50" :class="warmBtn" :disabled="featuredForm.processing">Grant</button>
                     </form>
 
                     <div class="hidden overflow-x-auto lg:block">
@@ -47,7 +60,7 @@
                                 <tr class="text-left text-[10px] font-black uppercase tracking-wider" :class="shell.label">
                                     <th class="px-3 py-3">Quest</th>
                                     <th class="px-3 py-3">Client</th>
-                                    <th class="px-3 py-3">Tier</th>
+                                    <th class="px-3 py-3">Package</th>
                                     <th class="px-3 py-3">Dates</th>
                                     <th class="px-3 py-3">Paid</th>
                                     <th class="px-3 py-3">Views</th>
@@ -84,7 +97,7 @@
                     </div>
                 </AdminPanel>
 
-                <AdminPanel title="Featured listing performance" description="Featured versus non-featured quest outcomes over the last 30 days.">
+                <AdminPanel title="Boost package performance" description="Boosted versus regular quest outcomes over the last 30 days.">
                     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                         <div v-for="row in featured.performance" :key="row.category" class="rounded-3xl border p-4" :class="shell.card">
                             <p class="font-black">{{ row.category }}</p>
@@ -93,12 +106,12 @@
                         </div>
                     </div>
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
 
-            <section v-else-if="section === 'coupons'" class="space-y-5">
+            <AdminTabPanel v-model="activeTab" value="coupons" id-prefix="promotions-tab" class="space-y-5">
                 <AdminPanel title="Coupon & discount engine" description="Create, pause, and review coupons for service fees, featured listings, or all payments.">
                     <template #actions>
-                        <button type="button" class="rounded-2xl px-4 py-2 text-xs font-black uppercase text-white" :class="warmBtn" @click="showCouponForm = !showCouponForm">Create coupon</button>
+                        <button type="button" class="rounded-2xl px-4 py-2 text-xs font-black uppercase text-white disabled:cursor-not-allowed disabled:opacity-50" :class="warmBtn" @click="showCouponForm = !showCouponForm">Create coupon</button>
                     </template>
                     <form v-if="showCouponForm" class="mb-5 grid gap-3 rounded-3xl border p-4 md:grid-cols-4" :class="shell.card" @submit.prevent="createCoupon">
                         <input v-model="couponForm.code" placeholder="Code or leave blank" class="rounded-2xl border px-4 py-3 text-sm font-semibold uppercase" :class="shell.input" />
@@ -122,7 +135,7 @@
                         </select>
                         <input v-model="couponForm.usage_limit_total" type="number" placeholder="Total limit" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
                         <input v-model="couponForm.usage_limit_per_user" type="number" placeholder="Per-user limit" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
-                        <button type="submit" class="rounded-2xl px-4 py-3 text-sm font-black text-white" :class="warmBtn">Create</button>
+                        <button type="submit" class="rounded-2xl px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50" :class="warmBtn" :disabled="couponForm.processing">Create</button>
                     </form>
 
                     <div class="grid gap-3 xl:grid-cols-2">
@@ -135,8 +148,8 @@
                                 <StatusPill :status="coupon.status" />
                             </div>
                             <div class="mt-4 flex flex-wrap gap-2">
-                                <button type="button" class="rounded-2xl px-4 py-2 text-xs font-black" :class="shell.btnGhost" @click="openCoupon(coupon)">Analytics</button>
-                                <button v-if="coupon.status === 'active'" type="button" class="rounded-2xl bg-rose-600 px-4 py-2 text-xs font-black text-white" @click="pauseCoupon(coupon)">Pause</button>
+                                <button type="button" class="rounded-2xl border border-primary-200 px-4 py-2 text-xs font-black text-primary-700 transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-800 dark:border-primary-400/30 dark:text-primary-200 dark:hover:bg-primary-400/10" @click="openCoupon(coupon)">Analytics</button>
+                                <button v-if="coupon.status === 'active'" type="button" class="rounded-2xl bg-amber-500 px-4 py-2 text-xs font-black text-amber-950 transition hover:bg-amber-600" @click="pauseCoupon(coupon)">Pause</button>
                             </div>
                         </div>
                     </div>
@@ -150,9 +163,9 @@
                         </div>
                     </div>
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
 
-            <section v-else-if="section === 'referrals'" class="space-y-5">
+            <AdminTabPanel v-model="activeTab" value="referrals" id-prefix="promotions-tab" class="space-y-5">
                 <AdminPanel title="Referral programme analytics" description="Referral tree, conversion, rewards, and weekly volume.">
                     <div class="grid gap-3 md:grid-cols-4">
                         <div v-for="(value, label) in referrals.metrics" :key="label" class="rounded-3xl border p-4" :class="shell.card">
@@ -183,19 +196,31 @@
                         </div>
                     </AdminPanel>
                 </div>
-            </section>
+            </AdminTabPanel>
 
-            <section v-else-if="section === 'badges'" class="space-y-5">
+            <AdminTabPanel v-model="activeTab" value="badges" id-prefix="promotions-tab" class="space-y-5">
                 <AdminPanel title="Badge management" description="Recognition badges, criteria, holder counts, and manual awards.">
                     <template #actions>
-                        <button type="button" class="rounded-2xl px-4 py-2 text-xs font-black uppercase text-white" :class="warmBtn" @click="showBadgeForm = !showBadgeForm">Create badge</button>
+                        <button type="button" class="rounded-2xl px-4 py-2 text-xs font-black uppercase text-white disabled:cursor-not-allowed disabled:opacity-50" :class="warmBtn" @click="showBadgeForm = !showBadgeForm">Create badge</button>
                     </template>
                     <form v-if="showBadgeForm" class="mb-5 grid gap-3 rounded-3xl border p-4 md:grid-cols-4" :class="shell.card" @submit.prevent="createBadge">
                         <input v-model="badgeForm.name" required placeholder="Badge name" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
                         <input v-model="badgeForm.icon" placeholder="Icon name" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
                         <input v-model="badgeForm.description" required placeholder="Description" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
-                        <button type="submit" class="rounded-2xl px-4 py-3 text-sm font-black text-white" :class="warmBtn">Create</button>
+                        <select v-model="badgeForm.award_mode" class="rounded-2xl border px-4 py-3 text-sm font-bold" :class="shell.input">
+                            <option value="automatic">Automatic system criteria</option>
+                            <option value="manual">Manual award by admin only</option>
+                            <option value="automatic_with_review">System criteria and admin approval</option>
+                        </select>
+                        <label class="flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold" :class="shell.input">
+                            <input v-model="badgeForm.is_public" type="checkbox" class="rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
+                            Public badge
+                        </label>
+                        <button type="submit" class="rounded-2xl px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50" :class="warmBtn" :disabled="badgeForm.processing">Create</button>
                     </form>
+                    <div class="mb-4 rounded-3xl border border-primary-200 bg-primary-50 p-4 text-sm font-bold text-primary-900 dark:border-primary-400/20 dark:bg-primary-400/10 dark:text-primary-100">
+                        Predefined badge set: {{ predefinedBadges.length }} badges. Awards are based on platform metrics, manual admin decisions, or metric criteria plus admin approval.
+                    </div>
                     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                         <div v-for="badge in badges.badges" :key="badge.id" class="rounded-3xl border p-4" :class="shell.card">
                             <div class="flex items-start justify-between gap-3">
@@ -203,19 +228,19 @@
                                     <p class="font-black">{{ badge.name }}</p>
                                     <p class="mt-1 text-xs font-bold" :class="shell.cardMuted">{{ badge.description }}</p>
                                 </div>
-                                <span class="rounded-full bg-orange-100 px-3 py-1 text-xs font-black text-orange-700">{{ badge.holders_count }}</span>
+                                <span class="rounded-full bg-primary-100 px-3 py-1 text-xs font-black text-primary-700 dark:bg-primary-400/15 dark:text-primary-200">{{ badge.holders_count }}</span>
                             </div>
                             <p class="mt-3 text-xs font-bold" :class="shell.cardMuted">{{ badge.is_automatic ? 'Auto-awarded' : 'Manual' }} · {{ badge.is_public ? 'Public' : 'Admin only' }}</p>
-                            <button type="button" class="mt-3 rounded-2xl px-4 py-2 text-xs font-black" :class="shell.btnGhost" @click="assignBadge(badge)">Award manually</button>
+                            <button type="button" class="mt-3 rounded-2xl border border-primary-200 px-4 py-2 text-xs font-black text-primary-700 transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-800 dark:border-primary-400/30 dark:text-primary-200 dark:hover:bg-primary-400/10" @click="assignBadge(badge)">Award manually</button>
                         </div>
                     </div>
                 </AdminPanel>
                 <AdminPanel title="Badge effectiveness" description="Directional lift indicators for recognition programmes.">
                     <MiniBars :items="badges.effectiveness.map((row) => ({ label: row.label, value: row.holders }))" />
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
 
-            <section v-else-if="section === 'settings'">
+            <AdminTabPanel v-model="activeTab" value="settings" id-prefix="promotions-tab">
                 <AdminPanel title="Promotion settings" description="Pricing, placements, referral reward structure, expiry, and qualifying event controls.">
                     <form class="space-y-5" @submit.prevent="saveSettings">
                         <div class="grid gap-3 xl:grid-cols-3">
@@ -235,19 +260,22 @@
                             <input v-model="settingsForm.referral_program.freelancer_reward_minor" type="number" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
                             <input v-model="settingsForm.referral_program.reward_expiry_days" type="number" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
                         </div>
-                        <button type="submit" class="rounded-2xl px-5 py-3 text-sm font-black text-white" :class="warmBtn">Save settings</button>
+                        <button type="submit" class="rounded-2xl px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50" :class="warmBtn" :disabled="settingsForm.processing">Save settings</button>
                     </form>
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
         </div>
     </AdminShell>
 </template>
 
 <script setup>
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
+import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
+import AdminTabs from '@/Components/Admin/AdminTabs.vue';
+import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
-import { Link, router, useForm } from '@inertiajs/vue3';
+import { router, useForm } from '@inertiajs/vue3';
 import { computed, defineComponent, h, reactive, ref } from 'vue';
 
 const props = defineProps({
@@ -265,12 +293,13 @@ const StatusPill = defineComponent({
     props: { status: String },
     setup(p) {
         const klass = computed(() => ({
-            active: 'bg-emerald-100 text-emerald-700',
+            active: 'bg-primary-100 text-primary-700 dark:bg-primary-400/15 dark:text-primary-200',
+            live: 'bg-primary-100 text-primary-700',
             expiring_soon: 'bg-amber-100 text-amber-700',
             expired: 'bg-slate-100 text-slate-700',
             cancelled: 'bg-rose-100 text-rose-700',
             paused: 'bg-amber-100 text-amber-700',
-            scheduled: 'bg-blue-100 text-blue-700',
+            scheduled: 'bg-primary-100 text-primary-700',
         }[p.status] || 'bg-slate-100 text-slate-700'));
         return () => h('span', { class: ['rounded-full px-3 py-1 text-xs font-black capitalize', klass.value] }, String(p.status || '').replace(/_/g, ' '));
     },
@@ -284,7 +313,7 @@ const MiniBars = defineComponent({
             return h('div', { class: 'space-y-1' }, [
                 h('div', { class: 'flex justify-between text-xs font-black' }, [h('span', item.label), h('span', String(item.value))]),
                 h('div', { class: 'h-3 rounded-full bg-slate-100 dark:bg-white/10' }, [
-                    h('div', { class: 'h-3 rounded-full bg-gradient-to-r from-orange-500 to-amber-400', style: { width: `${Math.min(100, (Number(item.value || 0) / max) * 100)}%` } }),
+                    h('div', { class: 'h-3 rounded-full bg-primary-600 transition-all duration-150', style: { width: `${Math.min(100, (Number(item.value || 0) / max) * 100)}%` } }),
                 ]),
             ]);
         }));
@@ -292,14 +321,15 @@ const MiniBars = defineComponent({
 });
 
 const { shell } = useInjectedAdminTheme();
-const warmBtn = 'bg-gradient-to-r from-orange-600 to-amber-500 text-white shadow-sm shadow-orange-500/20';
+const warmBtn = 'bg-primary-600 text-white shadow-sm shadow-primary-900/15 transition hover:bg-primary-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2';
 const tabs = [
-    { key: 'featured', label: 'Featured Listings' },
+    { key: 'featured', label: 'Boost Packages' },
     { key: 'coupons', label: 'Coupons' },
     { key: 'referrals', label: 'Referrals' },
     { key: 'badges', label: 'Badges' },
     { key: 'settings', label: 'Settings' },
 ];
+const { activeTab } = useTabState(tabs.map((tab) => tab.key), props.section || 'featured');
 const showFeaturedForm = ref(false);
 const showCouponForm = ref(false);
 const showBadgeForm = ref(false);
@@ -314,12 +344,14 @@ const overviewTiles = computed(() => [
 
 const featuredForm = useForm({ quest_id: '', tier: 'standard', duration_days: 7, amount_paid_minor: 0, manual_grant_reason: '' });
 const couponForm = useForm({ code: '', discount_type: 'percent', discount_percent: 20, discount_value_minor: 0, max_discount_minor: null, applies_to: 'all', eligibility: 'all', usage_limit_total: null, usage_limit_per_user: 1, minimum_transaction_minor: 0 });
-const badgeForm = useForm({ name: '', icon: 'star', description: '', criteria: {}, is_automatic: false, requires_manual_review: true, is_public: true, is_time_limited: false });
+const badgeForm = useForm({ name: '', icon: 'star', description: '', award_mode: 'manual', criteria: {}, is_automatic: false, requires_manual_review: false, is_public: true, is_time_limited: false });
 const settingsForm = useForm({
     featured_tiers: props.settings?.featured_tiers || {},
     referral_program: props.settings?.referral_program || {},
 });
 const tierPlacements = reactive(Object.fromEntries(Object.entries(settingsForm.featured_tiers || {}).map(([key, tier]) => [key, (tier.placements || []).join('\n')])));
+const predefinedSlugs = new Set(['top-rated', 'rising-talent', 'quest-champion', 'verified-pro', 'verified-business', 'fast-responder', 'long-term-partner']);
+const predefinedBadges = computed(() => (props.badges?.badges || []).filter((badge) => predefinedSlugs.has(badge.slug)));
 
 function grantFeatured() {
     featuredForm.post(route('admin.promotions.featured.store'), { preserveScroll: true, onSuccess: () => featuredForm.reset('quest_id', 'manual_grant_reason') });

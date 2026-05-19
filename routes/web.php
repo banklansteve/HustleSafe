@@ -19,6 +19,7 @@ use App\Http\Controllers\FreelancerReviewsDirectoryController;
 use App\Http\Controllers\Legal\LegalPageController;
 use App\Http\Controllers\NotificationReadController;
 use App\Http\Controllers\Public\LandingController;
+use App\Http\Controllers\Public\HelpContentController;
 use App\Http\Controllers\Public\NewsletterController;
 use App\Http\Controllers\Public\PublicFreelancerProfileController;
 use App\Http\Controllers\QuestClientProposalsController;
@@ -53,6 +54,7 @@ Route::get('/terms-of-service', [LegalPageController::class, 'terms'])->name('le
 Route::get('/privacy-policy', [LegalPageController::class, 'privacy'])->name('legal.privacy');
 
 Route::get('/', LandingController::class)->name('home');
+Route::get('/help', HelpContentController::class)->name('help.index');
 
 Route::post('/newsletter', [NewsletterController::class, 'store'])
     ->middleware('throttle:10,1')
@@ -88,6 +90,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/account', [AccountHubController::class, 'show'])->name('account.show');
     Route::patch('/account/details', [AccountUpdateController::class, 'details'])->name('account.details');
+    Route::patch('/account/power-hours', [AccountUpdateController::class, 'powerHours'])
+        ->middleware('freelancer')
+        ->name('account.power-hours');
     Route::patch('/account/visibility', [AccountUpdateController::class, 'visibility'])->name('account.visibility');
     Route::patch('/account/credentials/{freelancerCredential}', FreelancerCredentialVisibilityController::class)
         ->whereNumber('freelancerCredential')

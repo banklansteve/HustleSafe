@@ -21,6 +21,7 @@ use App\Models\Role;
 use App\Models\State;
 use App\Models\User;
 use App\Models\UserVerification;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -35,7 +36,7 @@ class AdvancedUserManagementService
      */
     public function paginated(Request $request): LengthAwarePaginator
     {
-        $perPage = min(50, max(10, (int) $request->integer('per_page', 15)));
+        $perPage = min(250, max(10, (int) $request->integer('per_page', 25)));
 
         $query = User::query()
             ->with(['role:id,name,slug', 'stateModel:id,name', 'localGovernmentModel:id,name', 'questCategoryPreferences:id,name', 'adminTags:id,name,color', 'adminBadges:id,name,slug'])
@@ -161,6 +162,7 @@ class AdvancedUserManagementService
     private function overview(User $user): array
     {
         $lastLogin = LoginEvent::query()->where('user_id', $user->id)->latest('logged_in_at')->first();
+        $verificationEngine = app(VerificationEngineService::class);
 
         return [
             'user' => $this->row($user),
@@ -187,6 +189,35 @@ class AdvancedUserManagementService
                 'rejection_reason' => $verification->rejection_reason,
                 'metadata' => $verification->metadata ?? [],
             ])->values(),
+            'verification_engine' => [
+                'earned_level' => $verificationEngine->storedLevel($user),
+                'effective_level' => $verificationEngine->effectiveLevel($user),
+                'cooldown' => $verificationEngine->cooldown($user),
+                'client_posting_limit_minor' => $verificationEngine->clientPostingLimitMinor($user),
+                'freelancer_proposal_limit_minor' => $verificationEngine->freelancerProposalLimitMinor($user),
+                'override' => [
+                    'level' => $user->verification_level_override,
+                    'reason' => $user->verification_level_override_reason,
+                    'at' => $user->verification_level_overridden_at?->toIso8601String(),
+                ],
+                'restriction' => [
+                    'active' => $user->verification_restricted_at !== null,
+                    'reason' => $user->verification_restriction_reason,
+                    'at' => $user->verification_restricted_at?->toIso8601String(),
+                ],
+                'anomaly_flags' => $user->verificationAnomalyFlags()
+                    ->latest()
+                    ->limit(20)
+                    ->get()
+                    ->map(fn ($flag) => [
+                        'id' => $flag->id,
+                        'type' => $flag->type,
+                        'status' => $flag->status,
+                        'severity' => $flag->severity,
+                        'created_at' => $flag->created_at?->toIso8601String(),
+                    ])
+                    ->values(),
+            ],
             'trust' => $this->trustBreakdown($user),
             'sanctions' => $user->sanctions->map(fn (AdminUserSanction $sanction) => [
                 'id' => $sanction->id,

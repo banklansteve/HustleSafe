@@ -5,7 +5,6 @@ use App\Enums\PortfolioStatus;
 use App\Enums\QuestAvailabilityNeed;
 use App\Enums\QuestFreelancerLocationPref;
 use App\Enums\QuestProjectType;
-use App\Enums\QuestPromotionTier;
 use App\Enums\QuestStartTiming;
 use App\Enums\QuestStatus;
 use App\Enums\QuestTeamSize;
@@ -77,7 +76,7 @@ $questEditFields = [
     'title', 'description', 'status', 'escrow_status', 'client_id', 'freelancer_id', 'quest_category_id',
     'state_id', 'local_government_id', 'city', 'visibility', 'budget_amount_minor', 'max_offers',
     'scheduled_start_date', 'estimated_completion_days', 'estimated_delivery_date', 'due_at',
-    'promotion_tier', 'project_type', 'team_size', 'start_timing', 'availability_need',
+    'project_type', 'team_size', 'start_timing', 'availability_need',
     'freelancer_location_pref', 'dispute_opened', 'escrow_funded_at', 'completed_at',
 ];
 
@@ -106,8 +105,8 @@ return [
             'with' => ['role:id,slug,name'],
             'fields' => [
                 'username' => $reqText(80),
-                'first_name' => $reqText(80),
-                'last_name' => $reqText(80),
+                'first_name' => [...$reqText(80), 'label' => 'First name'],
+                'last_name' => [...$reqText(80), 'label' => 'Last name'],
                 'name' => $reqText(160),
                 'email' => $email,
                 'phone' => $text(32),
@@ -141,7 +140,7 @@ return [
                 'banned_at' => $date,
                 'ban_reason' => $textarea(1000),
             ],
-            'create_fields' => ['username', 'first_name', 'last_name', 'name', 'email', 'phone', 'account_type', 'role_id'],
+            'create_fields' => ['username', 'first_name', 'last_name', 'email', 'phone', 'account_type', 'role_id'],
             'edit_fields' => $userEditFields,
             'actions' => ['suspend', 'activity_log'],
         ],
@@ -382,7 +381,6 @@ return [
                 'estimated_completion_days' => $int,
                 'estimated_delivery_date' => $date,
                 'due_at' => $date,
-                'promotion_tier' => $enum(QuestPromotionTier::class),
                 'project_type' => $enum(QuestProjectType::class),
                 'team_size' => $enum(QuestTeamSize::class),
                 'start_timing' => $enum(QuestStartTiming::class),

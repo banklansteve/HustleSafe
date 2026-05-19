@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\StoreOperationsStaffPasswordSetupRequest;
 use App\Models\User;
+use App\Support\RoleSessionLifetime;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\URL;
@@ -41,10 +42,12 @@ class OperationsStaffInvitationController extends Controller
 
         $user->forceFill([
             'password' => $request->validated('password'),
+            'email_verified_at' => $user->email_verified_at ?? now(),
             'operations_staff_password_set_at' => now(),
         ])->save();
 
         Auth::login($user);
+        RoleSessionLifetime::applyForRole($user->role?->slug);
         $request->session()->regenerate();
 
         return redirect()->route('operations.dashboard')

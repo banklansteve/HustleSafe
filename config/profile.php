@@ -17,6 +17,7 @@ return [
         'show_cac' => true,
         'show_portfolio' => true,
         'show_experience' => true,
+        'show_power_hours' => true,
     ],
 
     /**

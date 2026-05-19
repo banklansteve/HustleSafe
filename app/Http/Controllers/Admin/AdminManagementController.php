@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\StoreAdminRecordRequest;
 use App\Http\Requests\Admin\SuspendAdminUserRequest;
 use App\Http\Requests\Admin\UpdateConversationThreadVisibilityRequest;
 use App\Http\Requests\Admin\UpdateAdminRecordRequest;
+use App\Mail\AdminStaffInvitationMail;
 use App\Mail\AdminUserCreatedNotificationMail;
 use App\Models\QuestConversationThread;
 use App\Services\Admin\AdminManagementService;
@@ -18,6 +19,7 @@ use App\Support\Admin\AdminManagementRegistry;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -99,30 +101,63 @@ class AdminManagementController extends Controller
 
         if ($resource === 'users') {
             $model->loadMissing('role');
-            $model->sendEmailVerificationNotification();
-            Mail::to($request->user()->email)->send(new AdminUserCreatedNotificationMail(
-                $model,
-                $request->user(),
-                (string) $request->validated('audit_reason'),
-            ));
+            $actor = $request->user();
+            $auditReason = (string) $request->validated('audit_reason');
 
+            app()->terminating(function () use ($model, $actor, $auditReason): void {
+                $this->sendCreatedUserNotifications($model, $actor, $auditReason);
+            });
+        }
+
+        return back()->with('success', ($definition['label'] ?? 'Record').' created.');
+    }
+
+    private function isCreatedAdminUser($user): bool
+    {
+        return in_array($user->role?->slug, ['admin', 'super_admin'], true)
+            || $user->account_type === 'admin';
+    }
+
+    private function sendCreatedUserNotifications($model, $actor, string $auditReason): void
+    {
+        try {
+            if ($this->isCreatedAdminUser($model)) {
+                Mail::to($model->email)->send(new AdminStaffInvitationMail(
+                    $model,
+                    $actor,
+                    URL::temporarySignedRoute('admin.invitation.show', now()->addDays(7), ['user' => $model->id]),
+                ));
+            } else {
+                $model->sendEmailVerificationNotification();
+            }
+
+            Mail::to($actor->email)->send(new AdminUserCreatedNotificationMail(
+                $model,
+                $actor,
+                $auditReason,
+            ));
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+
+        try {
             $this->feed->record(
                 'users',
                 'user.created_by_admin',
                 'User account created',
-                "{$request->user()->name} created {$model->name}",
+                "{$actor->name} created {$model->name}",
                 $this->feed->entities([
                     ['type' => 'user', 'id' => $model->id, 'label' => $model->name],
                 ]),
                 ['email' => $model->email, 'role' => $model->role?->slug],
                 null,
-                $request->user(),
+                $actor,
                 $model::class,
                 (int) $model->getKey(),
             );
+        } catch (\Throwable $exception) {
+            report($exception);
         }
-
-        return back()->with('success', ($definition['label'] ?? 'Record').' created.');
     }
 
     public function update(UpdateAdminRecordRequest $request, string $resource, int $record): RedirectResponse

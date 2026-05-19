@@ -12,6 +12,8 @@ use App\Models\QuestDispute;
 use App\Models\Review;
 use App\Models\State;
 use App\Models\UserFollow;
+use App\Services\PowerHoursService;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -34,6 +36,8 @@ class AccountHubController extends Controller
 
         $role = $user->role?->slug ?? 'client';
         $isFreelancer = $role === 'freelancer';
+        $verificationEngine = app(VerificationEngineService::class);
+        $powerHours = app(PowerHoursService::class);
 
         $tab = (string) $request->query('tab', 'overview');
         $allowedTabs = ['overview', 'reviews', 'portfolio', 'credentials', 'visibility', 'settings'];
@@ -121,6 +125,7 @@ class AccountHubController extends Controller
                 'account_type' => $user->account_type,
                 'hide_online_presence' => (bool) $user->hide_online_presence,
             ],
+            'powerHours' => $isFreelancer ? $powerHours->signalFor($user) : null,
             'trust' => [
                 'freelancer' => $user->trust_score,
                 'client' => $user->client_trust_score,
@@ -129,6 +134,15 @@ class AccountHubController extends Controller
                 'avg_rating_client' => $user->avg_rating_as_client,
                 'rating_count_client' => $user->ratings_count_as_client,
                 'profile_percent' => $user->profile_completion_percent,
+            ],
+            'verificationEngine' => [
+                'earned_level' => $verificationEngine->storedLevel($user),
+                'effective_level' => $verificationEngine->effectiveLevel($user),
+                'cooldown' => $verificationEngine->cooldown($user),
+                'client_posting_limit_minor' => $verificationEngine->clientPostingLimitMinor($user),
+                'freelancer_proposal_limit_minor' => $verificationEngine->freelancerProposalLimitMinor($user),
+                'restricted' => $user->verification_restricted_at !== null,
+                'restriction_reason' => $user->verification_restriction_reason,
             ],
             'reviewStats' => [
                 'total' => (clone $reviewBase)->count(),
@@ -191,7 +205,9 @@ class AccountHubController extends Controller
             'questCategoryTree' => $isFreelancer
                 ? QuestCategory::query()
                     ->whereNull('parent_id')
-                    ->with(['children' => fn ($q) => $q->orderBy('sort_order')->orderBy('name')])
+                    ->where('is_active', true)
+                    ->where('status', 'active')
+                    ->with(['children' => fn ($q) => $q->where('is_active', true)->where('status', 'active')->orderBy('sort_order')->orderBy('name')])
                     ->orderBy('sort_order')
                     ->orderBy('name')
                     ->get(['id', 'name', 'slug'])

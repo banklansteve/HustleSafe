@@ -12,13 +12,9 @@
                 </div>
             </div>
 
-            <div class="flex gap-2 overflow-x-auto rounded-3xl border p-2" :class="shell.card">
-                <Link v-for="tab in tabs" :key="tab.key" :href="route('admin.content-moderation.index', { section: tab.key })" preserve-scroll preserve-state class="whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-black" :class="section === tab.key ? shell.btnPrimary : shell.btnGhost">
-                    {{ tab.label }}
-                </Link>
-            </div>
+            <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="moderation-tab" aria-label="Content moderation sections" />
 
-            <section v-if="isQueueSection" class="space-y-5">
+            <AdminTabPanel v-for="queueTab in queueTabs" :key="queueTab.key" v-model="activeTab" :value="queueTab.key" id-prefix="moderation-tab" class="space-y-5">
                 <AdminPanel :title="activeTabLabel" description="Oldest flagged content appears first by default. Use severity sorting for triage.">
                     <div class="mb-4 grid gap-3 md:grid-cols-[1fr_12rem_12rem_auto]">
                         <input v-model="filtersState.q" type="search" placeholder="Search title, excerpt, or trigger…" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @input="debouncedApply" />
@@ -38,7 +34,7 @@
 
                     <div v-if="bulkMode" class="mb-4 rounded-3xl border p-4" :class="shell.card">
                         <div class="flex flex-wrap items-center justify-between gap-3">
-                            <p class="text-sm font-black">{{ queue.data?.length || 0 }} items in this queue session</p>
+                            <p class="text-sm font-black">{{ activeQueue.data?.length || 0 }} items in this queue session</p>
                             <p class="text-xs font-bold" :class="shell.cardMuted">Keyboard shortcuts: A approve, R remove, W warning, N next.</p>
                         </div>
                     </div>
@@ -57,7 +53,7 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100 dark:divide-white/10">
-                                <tr v-for="item in queue.data" :key="item.id" class="cursor-pointer hover:bg-primary-50/60 dark:hover:bg-white/[0.03]" @click="openCase(item)">
+                                <tr v-for="item in activeQueue.data" :key="item.id" class="cursor-pointer hover:bg-primary-50/60 dark:hover:bg-white/[0.03]" @click="openCase(item)">
                                     <td class="px-3 py-4">
                                         <p class="font-black">{{ item.title }}</p>
                                         <p class="mt-1 max-w-md text-xs font-semibold text-slate-500">{{ item.excerpt }}</p>
@@ -80,7 +76,7 @@
                     </div>
 
                     <div class="grid gap-3 lg:hidden">
-                        <button v-for="item in queue.data" :key="item.id" type="button" class="rounded-3xl border p-4 text-left" :class="shell.card" @click="openCase(item)">
+                        <button v-for="item in activeQueue.data" :key="item.id" type="button" class="rounded-3xl border p-4 text-left" :class="shell.card" @click="openCase(item)">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <p class="font-black">{{ item.title }}</p>
@@ -92,9 +88,9 @@
                         </button>
                     </div>
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
 
-            <section v-else-if="section === 'history'">
+            <AdminTabPanel v-model="activeTab" value="history" id-prefix="moderation-tab">
                 <AdminPanel title="Moderation history & audit" description="Immutable log of every approval, removal, warning, edit, and escalation.">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-white/10">
@@ -121,9 +117,9 @@
                         </table>
                     </div>
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
 
-            <section v-else-if="section === 'settings'" class="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+            <AdminTabPanel v-model="activeTab" value="settings" id-prefix="moderation-tab" class="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
                 <AdminPanel title="Keyword management" description="Add, pause, and tune automated text flags.">
                     <form class="grid gap-3 md:grid-cols-[1fr_10rem_12rem_auto]" @submit.prevent="storeKeyword">
                         <input v-model="keywordForm.phrase" required placeholder="Phrase" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
@@ -162,7 +158,7 @@
                         <button type="submit" class="w-full rounded-2xl px-4 py-3 text-sm font-black" :class="shell.btnPrimary">Save settings</button>
                     </form>
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
         </div>
 
         <AdminSlideOver :open="caseOpen" :title="selectedCase?.title || 'Review content'" eyebrow="Moderation review" @close="caseOpen = false">
@@ -217,14 +213,18 @@
 <script setup>
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
+import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
+import AdminTabs from '@/Components/Admin/AdminTabs.vue';
+import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
-import { Link, router, useForm } from '@inertiajs/vue3';
+import { router, useForm } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 
 const props = defineProps({
     section: { type: String, required: true },
     summary: { type: Array, required: true },
+    queues: { type: Object, default: () => ({}) },
     queue: { type: Object, default: () => ({ data: [] }) },
     history: { type: Object, default: () => ({ data: [] }) },
     settings: { type: Object, default: null },
@@ -241,8 +241,11 @@ const tabs = [
     { key: 'history', label: 'History & Audit' },
     { key: 'settings', label: 'Settings' },
 ];
-const isQueueSection = computed(() => ['quests', 'profiles', 'reviews'].includes(props.section));
-const activeTabLabel = computed(() => tabs.find((tab) => tab.key === props.section)?.label || 'Moderation queue');
+const queueTabs = tabs.filter((tab) => ['quests', 'profiles', 'reviews'].includes(tab.key));
+const { activeTab } = useTabState(tabs.map((tab) => tab.key), props.section || 'quests');
+const isQueueSection = computed(() => ['quests', 'profiles', 'reviews'].includes(activeTab.value));
+const activeTabLabel = computed(() => tabs.find((tab) => tab.key === activeTab.value)?.label || 'Moderation queue');
+const activeQueue = computed(() => props.queues?.[activeTab.value] || props.queue || { data: [] });
 const caseOpen = ref(false);
 const selectedCase = ref(null);
 const bulkMode = ref(false);
@@ -280,7 +283,7 @@ function severityClass(severity) {
 }
 
 function applyFilters() {
-    router.get(route('admin.content-moderation.index'), { section: props.section, ...clean(filtersState) }, { preserveScroll: true, preserveState: true });
+    router.get(route('admin.content-moderation.index'), { tab: activeTab.value, ...clean(filtersState) }, { preserveScroll: true, preserveState: true });
 }
 
 function debouncedApply() {

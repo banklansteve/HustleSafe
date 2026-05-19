@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class StorePromotionBadgeRequest extends FormRequest
 {
@@ -19,6 +20,7 @@ class StorePromotionBadgeRequest extends FormRequest
             'icon' => ['nullable', 'string', 'max:80'],
             'description' => ['required', 'string', 'max:1000'],
             'criteria' => ['nullable', 'array'],
+            'award_mode' => ['nullable', Rule::in(['automatic', 'manual', 'automatic_with_review'])],
             'is_automatic' => ['sometimes', 'boolean'],
             'requires_manual_review' => ['sometimes', 'boolean'],
             'is_public' => ['sometimes', 'boolean'],

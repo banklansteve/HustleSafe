@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Models\AdminFinancialLedgerEntry;
+use App\Models\FeaturedQuestListing;
 use App\Models\Quest;
 use App\Models\QuestCategory;
 use App\Models\User;
@@ -356,10 +357,9 @@ class FinancialControlCentreService
 
     private function featuredRevenueMinor(Carbon $from, Carbon $to): int
     {
-        return (int) Quest::query()
+        return (int) FeaturedQuestListing::query()
             ->whereBetween('created_at', [$from, $to])
-            ->whereNotIn('promotion_tier', ['standard', 'none', ''])
-            ->count() * 250000;
+            ->sum('amount_paid_minor');
     }
 
     private function disputeFeeMinor(Carbon $from, Carbon $to): int

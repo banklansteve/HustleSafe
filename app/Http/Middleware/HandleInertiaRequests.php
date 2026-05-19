@@ -3,10 +3,12 @@
 namespace App\Http\Middleware;
 
 use App\Services\ClientOutstandingActionsService;
+use App\Services\Admin\ContentManagementService;
 use App\Support\Admin\AdminManagementRegistry;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\UserNotificationPresenter;
 use App\Models\User;
+use App\Support\InertiaAuthUser;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -55,7 +57,7 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $request->user(),
+                'user' => fn () => InertiaAuthUser::for($request->user()),
             ],
             'freelancerWorkspace' => static function () use ($request) {
                 $user = $request->user();
@@ -67,7 +69,7 @@ class HandleInertiaRequests extends Middleware
             },
             'unreadNotificationsCount' => static function () use ($request) {
                 $user = $request->user();
-                if ($user === null) {
+                if ($user === null || $user->role?->slug === 'admin') {
                     return 0;
                 }
 
@@ -75,7 +77,7 @@ class HandleInertiaRequests extends Middleware
             },
             'recentNotifications' => static function () use ($request) {
                 $user = $request->user();
-                if ($user === null) {
+                if ($user === null || $user->role?->slug === 'admin') {
                     return [];
                 }
 
@@ -85,6 +87,7 @@ class HandleInertiaRequests extends Middleware
                 'newsletter' => fn () => $request->session()->get('newsletter'),
                 'success' => fn () => $request->session()->get('success'),
                 'status' => fn () => $request->session()->get('status'),
+                'token' => fn () => $request->session()->has('success') || $request->session()->has('status') || $request->session()->has('errors') ? uniqid('flash_', true) : null,
                 'proposal_next_steps' => fn () => $request->session()->get('proposal_next_steps'),
                 'quest_submitted_next_steps' => fn () => $request->session()->get('quest_submitted_next_steps'),
             ],
@@ -119,6 +122,13 @@ class HandleInertiaRequests extends Middleware
                 }
 
                 return AdminManagementRegistry::sidebarNavigation();
+            },
+            'announcement_banner' => static function () use ($request) {
+                if ($request->user()?->role?->slug === 'admin') {
+                    return null;
+                }
+
+                return app(ContentManagementService::class)->activeBannerFor($request->user());
             },
             'impersonation' => fn () => $impersonation,
         ];

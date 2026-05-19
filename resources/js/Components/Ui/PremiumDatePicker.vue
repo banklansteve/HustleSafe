@@ -67,7 +67,25 @@
                             <span v-if="cell.inMonth" class="pointer-events-none">{{ cell.d }}</span>
                         </button>
                     </div>
+                    <div v-if="includeTime" class="grid grid-cols-2 gap-3 border-t border-slate-100 bg-white px-4 py-3">
+                        <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                            Hour
+                            <input v-model="timeHour" type="number" min="0" max="23" class="mt-1 min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20" />
+                        </label>
+                        <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                            Minute
+                            <input v-model="timeMinute" type="number" min="0" max="59" class="mt-1 min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20" />
+                        </label>
+                    </div>
                     <div class="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-3">
+                        <button
+                            v-if="includeTime && modelValue"
+                            type="button"
+                            class="rounded-full bg-primary-600 px-4 py-2 text-xs font-bold text-white hover:bg-primary-700"
+                            @click="confirmDateTime"
+                        >
+                            Apply
+                        </button>
                         <button
                             type="button"
                             class="rounded-full px-4 py-2 text-xs font-bold text-slate-600 hover:bg-white"
@@ -128,6 +146,10 @@ const props = defineProps({
         type: String,
         default: '',
     },
+    includeTime: {
+        type: Boolean,
+        default: false,
+    },
     wrapperClass: {
         type: String,
         default: '',
@@ -141,6 +163,8 @@ const resolvedId = computed(() => props.id || props.inputId || '');
 const open = ref(false);
 const panelRef = ref(null);
 const cursor = ref(todayParts());
+const timeHour = ref('09');
+const timeMinute = ref('00');
 let ignoreNextDocumentClick = false;
 
 const weekDays = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -155,7 +179,7 @@ function parseYmd(s) {
     if (!s || typeof s !== 'string') {
         return null;
     }
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim());
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s.trim());
     if (!m) {
         return null;
     }
@@ -209,7 +233,13 @@ const displayValue = computed(() => {
     const day = String(p.d).padStart(2, '0');
     const month = String(p.m).padStart(2, '0');
 
-    return `${day}/${month}/${p.y}`;
+    const date = new Date(p.y, p.m - 1, p.d);
+    const base = date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Lagos' });
+    if (!props.includeTime || !props.modelValue?.includes('T')) {
+        return base;
+    }
+
+    return `${base}, ${String(timeHour.value).padStart(2, '0')}:${String(timeMinute.value).padStart(2, '0')} WAT`;
 });
 
 const monthTitle = computed(() => {
@@ -276,6 +306,11 @@ function syncCursorFromValue() {
     const p = parseYmd(props.modelValue);
     if (p) {
         cursor.value = { y: p.y, m: p.m };
+        const time = /T(\d{2}):(\d{2})/.exec(props.modelValue);
+        if (time) {
+            timeHour.value = time[1];
+            timeMinute.value = time[2];
+        }
 
         return;
     }
@@ -321,7 +356,23 @@ function pick(cell) {
     if (!cell.inMonth || cell.disabled) {
         return;
     }
+    if (props.includeTime) {
+        emit('update:modelValue', withTime(cell.ymd));
+        return;
+    }
     emit('update:modelValue', cell.ymd);
+    close();
+}
+
+function withTime(ymd) {
+    return `${ymd}T${String(timeHour.value || '0').padStart(2, '0')}:${String(timeMinute.value || '0').padStart(2, '0')}`;
+}
+
+function confirmDateTime() {
+    const p = parseYmd(props.modelValue);
+    if (p) {
+        emit('update:modelValue', withTime(toYmd(p.y, p.m, p.d)));
+    }
     close();
 }
 

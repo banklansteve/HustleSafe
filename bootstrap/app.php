@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\ApplyRoleSessionLifetime;
 use App\Http\Middleware\EnsureFreelancer;
 use App\Http\Middleware\EnsureOperationsStaff;
 use App\Http\Middleware\EnsureSuperAdmin;
@@ -21,7 +22,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->priority([
+            \Illuminate\Cookie\Middleware\EncryptCookies::class,
+            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+            ApplyRoleSessionLifetime::class,
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+        ]);
+
         $middleware->web(append: [
+            ApplyRoleSessionLifetime::class,
             HandleInertiaRequests::class,
             UpdateUserPresence::class,
             AddLinkHeadersForPreloadedAssets::class,

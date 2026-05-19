@@ -16,11 +16,22 @@ use App\Models\UserReferral;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class PromotionsGrowthService
 {
+    private const PREDEFINED_BADGE_SLUGS = [
+        'top-rated',
+        'rising-talent',
+        'quest-champion',
+        'verified-pro',
+        'verified-business',
+        'fast-responder',
+        'long-term-partner',
+    ];
+
     public function overview(): array
     {
         $monthStart = now()->startOfMonth();
@@ -147,17 +158,27 @@ class PromotionsGrowthService
             'badges' => PromotionBadge::query()
                 ->withCount(['users as holders_count' => fn ($q) => $q->whereNull('promotion_badge_user.revoked_at')])
                 ->orderBy('display_order')
-                ->get(),
+                ->get()
+                ->map(fn (PromotionBadge $badge) => $badge->forceFill([
+                    'is_predefined' => in_array($badge->slug, self::PREDEFINED_BADGE_SLUGS, true),
+                ])),
             'effectiveness' => $this->badgeEffectiveness(),
         ];
     }
 
     public function grantFeatured(array $data, User $admin): FeaturedQuestListing
     {
+        if (! in_array($admin->role?->slug, ['admin', 'super_admin'], true)) {
+            abort(403);
+        }
+
         $quest = Quest::query()->with('client')->findOrFail($data['quest_id']);
         $tier = $data['tier'];
         $duration = (int) $data['duration_days'];
         $amount = (int) ($data['amount_paid_minor'] ?? 0);
+        $startsAt = isset($data['starts_at']) && $data['starts_at'] !== null
+            ? Carbon::parse($data['starts_at'])->startOfDay()
+            : now();
 
         return FeaturedQuestListing::query()->create([
             'quest_id' => $quest->id,
@@ -165,8 +186,8 @@ class PromotionsGrowthService
             'granted_by_admin_id' => $admin->id,
             'tier' => $tier,
             'status' => 'active',
-            'starts_at' => now(),
-            'expires_at' => now()->addDays($duration),
+            'starts_at' => $startsAt,
+            'expires_at' => $startsAt->copy()->addDays($duration),
             'amount_paid_minor' => $amount,
             'homepage_carousel' => in_array($tier, ['premium', 'elite'], true),
             'weekly_digest' => $tier === 'elite',
@@ -177,6 +198,10 @@ class PromotionsGrowthService
 
     public function cancelFeatured(FeaturedQuestListing $listing, User $admin, string $reason): FeaturedQuestListing
     {
+        if (! in_array($admin->role?->slug, ['admin', 'super_admin'], true)) {
+            abort(403);
+        }
+
         $listing->refresh();
         $totalSeconds = max(1, $listing->starts_at->diffInSeconds($listing->expires_at));
         $remaining = $listing->expires_at->isFuture() ? now()->diffInSeconds($listing->expires_at) : 0;
@@ -213,10 +238,16 @@ class PromotionsGrowthService
 
     public function createBadge(array $data): PromotionBadge
     {
+        $awardMode = $data['award_mode'] ?? 'manual';
+        $isAutomatic = in_array($awardMode, ['automatic', 'automatic_with_review'], true);
+        $requiresReview = $awardMode === 'automatic_with_review';
+
         return PromotionBadge::query()->create([
             ...$data,
             'slug' => Str::slug($data['name']),
-            'criteria' => $data['criteria'] ?? ['manual' => $data['description']],
+            'criteria' => $data['criteria'] ?? ['award_mode' => $awardMode, 'standard' => $data['description']],
+            'is_automatic' => $isAutomatic,
+            'requires_manual_review' => $requiresReview,
             'is_public' => $data['is_public'] ?? true,
             'status' => 'active',
         ]);

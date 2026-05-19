@@ -10,6 +10,7 @@ use App\Enums\QuestStartTiming;
 use App\Enums\QuestStatus;
 use App\Enums\QuestTeamSize;
 use App\Enums\QuestVisibility;
+use App\Enums\AdminQuestStatus;
 use App\Services\QuestFileStorageService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -35,6 +36,10 @@ class Quest extends Model
         'latitude',
         'longitude',
         'status',
+        'admin_status',
+        'admin_status_reason',
+        'admin_status_changed_by',
+        'admin_status_changed_at',
         'escrow_status',
         'accepted_quest_offer_id',
         'visibility',
@@ -43,7 +48,6 @@ class Quest extends Model
         'project_type',
         'estimated_hours',
         'team_size',
-        'promotion_tier',
         'auto_listing_expiry_days',
         'listing_expires_at',
         'client_edit_until',
@@ -168,6 +172,7 @@ class Quest extends Model
     {
         return [
             'status' => QuestStatus::class,
+            'admin_status' => AdminQuestStatus::class,
             'visibility' => QuestVisibility::class,
             'freelancer_location_pref' => QuestFreelancerLocationPref::class,
             'availability_need' => QuestAvailabilityNeed::class,
@@ -182,6 +187,7 @@ class Quest extends Model
             'estimated_delivery_date' => 'date',
             'listing_expires_at' => 'datetime',
             'client_edit_until' => 'datetime',
+            'admin_status_changed_at' => 'datetime',
             'terms_accepted_at' => 'datetime',
             'due_at' => 'datetime',
             'escrow_funded_at' => 'datetime',
@@ -320,6 +326,49 @@ class Quest extends Model
             ->where('status', 'active')
             ->where('starts_at', '<=', now())
             ->where('expires_at', '>', now());
+    }
+
+    public function adminQuestFlags(): HasMany
+    {
+        return $this->hasMany(AdminQuestFlag::class);
+    }
+
+    public function activeAdminQuestFlags(): HasMany
+    {
+        return $this->hasMany(AdminQuestFlag::class)->where('status', 'open');
+    }
+
+    public function adminStatusChangedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'admin_status_changed_by');
+    }
+
+    public function adminQuestNotices(): HasMany
+    {
+        return $this->hasMany(AdminQuestNotice::class);
+    }
+
+    public function visibleAdminQuestNotices(): HasMany
+    {
+        return $this->hasMany(AdminQuestNotice::class)->where('visible_to_users', true)->latest();
+    }
+
+    public function adminQuestNotes(): HasMany
+    {
+        return $this->hasMany(AdminQuestNote::class);
+    }
+
+    public function isAdminSuspended(): bool
+    {
+        return ($this->admin_status?->value ?? (string) $this->admin_status) === AdminQuestStatus::Suspended->value;
+    }
+
+    public function isAdminRestricted(): bool
+    {
+        return in_array($this->admin_status?->value ?? (string) $this->admin_status, [
+            AdminQuestStatus::Restricted->value,
+            AdminQuestStatus::Suspended->value,
+        ], true);
     }
 
     /**

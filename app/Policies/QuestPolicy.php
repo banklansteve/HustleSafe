@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Enums\QuestStatus;
 use App\Enums\QuestVisibility;
+use App\Enums\AdminQuestStatus;
 use App\Models\Quest;
 use App\Models\QuestConversationThread;
 use App\Models\User;
@@ -19,6 +20,10 @@ class QuestPolicy
     {
         if (in_array($user->role?->slug, ['admin', 'super_admin'], true)) {
             return true;
+        }
+
+        if (($quest->admin_status?->value ?? (string) $quest->admin_status) === AdminQuestStatus::Suspended->value) {
+            return false;
         }
 
         if ($quest->client_id === $user->id) {

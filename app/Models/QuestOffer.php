@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Enums\AdminProposalStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class QuestOffer extends Model
 {
@@ -11,6 +13,11 @@ class QuestOffer extends Model
         'quest_id',
         'freelancer_id',
         'status',
+        'admin_status',
+        'admin_status_reason',
+        'admin_status_changed_by',
+        'admin_status_changed_at',
+        'admin_notice_severity',
         'pitch',
         'scope_detail',
         'warranty_terms',
@@ -40,6 +47,8 @@ class QuestOffer extends Model
     protected function casts(): array
     {
         return [
+            'admin_status' => AdminProposalStatus::class,
+            'admin_status_changed_at' => 'datetime',
             'materials' => 'array',
             'pricing_snapshot' => 'array',
             'proposed_completion_date' => 'date',
@@ -70,5 +79,39 @@ class QuestOffer extends Model
     public function freelancer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'freelancer_id');
+    }
+
+    public function adminStatusChangedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'admin_status_changed_by');
+    }
+
+    public function adminProposalFlags(): HasMany
+    {
+        return $this->hasMany(AdminProposalFlag::class, 'quest_offer_id');
+    }
+
+    public function activeAdminProposalFlags(): HasMany
+    {
+        return $this->hasMany(AdminProposalFlag::class, 'quest_offer_id')->where('status', 'open');
+    }
+
+    public function adminProposalNotices(): HasMany
+    {
+        return $this->hasMany(AdminProposalNotice::class, 'quest_offer_id');
+    }
+
+    public function visibleAdminProposalNotices(): HasMany
+    {
+        return $this->hasMany(AdminProposalNotice::class, 'quest_offer_id')
+            ->where(function ($query): void {
+                $query->where('visible_to_freelancer', true)->orWhere('visible_to_client', true);
+            })
+            ->latest();
+    }
+
+    public function adminProposalNotes(): HasMany
+    {
+        return $this->hasMany(AdminProposalNote::class, 'quest_offer_id');
     }
 }

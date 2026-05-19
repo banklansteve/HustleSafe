@@ -57,8 +57,18 @@ class User extends Authenticatable implements MustVerifyEmail
         'hourly_rate_max',
         'years_experience',
         'availability',
+        'power_hours',
         'verification_tier',
         'kyc_tier',
+        'current_verification_level',
+        'verification_level_override',
+        'verification_level_override_reason',
+        'verification_level_overridden_by',
+        'verification_level_overridden_at',
+        'custom_client_post_limit_minor',
+        'custom_freelancer_proposal_limit_minor',
+        'verification_restricted_at',
+        'verification_restriction_reason',
         'kyc_status',
         'kyc_verified_at',
         'response_time_hours',
@@ -134,9 +144,12 @@ class User extends Authenticatable implements MustVerifyEmail
             'operations_staff_password_set_at' => 'datetime',
             'geocoded_at' => 'datetime',
             'kyc_verified_at' => 'datetime',
+            'verification_level_overridden_at' => 'datetime',
+            'verification_restricted_at' => 'datetime',
             'latitude' => 'float',
             'longitude' => 'float',
             'public_profile_settings' => 'array',
+            'power_hours' => 'array',
             'hide_online_presence' => 'boolean',
         ];
     }
@@ -194,6 +207,11 @@ class User extends Authenticatable implements MustVerifyEmail
     public function kycReviewCases(): HasMany
     {
         return $this->hasMany(KycReviewCase::class);
+    }
+
+    public function verificationAnomalyFlags(): HasMany
+    {
+        return $this->hasMany(VerificationAnomalyFlag::class);
     }
 
     /**

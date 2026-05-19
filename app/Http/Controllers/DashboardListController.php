@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AdminProposalStatus;
 use App\Enums\QuestStatus;
 use App\Models\Quest;
 use App\Models\QuestOffer;
@@ -9,6 +10,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -203,6 +205,7 @@ class DashboardListController extends Controller
 
             'freelancer-proposals-sent' => QuestOffer::query()
                 ->where('freelancer_id', $user->id)
+                ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
                 ->with(['quest:id,uuid,slug,title,status'])
                 ->latest('updated_at'),
 
@@ -223,6 +226,7 @@ class DashboardListController extends Controller
 
             'client-proposals-inbox' => QuestOffer::query()
                 ->whereHas('quest', fn ($q) => $q->where('client_id', $user->id))
+                ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
                 ->with(['quest:id,uuid,slug,title,status', 'freelancer:id,first_name,name,avatar_url'])
                 ->latest('updated_at'),
 

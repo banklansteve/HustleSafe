@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\QuestStatus;
 use App\Enums\QuestVisibility;
+use App\Enums\AdminQuestStatus;
 use App\Models\Quest;
 use App\Models\User;
 use App\Models\UserFollow;
@@ -30,6 +31,7 @@ class QuestMatchingService
 
         $quests = Quest::query()
             ->where('status', QuestStatus::Open)
+            ->where(fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminQuestStatus::Suspended->value))
             ->where('visibility', QuestVisibility::Public)
             ->whereNull('freelancer_id')
             ->with(['questCategory:id,parent_id,name', 'questCategory.parent:id,name', 'stateModel:id,name', 'client:id,first_name,name'])
@@ -253,6 +255,7 @@ class QuestMatchingService
     {
         $quests = Quest::query()
             ->where('status', QuestStatus::Open)
+            ->where(fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminQuestStatus::Suspended->value))
             ->where('visibility', QuestVisibility::Public)
             ->whereNull('freelancer_id')
             ->with(['questCategory:id,parent_id,name', 'questCategory.parent:id,name', 'stateModel:id,name', 'client:id,first_name,name'])

@@ -54,14 +54,14 @@
                 </template>
 
                 <template v-else>
-                    <div v-if="form.category === 'identity'" class="grid gap-4 sm:grid-cols-2">
+                    <div v-if="['identity', 'identity_address'].includes(form.category)" class="grid gap-4 sm:grid-cols-2">
                         <div>
                             <InputLabel for="id_type" value="ID type" />
                             <UiSelect
                                 id="id_type"
                                 v-model="form.id_type"
                                 class="mt-2"
-                                :options="idTypeOptions"
+                                :options="form.category === 'identity_address' ? photoIdTypeOptions : idTypeOptions"
                                 placeholder="Select ID type"
                                 :invalid="!!form.errors.id_type"
                             />
@@ -81,7 +81,46 @@
                         </div>
                     </div>
 
-                    <div v-if="form.category === 'qualification'">
+                    <div v-if="['nin', 'bvn', 'tin'].includes(form.category)">
+                        <InputLabel for="identifier_number" :value="form.category.toUpperCase() + ' number'" />
+                        <TextInput
+                            id="identifier_number"
+                            v-model="form.identifier_number"
+                            type="text"
+                            class="mt-2"
+                            placeholder="Enter the number exactly as issued"
+                            autocomplete="off"
+                        />
+                        <InputError class="mt-2" :message="form.errors.identifier_number" />
+                    </div>
+
+                    <div v-if="form.category === 'identity_address'">
+                        <InputLabel for="address_document_type" value="Proof of address document type" />
+                        <UiSelect
+                            id="address_document_type"
+                            v-model="form.address_document_type"
+                            class="mt-2"
+                            :options="addressDocumentOptions"
+                            placeholder="Select document type"
+                            :invalid="!!form.errors.address_document_type"
+                        />
+                        <InputError class="mt-2" :message="form.errors.address_document_type" />
+                    </div>
+
+                    <div v-if="form.category === 'cac'" class="grid gap-4 sm:grid-cols-2">
+                        <div>
+                            <InputLabel for="cac_number" value="RC number" />
+                            <TextInput id="cac_number" v-model="form.cac_number" type="text" class="mt-2" placeholder="e.g. RC1234567" />
+                            <InputError class="mt-2" :message="form.errors.cac_number" />
+                        </div>
+                        <div>
+                            <InputLabel for="registered_business_name" value="Registered business name" />
+                            <TextInput id="registered_business_name" v-model="form.registered_business_name" type="text" class="mt-2" placeholder="As shown on CAC certificate" />
+                            <InputError class="mt-2" :message="form.errors.registered_business_name" />
+                        </div>
+                    </div>
+
+                    <div v-if="['qualification', 'professional_certificate'].includes(form.category)">
                         <InputLabel for="freelancer_credential_id" value="Credential ID (from your profile)" />
                         <TextInput
                             id="freelancer_credential_id"
@@ -93,7 +132,7 @@
                         <InputError class="mt-2" :message="form.errors.freelancer_credential_id" />
                     </div>
 
-                    <div class="space-y-3">
+                    <div v-if="!['nin', 'bvn', 'tin'].includes(form.category)" class="space-y-3">
                         <div class="flex flex-wrap items-center justify-between gap-2">
                             <InputLabel value="Documents (name + file for each)" />
                             <button
@@ -205,6 +244,9 @@ import { Head, useForm } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 
 const verificationCategoryOptions = [
+    { value: 'nin', label: 'NIN Verification' },
+    { value: 'bvn', label: 'BVN Verification' },
+    { value: 'identity_address', label: 'Identity & address verification' },
     {
         value: 'identity',
         label: "Government-issued ID (NIN slip, passport, driver's licence)",
@@ -214,8 +256,24 @@ const verificationCategoryOptions = [
         label: 'Proof of address (utility bill, bank statement — last 3 months)',
     },
     {
+        value: 'cac',
+        label: 'CAC verification (RC number + certificate)',
+    },
+    {
+        value: 'tin',
+        label: 'TIN verification',
+    },
+    {
+        value: 'professional_certificate',
+        label: 'Professional certificate / membership card',
+    },
+    {
+        value: 'portfolio_review',
+        label: 'Portfolio review verification',
+    },
+    {
         value: 'qualification',
-        label: 'Certificate / professional qualification',
+        label: 'Legacy certificate / professional qualification',
     },
     {
         value: 'live_presence',
@@ -227,6 +285,16 @@ const idTypeOptions = [
     { value: 'nin', label: 'NIN' },
     { value: 'passport', label: 'Passport' },
     { value: 'drivers_licence', label: "Driver's licence" },
+];
+const photoIdTypeOptions = [
+    { value: 'passport', label: 'National Passport' },
+    { value: 'drivers_licence', label: "Driver's licence" },
+    { value: 'voters_card', label: "Voter's Card" },
+];
+const addressDocumentOptions = [
+    { value: 'utility_bill', label: 'Utility bill' },
+    { value: 'tenancy_agreement', label: 'Tenancy agreement' },
+    { value: 'bank_statement', label: 'Bank statement' },
 ];
 
 const props = defineProps({
@@ -289,7 +357,10 @@ const livePhoto = ref(null);
 const form = useForm({
     category: 'identity',
     id_type: 'nin',
+    address_document_type: 'utility_bill',
     identifier_number: '',
+    cac_number: '',
+    registered_business_name: '',
     freelancer_credential_id: '',
     document_labels: [],
     document_files: [],
@@ -302,12 +373,18 @@ watch(
         docRows.value = [{ label: '', file: null }];
         livePhoto.value = null;
         form.clearErrors();
-        if (cat !== 'identity') {
+        if (!['identity', 'identity_address'].includes(cat)) {
             form.id_type = 'nin';
+        }
+        if (!['nin', 'bvn', 'tin', 'identity'].includes(cat)) {
             form.identifier_number = '';
         }
-        if (cat !== 'qualification') {
+        if (!['qualification', 'professional_certificate'].includes(cat)) {
             form.freelancer_credential_id = '';
+        }
+        if (cat !== 'cac') {
+            form.cac_number = '';
+            form.registered_business_name = '';
         }
     },
 );
@@ -351,6 +428,17 @@ function submit() {
         return;
     }
 
+    if (['nin', 'bvn', 'tin'].includes(form.category)) {
+        form
+            .transform(() => ({
+                category: form.category,
+                identifier_number: form.identifier_number,
+            }))
+            .post(route('verifications.store'), visitOpts);
+
+        return;
+    }
+
     const pairs = docRows.value.filter((r) => r.file && r.label.trim());
     if (!pairs.length) {
         form.setError('document_files', 'Add at least one document with a label and a file.');
@@ -358,7 +446,7 @@ function submit() {
     }
     form.document_labels = pairs.map((r) => r.label.trim());
     form.document_files = pairs.map((r) => r.file);
-    if (form.category === 'qualification' && form.freelancer_credential_id !== '') {
+    if (['qualification', 'professional_certificate'].includes(form.category) && form.freelancer_credential_id !== '') {
         form.freelancer_credential_id = Number(form.freelancer_credential_id);
     }
     form.post(route('verifications.store'), visitOpts);

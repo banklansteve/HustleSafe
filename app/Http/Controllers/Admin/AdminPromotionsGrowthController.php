@@ -29,7 +29,7 @@ class AdminPromotionsGrowthController extends Controller
 
     public function index(Request $request): Response
     {
-        $section = (string) $request->query('section', 'featured');
+        $section = (string) $request->query('tab', $request->query('section', 'featured'));
         if (! in_array($section, ['featured', 'coupons', 'referrals', 'badges', 'settings'], true)) {
             $section = 'featured';
         }
@@ -37,18 +37,26 @@ class AdminPromotionsGrowthController extends Controller
         return Inertia::render('Admin/Promotions/Index', [
             'section' => $section,
             'overview' => fn () => $this->growth->overview(),
-            'featured' => fn () => $section === 'featured' ? $this->growth->featured($request) : null,
-            'coupons' => fn () => $section === 'coupons' ? $this->growth->coupons($request) : null,
-            'referrals' => fn () => $section === 'referrals' ? $this->growth->referrals() : null,
-            'badges' => fn () => $section === 'badges' ? $this->growth->badges() : null,
-            'settings' => fn () => $section === 'settings' ? $this->growth->settings() : null,
+            'featured' => fn () => $this->growth->featured($request),
+            'coupons' => fn () => $this->growth->coupons($request),
+            'referrals' => fn () => $this->growth->referrals(),
+            'badges' => fn () => $this->growth->badges(),
+            'settings' => fn () => $this->growth->settings(),
             'filters' => $request->only(['q', 'status', 'per_page']),
         ]);
     }
 
     public function grantFeatured(StoreFeaturedQuestListingRequest $request): RedirectResponse
     {
-        $this->growth->grantFeatured($request->validated(), $request->user());
+        try {
+            $this->growth->grantFeatured($request->validated(), $request->user());
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors([
+                'quest_id' => 'We could not feature this quest. Please confirm the quest ID is valid and try again.',
+            ]);
+        }
 
         return back()->with('success', 'Featured listing granted.');
     }

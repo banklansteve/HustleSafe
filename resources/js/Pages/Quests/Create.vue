@@ -312,8 +312,15 @@
                                     </div>
                                     <div class="mt-2 flex justify-between gap-2 text-[10px] font-black uppercase tracking-wider text-slate-500">
                                         <span>Min {{ formatNgn(minBudgetMinor) }}</span>
-                                        <span>Max {{ formatNgn(maxBudgetMinor) }}</span>
+                                        <span>Max {{ formatNgn(effectiveMaxBudgetMinor) }}</span>
                                     </div>
+                                    <p
+                                        v-if="verificationLimit && verificationLimit < maxBudgetMinor"
+                                        class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-black leading-relaxed text-amber-800"
+                                    >
+                                        Your current verification level caps Quest budgets at {{ formatNgn(verificationLimit) }}.
+                                        <span v-if="verificationCooldown?.active"> Your new-account cool-down ends {{ formatDate(verificationCooldown.expires_at) }}.</span>
+                                    </p>
                                     <p
                                         v-if="budgetGuidanceCopy"
                                         class="mt-3 rounded-xl border border-primary-100 bg-primary-50/50 px-3 py-2.5 text-xs font-semibold leading-relaxed text-primary-950 ring-1 ring-primary-100/80"
@@ -422,13 +429,9 @@
                                 Trust, discovery & launch
                             </h2>
                             <p class="mt-1 text-sm text-slate-500">
-                                Tags, files, and listing options — you will choose publish vs draft on the review step.
+                                Tags, files, and launch options — admins manage featured boosts after a quest is live.
                             </p>
                             <div class="mt-6 space-y-5">
-                                <div>
-                                    <InputLabel value="Listing promotion" />
-                                    <UiSelect v-model="form.promotion_tier" class="mt-2" :options="promotionOptions" />
-                                </div>
                                 <div>
                                     <div class="flex items-center gap-1">
                                         <InputLabel for="exp" value="Auto-close if unfilled (days, optional)" />
@@ -669,6 +672,8 @@ const props = defineProps({
     categoryTree: { type: Array, required: true },
     startTimingOptions: { type: Array, required: true },
     maxBudgetMinor: { type: Number, default: 100_000_000 },
+    verificationLimit: { type: Number, default: null },
+    verificationCooldown: { type: Object, default: null },
     minBudgetMinor: { type: Number, default: 10_000 },
     fieldProfileUrl: { type: String, required: true },
     freelancersYouFollow: { type: Array, default: () => [] },
@@ -746,10 +751,6 @@ const teamSizeOptions = [
     { value: 'solo', label: 'Solo freelancer' },
     { value: 'small_team', label: 'Small team (2–5)' },
 ];
-const promotionOptions = [
-    { value: 'standard', label: 'Standard listing' },
-    { value: 'featured', label: 'Featured / boost (paid promotion)' },
-];
 const yesNoOptions = [
     { value: 'yes', label: 'Yes, visits may be needed' },
     { value: 'no', label: 'No site visits' },
@@ -788,7 +789,6 @@ const form = useForm({
     site_access_level: '',
     pets_on_site: null,
     pets_detail: '',
-    promotion_tier: 'standard',
     auto_listing_expiry_days: null,
     max_offers: null,
     traffic_source: '',
@@ -909,7 +909,7 @@ const freelancerNetworkGroups = computed(() => {
 
 function clampBudgetMinor(n) {
     const minB = props.minBudgetMinor;
-    const maxB = props.maxBudgetMinor;
+    const maxB = effectiveMaxBudgetMinor.value;
     const x = Number(n);
     if (!Number.isFinite(x)) {
         return minB;
@@ -919,7 +919,7 @@ function clampBudgetMinor(n) {
 }
 
 const budgetSliderStep = computed(() => {
-    const span = props.maxBudgetMinor - props.minBudgetMinor;
+    const span = effectiveMaxBudgetMinor.value - props.minBudgetMinor;
     if (span <= 500_000) {
         return 10_000;
     }
@@ -940,6 +940,7 @@ const budgetSliderModel = computed({
 });
 
 const clampedBudgetMinor = computed(() => clampBudgetMinor(form.budget_amount_minor));
+const effectiveMaxBudgetMinor = computed(() => Math.max(props.minBudgetMinor, Math.min(props.maxBudgetMinor, props.verificationLimit || props.maxBudgetMinor)));
 
 const budgetNairaText = ref('');
 
@@ -1001,6 +1002,11 @@ function stepPillClass(i) {
 
 function formatNgn(minor) {
     return `₦${(Number(minor) / 100).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
+}
+
+function formatDate(value) {
+    if (!value) return '';
+    return new Intl.DateTimeFormat('en-NG', { dateStyle: 'medium' }).format(new Date(value));
 }
 
 function optionLabel(options, value) {
@@ -1119,7 +1125,6 @@ const previewBlocks = computed(() => {
             id: 6,
             title: 'Launch',
             rows: [
-                { label: 'Promotion', value: optionLabel(promotionOptions, form.promotion_tier) },
                 { label: 'Auto-expiry (days)', value: form.auto_listing_expiry_days != null && form.auto_listing_expiry_days !== '' ? String(form.auto_listing_expiry_days) : '—' },
                 { label: 'Max proposals', value: form.max_offers != null && form.max_offers !== '' ? String(form.max_offers) : '—' },
                 { label: 'Tagged freelancers', value: taggedDisplay.value.map((t) => t.label).join(', ') || '—' },

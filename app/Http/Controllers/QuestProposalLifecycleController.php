@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AdminProposalStatus;
 use App\Enums\QuestStatus;
 use App\Models\Quest;
 use App\Models\QuestOffer;
@@ -12,6 +13,7 @@ use App\Notifications\ProposalEscrowFundedFreelancerNotification;
 use App\Notifications\ProposalShortlistedFreelancerNotification;
 use App\Notifications\ProposalWithdrawnClientNotification;
 use App\Services\Admin\AdminActivityFeedService;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -119,7 +121,7 @@ class QuestProposalLifecycleController extends Controller
         return back()->with('success', __('Proposal declined. The freelancer has been notified.'));
     }
 
-    public function accept(Request $request, Quest $quest, QuestOffer $offer): RedirectResponse
+    public function accept(Request $request, Quest $quest, QuestOffer $offer, VerificationEngineService $verificationEngine): RedirectResponse
     {
         $this->authorize('respondAsClient', $offer);
         $request->validate([
@@ -170,6 +172,10 @@ class QuestProposalLifecycleController extends Controller
             ]);
         });
 
+        if ($verificationEngine->arbitrationRequired($quest, $offer)) {
+            $verificationEngine->recordArbitrationAgreement($quest, $offer, $request->user(), 'client');
+        }
+
         $quest->client?->notify(new ProposalAcceptedClientNotification($offer));
         $offer->freelancer?->notify(new ProposalAcceptedFreelancerNotification($offer));
         $quest->loadMissing(['client', 'questCategory', 'stateModel']);
@@ -198,7 +204,7 @@ class QuestProposalLifecycleController extends Controller
         return back()->with('success', __('Proposal accepted. Fund escrow to authorise work — both parties were emailed with next steps.'));
     }
 
-    public function markEscrowFunded(Request $request, Quest $quest, QuestOffer $offer): RedirectResponse
+    public function markEscrowFunded(Request $request, Quest $quest, QuestOffer $offer, VerificationEngineService $verificationEngine): RedirectResponse
     {
         $this->authorize('respondAsClient', $offer);
         $request->validate([
@@ -220,6 +226,10 @@ class QuestProposalLifecycleController extends Controller
 
         if ($quest->escrow_status !== 'awaiting_funding') {
             throw ValidationException::withMessages(['proposal' => __('Escrow is not awaiting confirmation right now.')]);
+        }
+
+        if ($verificationEngine->arbitrationRequired($quest, $offer) && ! $verificationEngine->hasBothArbitrationAgreements($quest, $offer)) {
+            throw ValidationException::withMessages(['arbitration' => __('Both parties must accept platform-mediated arbitration before this high-value Quest can move to In Progress.')]);
         }
 
         $quest->update([
@@ -294,6 +304,15 @@ class QuestProposalLifecycleController extends Controller
 
     protected function assertOfferDecisible(QuestOffer $offer): void
     {
+        $adminStatus = $offer->admin_status?->value ?? (string) $offer->admin_status;
+        if ($adminStatus === AdminProposalStatus::Suspended->value) {
+            throw ValidationException::withMessages(['proposal' => __('This proposal is suspended by HustleSafe moderation.')]);
+        }
+
+        if ($adminStatus === AdminProposalStatus::Restricted->value) {
+            throw ValidationException::withMessages(['proposal' => __('This proposal is visible but cannot be accepted until moderation releases it.')]);
+        }
+
         if (in_array($offer->status, ['withdrawn', 'declined'], true)) {
             throw ValidationException::withMessages(['proposal' => __('This proposal is closed.')]);
         }

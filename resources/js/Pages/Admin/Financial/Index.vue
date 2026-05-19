@@ -12,21 +12,9 @@
                 </div>
             </div>
 
-            <div class="flex gap-2 overflow-x-auto rounded-3xl border p-2" :class="shell.card">
-                <Link
-                    v-for="tab in tabs"
-                    :key="tab.key"
-                    :href="route('admin.financial.index', { section: tab.key })"
-                    preserve-scroll
-                    preserve-state
-                    class="whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-black transition"
-                    :class="activeSection === tab.key ? shell.btnPrimary : shell.btnGhost"
-                >
-                    {{ tab.label }}
-                </Link>
-            </div>
+            <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="financial-tab" aria-label="Financial control sections" />
 
-            <section v-if="activeSection === 'escrow'" class="space-y-5">
+            <AdminTabPanel v-model="activeTab" value="escrow" id-prefix="financial-tab" class="space-y-5">
                 <div class="grid gap-3 md:grid-cols-3">
                     <div v-for="tile in escrow.tiles" :key="tile.label" class="rounded-3xl border p-4" :class="shell.card">
                         <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ tile.label }}</p>
@@ -78,9 +66,9 @@
                         </table>
                     </div>
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
 
-            <section v-else-if="activeSection === 'revenue'" class="space-y-5">
+            <AdminTabPanel v-model="activeTab" value="revenue" id-prefix="financial-tab" class="space-y-5">
                 <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     <div v-for="kpi in revenue.kpis" :key="kpi.label" class="rounded-3xl border p-4" :class="shell.card">
                         <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ kpi.label }}</p>
@@ -106,9 +94,9 @@
                     <p class="mt-2 text-3xl font-black" :class="shell.title">{{ revenue.mrr.value }}</p>
                     <p class="mt-1 text-sm font-bold text-amber-600">{{ revenue.mrr.status }}</p>
                 </div>
-            </section>
+            </AdminTabPanel>
 
-            <section v-else-if="activeSection === 'ledger'" class="space-y-5">
+            <AdminTabPanel v-model="activeTab" value="ledger" id-prefix="financial-tab" class="space-y-5">
                 <AdminPanel title="Transaction ledger" description="Immutable append-only financial movement log.">
                     <div class="mb-4 grid gap-3 md:grid-cols-4">
                         <input v-model="ledgerFilters.q" type="search" placeholder="Transaction ID, user, quest…" class="rounded-2xl border px-4 py-3 text-sm font-semibold md:col-span-2" :class="shell.input" @input="debouncedApplyLedger" />
@@ -160,13 +148,19 @@
                         </table>
                     </div>
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
 
-            <section v-else class="rounded-3xl border p-6" :class="shell.card">
+            <AdminTabPanel v-model="activeTab" value="payouts" id-prefix="financial-tab" class="rounded-3xl border p-6" :class="shell.card">
                 <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ activeSection }}</p>
                 <h2 class="mt-2 text-2xl font-black" :class="shell.title">{{ placeholderMessage }}</h2>
                 <p class="mt-2 text-sm font-semibold" :class="shell.cardMuted">This section is scaffolded into the Financial Control Centre and ready for payout/refund processor integrations.</p>
-            </section>
+            </AdminTabPanel>
+
+            <AdminTabPanel v-model="activeTab" value="refunds" id-prefix="financial-tab" class="rounded-3xl border p-6" :class="shell.card">
+                <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ activeSection }}</p>
+                <h2 class="mt-2 text-2xl font-black" :class="shell.title">{{ placeholderMessage }}</h2>
+                <p class="mt-2 text-sm font-semibold" :class="shell.cardMuted">This section is scaffolded into the Financial Control Centre and ready for payout/refund processor integrations.</p>
+            </AdminTabPanel>
         </div>
 
         <AdminSlideOver :open="escrowOpen" :title="selectedEscrow?.title || 'Escrow ledger'" eyebrow="Escrow account" @close="escrowOpen = false">
@@ -230,9 +224,12 @@
 <script setup>
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
+import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
+import AdminTabs from '@/Components/Admin/AdminTabs.vue';
+import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
-import { Link, router } from '@inertiajs/vue3';
+import { router } from '@inertiajs/vue3';
 import { computed, defineComponent, h, reactive, ref } from 'vue';
 
 const props = defineProps({
@@ -246,7 +243,6 @@ const props = defineProps({
 });
 
 const { shell } = useInjectedAdminTheme();
-const activeSection = computed(() => props.section);
 const liveSummary = ref(props.summary);
 const changedKeys = ref([]);
 const escrowOpen = ref(false);
@@ -262,6 +258,8 @@ const tabs = [
     { key: 'payouts', label: 'Payout Queue' },
     { key: 'refunds', label: 'Refunds' },
 ];
+const { activeTab } = useTabState(tabs.map((tab) => tab.key), props.section || 'escrow');
+const activeSection = computed(() => activeTab.value);
 
 const escrowStatuses = ['awaiting_funding', 'funded', 'partially_released', 'released', 'held', 'frozen', 'disputed', 'refunded'];
 const escrowFilters = reactive({ q: props.escrow.filters?.q || '', status: props.escrow.filters?.status || '' });
@@ -296,7 +294,7 @@ async function refreshSummary() {
 }
 
 function applyEscrowFilters() {
-    router.get(route('admin.financial.index'), { section: 'escrow', ...clean(escrowFilters) }, { preserveScroll: true, preserveState: true });
+    router.get(route('admin.financial.index'), { tab: 'escrow', ...clean(escrowFilters) }, { preserveScroll: true, preserveState: true });
 }
 
 function debouncedApplyEscrow() {
@@ -305,7 +303,7 @@ function debouncedApplyEscrow() {
 }
 
 function applyLedgerFilters() {
-    router.get(route('admin.financial.index'), { section: 'ledger', ...clean(ledgerFilters) }, { preserveScroll: true, preserveState: true });
+    router.get(route('admin.financial.index'), { tab: 'ledger', ...clean(ledgerFilters) }, { preserveScroll: true, preserveState: true });
 }
 
 function debouncedApplyLedger() {

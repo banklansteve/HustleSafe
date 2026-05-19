@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Enums\QuestPromotionTier;
 use App\Enums\QuestStatus;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonPeriod;
@@ -271,14 +270,24 @@ class RefreshAdminReportAggregatesCommand extends Command
             ->where('quests.paid_out_minor', '>', 0)
             ->selectRaw('date(quests.completed_at) as metric_date, coalesce(quests.quest_category_id, 0) as category_id, coalesce(quests.state_id, 0) as state_id')
             ->selectRaw('coalesce(sum(quests.paid_out_minor), 0) as paid_out_minor')
-            ->selectRaw('coalesce(sum(case when quests.promotion_tier = ? then quests.budget_amount_minor else 0 end), 0) as boosted_volume_minor', [QuestPromotionTier::Featured->value])
             ->groupBy('metric_date', 'category_id', 'state_id')
             ->get();
 
         foreach ($quests as $row) {
             $this->mergeRevenueRow($rows, $row, 'commission', 'all', (int) round(((int) $row->paid_out_minor) * 0.1));
-            $this->mergeRevenueRow($rows, $row, 'boosts', 'all', (int) round(((int) $row->boosted_volume_minor) * 0.02));
             $this->mergeRevenueRow($rows, $row, 'subscription', 'all', 0);
+        }
+
+        $boosts = DB::table('featured_quest_listings')
+            ->join('quests', 'quests.id', '=', 'featured_quest_listings.quest_id')
+            ->whereBetween('featured_quest_listings.created_at', [$from, $to])
+            ->selectRaw('date(featured_quest_listings.created_at) as metric_date, coalesce(quests.quest_category_id, 0) as category_id, coalesce(quests.state_id, 0) as state_id')
+            ->selectRaw('coalesce(sum(featured_quest_listings.amount_paid_minor), 0) as boost_revenue_minor')
+            ->groupBy('metric_date', 'category_id', 'state_id')
+            ->get();
+
+        foreach ($boosts as $row) {
+            $this->mergeRevenueRow($rows, $row, 'boosts', 'all', (int) $row->boost_revenue_minor);
         }
 
         $this->bulkInsert('admin_report_revenue_daily_metrics', array_values($rows));

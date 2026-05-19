@@ -1,5 +1,34 @@
 <template>
     <div class="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 text-slate-900">
+        <div
+            v-if="visibleAnnouncement"
+            class="sticky top-0 z-50 border-b px-4 py-2 text-sm font-bold shadow-sm"
+            :class="announcementClass"
+            role="status"
+        >
+            <div class="mx-auto flex max-w-7xl items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <span>{{ visibleAnnouncement.message }}</span>
+                    <a
+                        v-if="visibleAnnouncement.link_url"
+                        :href="visibleAnnouncement.link_url"
+                        class="ml-2 underline decoration-current underline-offset-4"
+                    >
+                        {{ visibleAnnouncement.link_text || 'Learn more' }}
+                    </a>
+                </div>
+                <button
+                    v-if="visibleAnnouncement.dismissible"
+                    type="button"
+                    class="rounded-full p-1 transition hover:bg-white/30"
+                    aria-label="Dismiss announcement"
+                    @click="dismissAnnouncement"
+                >
+                    <XMarkIcon class="h-5 w-5" aria-hidden="true" />
+                </button>
+            </div>
+        </div>
+
         <header
             class="sticky top-0 z-40 border-b border-slate-200/90 bg-white/90 backdrop-blur-lg supports-[backdrop-filter]:bg-white/80"
         >
@@ -315,7 +344,7 @@ import AppToastHost from '@/Components/Ui/AppToastHost.vue';
 import { useNotificationVisit } from '@/composables/useNotificationVisit';
 import { pathMatches, usePathname } from '@/composables/usePathname';
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { BellAlertIcon, BriefcaseIcon, ChartBarIcon, ChartPieIcon, ClipboardDocumentListIcon, HomeIcon, MagnifyingGlassIcon, PlusCircleIcon } from '@heroicons/vue/24/outline';
+import { BellAlertIcon, BriefcaseIcon, ChartBarIcon, ChartPieIcon, ClipboardDocumentListIcon, HomeIcon, MagnifyingGlassIcon, PlusCircleIcon, XMarkIcon } from '@heroicons/vue/24/outline';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
@@ -373,6 +402,11 @@ function onDocClick(e) {
 }
 
 onMounted(() => {
+    try {
+        dismissedAnnouncementIds.value = JSON.parse(window.localStorage?.getItem('dismissed-announcements') || '[]');
+    } catch {
+        dismissedAnnouncementIds.value = [];
+    }
     document.addEventListener('click', onDocClick);
     removeInertiaListeners = [
         router.on('start', () => {
@@ -471,6 +505,22 @@ const showClientTools = computed(() => ['client', 'super_admin'].includes(roleSl
 const adminEntryUrl = computed(() => page.props.admin_entry_url ?? null);
 const operationsEntryUrl = computed(() => page.props.operations_entry_url ?? null);
 const impersonation = computed(() => page.props.impersonation ?? null);
+const dismissedAnnouncementIds = ref([]);
+const visibleAnnouncement = computed(() => {
+    const banner = page.props.announcement_banner;
+    if (!banner) {
+        return null;
+    }
+
+    return dismissedAnnouncementIds.value.includes(banner.id) ? null : banner;
+});
+const announcementClass = computed(() => ({
+    info: 'border-sky-200 bg-sky-600 text-white',
+    success: 'border-emerald-200 bg-emerald-600 text-white',
+    warning: 'border-amber-200 bg-amber-400 text-amber-950',
+    alert: 'border-rose-200 bg-rose-600 text-white',
+    brand: 'border-primary-200 bg-primary-700 text-white',
+}[visibleAnnouncement.value?.color || 'brand']));
 
 const homeActive = computed(() => pathname.value === '/');
 
@@ -504,5 +554,13 @@ function pillClass(active) {
 async function stopImpersonation() {
     const { data } = await window.axios.post(route('impersonation.stop'));
     window.location.href = data.redirect || route('admin.users.index');
+}
+
+function dismissAnnouncement() {
+    if (!visibleAnnouncement.value) {
+        return;
+    }
+    dismissedAnnouncementIds.value = [...dismissedAnnouncementIds.value, visibleAnnouncement.value.id];
+    window.localStorage?.setItem('dismissed-announcements', JSON.stringify(dismissedAnnouncementIds.value));
 }
 </script>

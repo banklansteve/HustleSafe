@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AdminProposalStatus;
 use App\Enums\QuestStatus;
 use App\Enums\QuestVisibility;
 use App\Models\Quest;
@@ -32,6 +33,10 @@ class QuestProposalController extends Controller
         $active = $quest->offers()
             ->where('freelancer_id', $user->id)
             ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
+            ->when(Schema::hasColumn('quest_offers', 'admin_status'), function ($query): void {
+                $query->whereNull('admin_status')
+                    ->orWhere('admin_status', '!=', AdminProposalStatus::Suspended->value);
+            })
             ->first();
 
         if ($active) {

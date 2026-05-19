@@ -9,6 +9,8 @@ use App\Models\Portfolio;
 use App\Models\Review;
 use App\Models\User;
 use App\Models\UserFollow;
+use App\Services\PowerHoursService;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -113,6 +115,9 @@ class PublicFreelancerProfileController extends Controller
         $displayName = $user->first_name
             ? trim($user->first_name.' '.($user->last_name ?? ''))
             : $user->name;
+        $verificationEngine = app(VerificationEngineService::class);
+        $powerHours = app(PowerHoursService::class);
+        $completedVerificationTypes = $verificationEngine->completedVerificationTypes($user);
 
         $profile = [
             'slug' => $user->slug,
@@ -120,12 +125,20 @@ class PublicFreelancerProfileController extends Controller
             'name' => $displayName !== '' ? $displayName : $user->name,
             'avatar_url' => $user->avatar_url,
             'verification_tier' => $user->verification_tier,
+            'verification_engine' => [
+                'earned_level' => $verificationEngine->storedLevel($user),
+                'effective_level' => $verificationEngine->effectiveLevel($user),
+                'proposal_limit_minor' => $verificationEngine->freelancerProposalLimitMinor($user),
+                'cooldown' => $verificationEngine->cooldown($user),
+                'portfolio_verified' => in_array('portfolio_review', $completedVerificationTypes, true),
+            ],
             'trust_score' => $user->trust_score,
             'avg_rating' => $user->avg_rating_as_freelancer,
             'rating_count' => $user->ratings_count_as_freelancer,
             'member_since' => $user->created_at?->timezone('Africa/Lagos')->format('M Y'),
             'profession' => ($settings['show_experience'] ?? true) ? $user->profession : null,
             'years_experience' => ($settings['show_experience'] ?? true) ? $user->years_experience : null,
+            'power_hours' => ($settings['show_power_hours'] ?? true) ? $powerHours->signalFor($user) : null,
         ];
 
         if ($settings['show_headline'] ?? true) {

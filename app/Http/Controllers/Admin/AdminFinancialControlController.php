@@ -17,7 +17,7 @@ class AdminFinancialControlController extends Controller
 
     public function index(Request $request): Response
     {
-        $section = (string) $request->query('section', 'escrow');
+        $section = (string) $request->query('tab', $request->query('section', 'escrow'));
 
         return Inertia::render('Admin/Financial/Index', [
             'section' => in_array($section, ['escrow', 'revenue', 'ledger', 'payouts', 'refunds'], true) ? $section : 'escrow',

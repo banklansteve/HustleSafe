@@ -121,6 +121,24 @@
                                     >
                                         {{ formatCountPair(social.following_count, 'following') }}
                                     </span>
+                                    <span
+                                        v-if="profile.verification_engine"
+                                        class="rounded-full bg-emerald-400 px-3 py-1.5 text-xs font-black text-emerald-950 shadow-sm"
+                                    >
+                                        Trust level L{{ profile.verification_engine.effective_level }}
+                                    </span>
+                                    <span
+                                        v-if="profile.verification_engine?.portfolio_verified"
+                                        class="rounded-full bg-secondary-300 px-3 py-1.5 text-xs font-black text-secondary-950 shadow-sm"
+                                    >
+                                        Portfolio verified
+                                    </span>
+                                    <span
+                                        v-if="profile.power_hours?.enabled"
+                                        class="rounded-full bg-sky-300 px-3 py-1.5 text-xs font-black text-sky-950 shadow-sm"
+                                    >
+                                        {{ profile.power_hours.label }}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -189,6 +207,20 @@
                         </div>
                         <div class="flex flex-wrap gap-4">
                             <div
+                                v-if="profile.verification_engine"
+                                class="rounded-2xl border border-primary-100 bg-gradient-to-br from-primary-50 to-white px-5 py-4 shadow-sm ring-1 ring-primary-100"
+                            >
+                                <p class="text-xs font-bold uppercase tracking-wider text-primary-700">
+                                    Verification level
+                                </p>
+                                <p class="mt-1 font-display text-3xl font-black text-slate-900">
+                                    L{{ profile.verification_engine.effective_level }}
+                                </p>
+                                <p class="mt-1 text-xs font-bold text-slate-500">
+                                    Proposal access up to {{ formatNgn(profile.verification_engine.proposal_limit_minor) }}
+                                </p>
+                            </div>
+                            <div
                                 class="rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white px-5 py-4 shadow-sm ring-1 ring-slate-100"
                             >
                                 <p class="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -210,6 +242,23 @@
                                 </p>
                                 <p class="mt-1 font-display text-3xl font-black tabular-nums text-slate-900">
                                     {{ reviewSnapshot.total }}
+                                </p>
+                            </div>
+                            <div
+                                v-if="profile.power_hours?.enabled"
+                                class="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50 to-white px-5 py-4 shadow-sm ring-1 ring-sky-100"
+                            >
+                                <p class="text-xs font-bold uppercase tracking-wider text-sky-700">
+                                    Power Hours
+                                </p>
+                                <p class="mt-1 font-display text-lg font-black text-slate-900">
+                                    {{ profile.power_hours.label }}
+                                </p>
+                                <p class="mt-1 text-xs font-bold text-slate-600">
+                                    {{ profile.power_hours.summary }}
+                                </p>
+                                <p v-if="profile.power_hours.note" class="mt-2 text-xs font-semibold text-slate-500">
+                                    {{ profile.power_hours.note }}
                                 </p>
                             </div>
                         </div>
@@ -531,6 +580,10 @@ function barWidth(star) {
 
 function formatMoney(v) {
     return Number(v).toLocaleString('en-NG');
+}
+
+function formatNgn(minor) {
+    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(Number(minor || 0) / 100);
 }
 
 function formatCac(s) {

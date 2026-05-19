@@ -21,7 +21,7 @@ class AdminKycCentreController extends Controller
 
     public function index(Request $request): Response
     {
-        $section = (string) $request->query('section', 'queue');
+        $section = (string) $request->query('tab', $request->query('section', 'queue'));
         if (! in_array($section, ['queue', 'analytics', 'settings'], true)) {
             $section = 'queue';
         }
@@ -29,9 +29,9 @@ class AdminKycCentreController extends Controller
         return Inertia::render('Admin/Kyc/Index', [
             'section' => $section,
             'summary' => fn () => $this->kyc->summary(),
-            'queue' => fn () => $section === 'queue' ? $this->kyc->queue($request) : ['data' => []],
-            'analytics' => fn () => $section === 'analytics' ? $this->kyc->analytics() : null,
-            'settings' => fn () => $section === 'settings' ? $this->kyc->settings() : null,
+            'queue' => fn () => $this->kyc->queue($request),
+            'analytics' => fn () => $this->kyc->analytics(),
+            'settings' => fn () => $this->kyc->settings(),
             'filters' => $request->only(['q', 'priority', 'role', 'tier', 'sort', 'per_page']),
             'reasonOptions' => [
                 'identity_mismatch',

@@ -35,10 +35,11 @@
                     v-if="isFreelancer && workspace.enabled"
                     type="button"
                     class="inline-flex items-center rounded-full border px-4 py-2 text-xs font-bold shadow-sm transition"
-                    :class="is_bookmarked ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-800 hover:border-primary-200 hover:bg-primary-50'"
+                    :class="localBookmarked ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-800 hover:border-primary-200 hover:bg-primary-50'"
+                    :disabled="bookmarkBusy"
                     @click="toggleBookmark"
                 >
-                    {{ is_bookmarked ? 'Saved' : 'Save quest' }}
+                    {{ bookmarkBusy ? 'Saving...' : localBookmarked ? 'Saved' : 'Save quest' }}
                 </button>
             </div>
         </div>
@@ -157,6 +158,18 @@
                                     <span>{{ line }}</span>
                                 </li>
                             </ul>
+                        </div>
+
+                        <div v-if="quest.admin_notices?.length" class="space-y-3">
+                            <div
+                                v-for="notice in quest.admin_notices"
+                                :key="notice.id"
+                                class="rounded-xl border p-4 text-sm font-semibold"
+                                :class="notice.type === 'urgent' ? 'border-rose-200 bg-rose-50 text-rose-950' : notice.type === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-primary-100 bg-primary-50 text-primary-950'"
+                            >
+                                <p class="text-[10px] font-black uppercase tracking-wide">{{ notice.type.replace(/_/g, ' ') }} notice from HustleSafe</p>
+                                <p class="mt-1 leading-6">{{ notice.body }}</p>
+                            </div>
                         </div>
 
                         <div>
@@ -391,13 +404,16 @@
                                         {{ locationPrefLabel(quest.freelancer_location_pref) }}
                                     </dd>
                                 </div>
-                                <div v-if="quest.promotion_tier" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                <div v-if="quest.featured_boost" class="rounded-lg bg-primary-50/90 p-3 ring-1 ring-primary-100">
                                     <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
-                                        Listing tier
+                                        Featured boost
                                     </dt>
-                                    <dd class="mt-1 text-sm font-bold text-slate-900">
-                                        {{ promotionLabel(quest.promotion_tier) }}
+                                    <dd class="mt-1 text-sm font-bold text-primary-900">
+                                        {{ quest.featured_boost.label }}
                                     </dd>
+                                    <p class="mt-1 text-[11px] font-semibold text-primary-800">
+                                        Active until {{ formatWhen(quest.featured_boost.expires_at) }}
+                                    </p>
                                 </div>
                                 <div v-if="quest.max_offers != null" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
                                     <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
@@ -724,7 +740,11 @@
                         Message client (in-app)
                     </Link>
                     <p v-else class="mt-3 text-xs font-semibold text-amber-900">
-                        <template v-if="workspacePanelItems.length">
+                        <template v-if="verification_access && !verification_access.can_submit_for_budget">
+                            <span>Your current verification level (L{{ verification_access.effective_level }}) allows proposals up to <span class="font-black">{{ formatBudget(verification_access.proposal_limit_minor) }}</span>. Complete more verification to unlock this Quest.</span>
+                            <span v-if="verification_access.cooldown?.active"> Cool-down ends {{ formatWhen(verification_access.cooldown.expires_at) }}.</span>
+                        </template>
+                        <template v-else-if="workspacePanelItems.length">
                             <span v-if="!workspace.can_submit_proposals">Use the <span class="font-black">Freelancer workspace</span> checklist above to unlock proposals.</span>
                             <span v-else>Add this quest’s subcategory to your profile so we know you are qualified for this brief.</span>
                         </template>
@@ -850,6 +870,7 @@ const props = defineProps({
     is_quest_owner: { type: Boolean, default: false },
     can_edit: { type: Boolean, default: false },
     can_offer: { type: Boolean, default: false },
+    verification_access: { type: Object, default: null },
     workspace: { type: Object, required: true },
     my_offer: { type: Object, default: null },
     is_bookmarked: { type: Boolean, default: false },
@@ -869,6 +890,8 @@ const props = defineProps({
 const page = usePage();
 const isFreelancer = computed(() => page.props.auth?.user?.role?.slug === 'freelancer');
 const isStaffRole = computed(() => ['admin', 'super_admin'].includes(page.props.auth?.user?.role?.slug ?? ''));
+const localBookmarked = ref(props.is_bookmarked);
+const bookmarkBusy = ref(false);
 
 const allQuestsHref = computed(() => {
     if (props.is_quest_owner) {
@@ -943,7 +966,7 @@ const viewerInsightLines = computed(() => {
         if (props.my_offer) {
             lines.push('You already submitted a proposal — follow up in thread if the client has questions.');
         }
-        if (props.is_bookmarked) {
+        if (localBookmarked.value) {
             lines.push('You saved this quest for later — it stays in your saved list.');
         }
     }
@@ -1223,17 +1246,32 @@ function locationPrefLabel(v) {
     return map[v] || v;
 }
 
-function promotionLabel(v) {
-    const map = { standard: 'Standard listing', featured: 'Featured / boost' };
+async function toggleBookmark() {
+    if (bookmarkBusy.value) {
+        return;
+    }
 
-    return map[v] || v;
-}
+    bookmarkBusy.value = true;
+    const previous = localBookmarked.value;
+    localBookmarked.value = !previous;
 
-function toggleBookmark() {
-    if (props.is_bookmarked) {
-        router.delete(route('quests.bookmark.destroy', questRouteKey.value), { preserveScroll: true });
-    } else {
-        router.post(route('quests.bookmark.store', questRouteKey.value), {}, { preserveScroll: true });
+    try {
+        const method = previous ? 'delete' : 'post';
+        const url = previous
+            ? route('quests.bookmark.destroy', questRouteKey.value)
+            : route('quests.bookmark.store', questRouteKey.value);
+        const { data } = await axios.request({
+            method,
+            url,
+            headers: { Accept: 'application/json' },
+        });
+
+        localBookmarked.value = Boolean(data.bookmarked);
+    } catch (error) {
+        localBookmarked.value = previous;
+        window.alert(error.response?.data?.message || 'We could not update this saved quest right now. Please try again.');
+    } finally {
+        bookmarkBusy.value = false;
     }
 }
 

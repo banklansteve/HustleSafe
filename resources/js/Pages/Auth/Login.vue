@@ -26,6 +26,15 @@
                 {{ status }}
             </div>
 
+            <div
+                v-if="loginFeedback"
+                class="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold leading-relaxed text-rose-900 ring-1 ring-rose-100"
+                role="alert"
+                aria-live="assertive"
+            >
+                {{ loginFeedback }}
+            </div>
+
             <div class="mt-8 space-y-4 sm:mt-10">
                 <GoogleSignInButton auth-screen="login" label="Log in with Google" />
                 <div class="relative flex items-center py-1">
@@ -103,7 +112,15 @@
                 <p class="mt-3 text-sm font-medium leading-relaxed text-slate-600">
                     If you previously deactivated your account, sign in here with your email and password to restore access immediately.
                 </p>
-                <form class="mt-5 space-y-4" @submit.prevent="reactivateForm.post(route('account.reactivate'))">
+                <div
+                    v-if="reactivateFeedback"
+                    class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-900"
+                    role="alert"
+                    aria-live="assertive"
+                >
+                    {{ reactivateFeedback }}
+                </div>
+                <form class="mt-5 space-y-4" @submit.prevent="submitReactivate">
                     <div>
                         <InputLabel for="reactivate-email" value="Email" />
                         <TextInput
@@ -149,6 +166,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import AuthSplitLayout from '@/Layouts/Auth/AuthSplitLayout.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 
 defineProps({
     canResetPassword: {
@@ -166,15 +184,49 @@ const form = useForm({
     password: '',
     remember: false,
 });
+const fallbackLoginError = ref('');
 
 const reactivateForm = useForm({
     email: '',
     password: '',
 });
+const fallbackReactivateError = ref('');
+
+const loginFeedback = computed(() => fallbackLoginError.value || firstError(form.errors));
+const reactivateFeedback = computed(() => fallbackReactivateError.value || firstError(reactivateForm.errors));
 
 function submit() {
+    fallbackLoginError.value = '';
+    form.clearErrors();
     form.post(route('login'), {
-        onFinish: () => form.reset('password'),
+        preserveScroll: true,
+        onSuccess: () => {
+            fallbackLoginError.value = '';
+        },
+        onError: (errors) => {
+            fallbackLoginError.value = firstError(errors) || 'We could not sign you in. Please check your email and password, then try again.';
+        },
+        onFinish: () => {
+            form.reset('password');
+        },
     });
+}
+
+function submitReactivate() {
+    fallbackReactivateError.value = '';
+    reactivateForm.clearErrors();
+    reactivateForm.post(route('account.reactivate'), {
+        preserveScroll: true,
+        onError: (errors) => {
+            fallbackReactivateError.value = firstError(errors) || 'We could not reactivate this account. Please check the email and password, then try again.';
+        },
+        onFinish: () => reactivateForm.reset('password'),
+    });
+}
+
+function firstError(errors) {
+    const first = Object.values(errors || {})[0];
+
+    return Array.isArray(first) ? first[0] : (first || '');
 }
 </script>

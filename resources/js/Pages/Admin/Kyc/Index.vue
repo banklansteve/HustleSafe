@@ -17,13 +17,9 @@
                 </div>
             </div>
 
-            <div class="flex gap-2 overflow-x-auto rounded-3xl border p-2" :class="shell.card">
-                <Link v-for="tab in tabs" :key="tab.key" :href="route('admin.kyc.index', { section: tab.key })" preserve-scroll preserve-state class="whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-black" :class="section === tab.key ? shell.btnPrimary : shell.btnGhost">
-                    {{ tab.label }}
-                </Link>
-            </div>
+            <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="kyc-tab" aria-label="KYC sections" />
 
-            <section v-if="section === 'queue'">
+            <AdminTabPanel v-model="activeTab" value="queue" id-prefix="kyc-tab">
                 <AdminPanel title="Verification queue" description="Only cases needing human judgment appear here. Clear, high-confidence API matches can auto-approve outside this queue.">
                     <div class="mb-4 grid gap-3 md:grid-cols-[1fr_10rem_10rem_10rem_auto]">
                         <input v-model="filtersState.q" type="search" placeholder="Search name or email…" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @input="debouncedApply" />
@@ -98,9 +94,9 @@
                         </button>
                     </div>
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
 
-            <section v-else-if="section === 'analytics'" class="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+            <AdminTabPanel v-model="activeTab" value="analytics" id-prefix="kyc-tab" class="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
                 <AdminPanel title="Verification funnel" description="How users move from signup to verified status.">
                     <div class="space-y-3">
                         <div v-for="step in analytics.funnel" :key="step.label" class="rounded-3xl border p-4" :class="shell.card">
@@ -144,9 +140,9 @@
                         </div>
                     </div>
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
 
-            <section v-else-if="section === 'settings'">
+            <AdminTabPanel v-model="activeTab" value="settings" id-prefix="kyc-tab">
                 <AdminPanel title="KYC settings" description="Super-admin controls for providers, confidence thresholds, feature gates, resubmission rules, fees, and limits.">
                     <form class="grid gap-5 xl:grid-cols-2" @submit.prevent="saveSettings">
                         <div class="space-y-4">
@@ -190,7 +186,7 @@
                         </div>
                     </form>
                 </AdminPanel>
-            </section>
+            </AdminTabPanel>
         </div>
 
         <AdminSlideOver :open="reviewOpen" :title="selectedCase?.user?.name || 'Verification review'" eyebrow="KYC review" @close="reviewOpen = false">
@@ -275,9 +271,12 @@
 <script setup>
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
+import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
+import AdminTabs from '@/Components/Admin/AdminTabs.vue';
+import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
-import { Link, router, useForm } from '@inertiajs/vue3';
+import { router, useForm } from '@inertiajs/vue3';
 import { computed, defineComponent, h, reactive, ref } from 'vue';
 
 const props = defineProps({
@@ -311,6 +310,7 @@ const tabs = [
     { key: 'analytics', label: 'Analytics' },
     { key: 'settings', label: 'Settings' },
 ];
+const { activeTab } = useTabState(tabs.map((tab) => tab.key), props.section || 'queue');
 const filtersState = reactive({ q: props.filters.q || '', priority: props.filters.priority || '', role: props.filters.role || '', sort: props.filters.sort || 'priority' });
 const reviewOpen = ref(false);
 const selectedCase = ref(null);
@@ -362,7 +362,7 @@ function comparisonTone(key) {
 }
 
 function applyFilters() {
-    router.get(route('admin.kyc.index'), { section: props.section, ...clean(filtersState) }, { preserveScroll: true, preserveState: true });
+    router.get(route('admin.kyc.index'), { tab: activeTab.value, ...clean(filtersState) }, { preserveScroll: true, preserveState: true });
 }
 
 function debouncedApply() {

@@ -2,27 +2,24 @@
 
 namespace App\Services\Kyc;
 
-use App\Models\KycSetting;
 use App\Models\User;
+use App\Services\Verification\VerificationEngineService;
 
 class KycTierGateService
 {
+    public function __construct(private readonly VerificationEngineService $engine) {}
+
     public function tier(User $user): int
     {
-        $tier = max((int) ($user->kyc_tier ?? 0), (int) ($user->verification_tier ?? 0));
-
-        if ($tier < 1 && $user->hasVerifiedEmail() && $user->phone_verified_at !== null) {
-            return 1;
-        }
-
-        return $tier;
+        return $this->engine->effectiveLevel($user);
     }
 
     public function requiredTier(string $feature): int
     {
-        $gates = KycSetting::value('feature_gates', config('kyc.feature_gates', []));
-
-        return (int) ($gates[$feature] ?? config("kyc.feature_gates.{$feature}", 0));
+        return match ($feature) {
+            'post_quest', 'submit_proposal' => 1,
+            default => (int) config("kyc.feature_gates.{$feature}", 0),
+        };
     }
 
     public function allows(User $user, string $feature): bool
@@ -32,19 +29,6 @@ class KycTierGateService
 
     public function clientQuestLimitMinor(User $user): int
     {
-        $limits = KycSetting::value('limits', config('kyc.limits', []));
-        $tier = $this->tier($user);
-
-        if ($tier >= 4) {
-            return PHP_INT_MAX;
-        }
-        if ($tier >= 2) {
-            return (int) ($limits['tier_2_client_quest_minor'] ?? config('kyc.limits.tier_2_client_quest_minor'));
-        }
-        if ($tier >= 1) {
-            return (int) ($limits['tier_1_client_quest_minor'] ?? config('kyc.limits.tier_1_client_quest_minor'));
-        }
-
-        return 0;
+        return $this->engine->clientPostingLimitMinor($user);
     }
 }

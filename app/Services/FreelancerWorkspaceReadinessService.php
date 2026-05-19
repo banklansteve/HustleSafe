@@ -4,15 +4,16 @@ namespace App\Services;
 
 use App\Enums\QuestStatus;
 use App\Enums\QuestVisibility;
+use App\Enums\AdminQuestStatus;
 use App\Enums\UserVerificationCategory;
 use App\Enums\UserVerificationStatus;
 use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Models\User;
 use App\Models\UserVerification;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
-use App\Services\Kyc\KycTierGateService;
 
 /**
  * Centralises freelancer readiness for proposals, matching, and (future) withdrawals.
@@ -63,15 +64,15 @@ class FreelancerWorkspaceReadinessService
         $addressOk = $this->hasStructuredAddress($user);
         $identityOk = $this->hasApprovedIdentity($user);
         $livePresenceOk = $this->hasApprovedLivePresence($user);
-        $highValueMinor = (int) config('freelancer_workspace.high_value_quest_budget_minor', 50_000_000);
+        $verification = app(VerificationEngineService::class);
+        $proposalLimitMinor = $verification->freelancerProposalLimitMinor($user);
+        $effectiveLevel = $verification->effectiveLevel($user);
+        $cooldown = $verification->cooldown($user);
 
         $activeOffers = QuestOffer::query()
             ->where('freelancer_id', $user->id)
             ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
             ->count();
-
-        $maxLimited = (int) config('freelancer_workspace.limited_offer_max_count', 3);
-        $limitedSlots = max(0, $maxLimited - $activeOffers);
 
         $blockers = [];
         $hints = [];
@@ -97,16 +98,14 @@ class FreelancerWorkspaceReadinessService
         if (! $identityOk) {
             $hints[] = [
                 'code' => 'identity_pending',
-                'message' => __('Verify your government ID under Trust & verifications to unlock unlimited proposals and withdrawals.'),
+                'message' => __('Complete your verification checks under Trust & verifications to unlock higher-value proposals and withdrawals.'),
                 'action_label' => __('Submit ID'),
                 'action_url' => route('verifications.index').'#verification-submit',
             ];
         } elseif (! $livePresenceOk) {
             $hints[] = [
                 'code' => 'live_presence_recommended',
-                'message' => __('Complete the selfie + ID check under Verifications to propose on high-budget quests (about :amount and above).', [
-                    'amount' => '₦'.number_format($highValueMinor / 100, 0, '.', ','),
-                ]),
+                'message' => __('Complete the selfie + ID check under Verifications to strengthen trust on high-value quests.'),
                 'action_label' => __('Selfie + ID'),
                 'action_url' => route('verifications.index').'#verification-submit',
             ];
@@ -132,12 +131,21 @@ class FreelancerWorkspaceReadinessService
             ];
         }
 
-        $tier = 'none';
-        if ($leafCount >= 1 && $addressOk) {
-            $tier = $identityOk ? 'full' : 'limited';
+        if ($proposalLimitMinor <= 0) {
+            $blockers[] = [
+                'code' => 'verification_level_blocked',
+                'message' => __('Your current verification level cannot submit proposals yet. Complete the required checks in Trust & verifications.'),
+                'action_label' => __('Open verifications'),
+                'action_url' => route('verifications.index').'#verification-submit',
+            ];
         }
 
-        $canSubmit = ($tier === 'full' || ($tier === 'limited' && $limitedSlots > 0)) && $profileReadyForProposals;
+        $tier = 'none';
+        if ($leafCount >= 1 && $addressOk) {
+            $tier = $proposalLimitMinor > 0 ? 'full' : 'none';
+        }
+
+        $canSubmit = $tier === 'full' && $profileReadyForProposals;
 
         $withdrawalReady = (bool) config('freelancer_workspace.withdrawal_requires_identity', true)
             ? ($addressOk && $identityOk)
@@ -151,12 +159,15 @@ class FreelancerWorkspaceReadinessService
             'address_complete' => $addressOk,
             'identity_approved' => $identityOk,
             'live_presence_approved' => $livePresenceOk,
-            'high_value_quest_budget_minor' => $highValueMinor,
+            'high_value_quest_budget_minor' => $proposalLimitMinor,
+            'verification_effective_level' => $effectiveLevel,
+            'verification_proposal_limit_minor' => $proposalLimitMinor,
+            'verification_cooldown' => $cooldown,
             'active_offer_count' => $activeOffers,
-            'limited_slots_remaining' => $limitedSlots,
+            'limited_slots_remaining' => 0,
             'can_submit_proposals' => $canSubmit,
             'can_submit_offers' => $canSubmit,
-            'can_submit_limited_only' => $tier === 'limited' && $limitedSlots > 0,
+            'can_submit_limited_only' => false,
             'withdrawal_ready' => $withdrawalReady,
             'blockers' => $blockers,
             'hints' => $hints,
@@ -205,9 +216,9 @@ class FreelancerWorkspaceReadinessService
             ]);
         }
 
-        if (! app(KycTierGateService::class)->allows($user, 'submit_proposal')) {
+        if (in_array($quest->admin_status?->value ?? (string) $quest->admin_status, [AdminQuestStatus::Restricted->value, AdminQuestStatus::Suspended->value], true)) {
             throw ValidationException::withMessages([
-                'verification' => [__('Verify your email and phone number before submitting proposals.')],
+                'proposal' => [__('This Quest is temporarily restricted by HustleSafe moderation and is not accepting new proposals.')],
             ]);
         }
 
@@ -256,48 +267,7 @@ class FreelancerWorkspaceReadinessService
             ]);
         }
 
-        if ($summary['tier'] === 'limited') {
-            $maxBudget = (int) config('freelancer_workspace.limited_offer_max_budget_minor', 2_000_000);
-            $budgetMinor = (int) ($quest->budget_amount_minor ?? 0);
-            if ($budgetMinor > $maxBudget) {
-                throw ValidationException::withMessages([
-                    'proposal' => [
-                        __('Until your ID is approved, you can only propose on quests up to :amount.', [
-                            'amount' => '₦'.number_format($maxBudget / 100, 0, '.', ','),
-                        ]),
-                    ],
-                ]);
-            }
-
-            if ($quotedAmountMinor !== null && $quotedAmountMinor > $maxBudget) {
-                throw ValidationException::withMessages([
-                    'quoted_amount_minor' => [
-                        __('Until your ID is approved, quoted amounts cannot exceed :amount.', [
-                            'amount' => '₦'.number_format($maxBudget / 100, 0, '.', ','),
-                        ]),
-                    ],
-                ]);
-            }
-
-            if ($summary['limited_slots_remaining'] <= 0) {
-                throw ValidationException::withMessages([
-                    'proposal' => [
-                        __('You have reached the temporary proposal limit. Complete ID verification to send more proposals.'),
-                    ],
-                ]);
-            }
-        }
-
-        $highMinor = (int) config('freelancer_workspace.high_value_quest_budget_minor', 50_000_000);
-        $questBudget = (int) ($quest->budget_amount_minor ?? 0);
-        $needsLive = ($questBudget >= $highMinor || ($quotedAmountMinor !== null && $quotedAmountMinor >= $highMinor));
-        if ($needsLive && ! $this->hasApprovedLivePresence($user)) {
-            throw ValidationException::withMessages([
-                'proposal' => [
-                    __('High-value proposals require an approved selfie with your ID. Submit it under Verifications (Selfie + ID).'),
-                ],
-            ]);
-        }
+        app(VerificationEngineService::class)->assertFreelancerCanPropose($user, $quest, $quotedAmountMinor);
     }
 
     /**
@@ -323,7 +293,10 @@ class FreelancerWorkspaceReadinessService
             'address_complete' => false,
             'identity_approved' => false,
             'live_presence_approved' => false,
-            'high_value_quest_budget_minor' => (int) config('freelancer_workspace.high_value_quest_budget_minor', 50_000_000),
+            'high_value_quest_budget_minor' => 0,
+            'verification_effective_level' => 0,
+            'verification_proposal_limit_minor' => 0,
+            'verification_cooldown' => ['active' => false],
             'active_offer_count' => 0,
             'limited_slots_remaining' => 0,
             'can_submit_proposals' => false,

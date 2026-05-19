@@ -5,11 +5,11 @@ namespace App\Http\Requests\Quests;
 use App\Enums\QuestAvailabilityNeed;
 use App\Enums\QuestFreelancerLocationPref;
 use App\Enums\QuestProjectType;
-use App\Enums\QuestPromotionTier;
 use App\Enums\QuestStartTiming;
 use App\Enums\QuestTeamSize;
 use App\Enums\QuestVisibility;
 use App\Models\Quest;
+use App\Models\QuestCategory;
 use App\Models\User;
 use App\Services\QuestDescriptionSanitizer;
 use App\Services\QuestFormFieldProfileService;
@@ -40,7 +40,7 @@ class StoreQuestRequest extends FormRequest
         return [
             'title' => ['required', 'string', 'max:200'],
             'description' => ['required', 'string', 'max:50000'],
-            'quest_category_id' => ['required', 'integer', Rule::exists('quest_categories', 'id')->whereNotNull('parent_id')->where('is_active', true)],
+            'quest_category_id' => ['required', 'integer', Rule::exists('quest_categories', 'id')->whereNotNull('parent_id')->where('is_active', true)->where('status', 'active')],
             'visibility' => ['required', Rule::enum(QuestVisibility::class)],
             'freelancer_location_pref' => ['required', Rule::enum(QuestFreelancerLocationPref::class)],
             'availability_need' => ['nullable', Rule::enum(QuestAvailabilityNeed::class)],
@@ -63,7 +63,6 @@ class StoreQuestRequest extends FormRequest
             'project_type' => ['nullable', Rule::enum(QuestProjectType::class)],
             'estimated_hours' => ['nullable', 'integer', 'min:1', 'max:2000'],
             'team_size' => ['nullable', Rule::enum(QuestTeamSize::class)],
-            'promotion_tier' => ['required', Rule::enum(QuestPromotionTier::class)],
             'auto_listing_expiry_days' => ['nullable', 'integer', 'min:1', 'max:90'],
             'max_offers' => ['nullable', 'integer', 'min:1', 'max:200'],
             'traffic_source' => ['nullable', 'string', 'max:128'],
@@ -90,6 +89,16 @@ class StoreQuestRequest extends FormRequest
 
             $profiles = app(QuestFormFieldProfileService::class);
             $profile = $profiles->profileForLeafCategoryId((int) $this->input('quest_category_id', 0));
+            $category = QuestCategory::query()->with('parent')->find((int) $this->input('quest_category_id', 0));
+            $budget = (int) $this->input('budget_amount_minor', 0);
+            $guardrail = $category?->budget_guardrails_enabled ? $category : ($category?->parent?->budget_guardrails_enabled ? $category->parent : null);
+            if ($guardrail && (($guardrail->min_budget_minor && $budget < $guardrail->min_budget_minor) || ($guardrail->max_budget_minor && $budget > $guardrail->max_budget_minor))) {
+                $v->errors()->add('budget_amount_minor', __('Typical budgets for :category are between :min and :max. Adjust the budget or choose a more suitable subcategory.', [
+                    'category' => $category?->name,
+                    'min' => '₦'.number_format(((int) $guardrail->min_budget_minor) / 100, 0),
+                    'max' => '₦'.number_format(((int) $guardrail->max_budget_minor) / 100, 0),
+                ]));
+            }
 
             if ($this->input('start_timing') === QuestStartTiming::Scheduled->value && ! $this->filled('scheduled_start_date')) {
                 $v->errors()->add('scheduled_start_date', __('Pick a start date when using a scheduled start.'));

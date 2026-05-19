@@ -220,18 +220,40 @@
                         </div>
                     </div>
 
-                    <div class="flex flex-wrap gap-2">
-                        <button v-for="tab in tabs" :key="tab.key" type="button" class="rounded-full px-3 py-2 text-xs font-black" :class="activeTab === tab.key ? shell.btnPrimary : shell.btnGhost" @click="loadTab(tab.key)">
-                            {{ tab.label }}
-                        </button>
-                    </div>
+                    <AdminTabs :model-value="activeTab" :tabs="tabs" id-prefix="user-profile-tab" aria-label="User profile sections" @update:model-value="loadTab" />
 
-                    <section v-if="activeTab === 'overview'" class="space-y-5">
+                    <AdminTabPanel v-model="activeTab" value="overview" id-prefix="user-profile-tab" class="space-y-5">
                         <div class="grid gap-3 sm:grid-cols-2">
                             <InfoCard label="Phone" :value="profile.overview.user.phone || '—'" />
                             <InfoCard label="Location" :value="[profile.overview.user.city, profile.overview.user.state].filter(Boolean).join(', ') || '—'" />
                             <InfoCard label="Last login" :value="dateLabel(profile.overview.profile.last_login_at)" />
                             <InfoCard label="Device" :value="profile.overview.profile.last_login_device || '—'" />
+                        </div>
+                        <div class="rounded-3xl border p-4" :class="shell.card">
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <h4 class="font-black">Verification Engine</h4>
+                                    <p class="mt-1 text-sm font-bold text-slate-500">
+                                        Earned L{{ profile.overview.verification_engine?.earned_level ?? 0 }} · Effective L{{ profile.overview.verification_engine?.effective_level ?? 0 }}
+                                    </p>
+                                    <p v-if="profile.overview.verification_engine?.cooldown?.active" class="mt-2 text-xs font-black text-amber-600">
+                                        Cool-down active until {{ dateLabel(profile.overview.verification_engine.cooldown.expires_at) }}
+                                    </p>
+                                    <p v-if="profile.overview.verification_engine?.restriction?.active" class="mt-2 text-xs font-black text-rose-600">
+                                        Restricted: {{ profile.overview.verification_engine.restriction.reason }}
+                                    </p>
+                                </div>
+                                <div class="grid gap-2 text-xs font-black sm:grid-cols-2">
+                                    <span class="rounded-2xl bg-primary-50 px-3 py-2 text-primary-700 dark:bg-primary-400/15 dark:text-primary-100">Post {{ money(profile.overview.verification_engine?.client_posting_limit_minor) }}</span>
+                                    <span class="rounded-2xl bg-primary-50 px-3 py-2 text-primary-700 dark:bg-primary-400/15 dark:text-primary-100">Propose {{ money(profile.overview.verification_engine?.freelancer_proposal_limit_minor) }}</span>
+                                </div>
+                            </div>
+                            <div v-if="profile.overview.verification_engine?.anomaly_flags?.length" class="mt-4 grid gap-2">
+                                <p class="text-[10px] font-black uppercase tracking-wider text-rose-600">Anomaly flags</p>
+                                <div v-for="flag in profile.overview.verification_engine.anomaly_flags" :key="flag.id" class="rounded-2xl border p-3 text-xs font-bold" :class="shell.card">
+                                    {{ flag.type.replace(/_/g, ' ') }} · {{ flag.status }} · {{ dateLabel(flag.created_at) }}
+                                </div>
+                            </div>
                         </div>
                         <div class="rounded-3xl border p-4" :class="shell.card">
                             <h4 class="font-black">Trust breakdown</h4>
@@ -246,18 +268,18 @@
                         </div>
                         <ListBlock title="Verification checks" :items="profile.overview.verification" empty="No verification records yet." />
                         <ListBlock title="Sanctions" :items="profile.overview.sanctions" empty="No sanctions on this user." />
-                    </section>
+                    </AdminTabPanel>
 
-                    <section v-else-if="activeTab === 'notes'" class="space-y-4">
+                    <AdminTabPanel v-model="activeTab" value="notes" id-prefix="user-profile-tab" class="space-y-4">
                         <form class="space-y-3 rounded-3xl border p-4" :class="shell.card" @submit.prevent="addNote">
                             <textarea v-model="noteBody" rows="4" class="w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" placeholder="Write a private append-only admin note…" required />
                             <label class="flex items-center gap-2 text-xs font-bold"><input v-model="shareNote" type="checkbox" /> Share context with regular admins</label>
                             <button type="submit" class="rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary">Add note</button>
                         </form>
                         <ListBlock title="Admin notes" :items="profile.tabData" empty="No admin notes yet." />
-                    </section>
+                    </AdminTabPanel>
 
-                    <section v-else class="space-y-4">
+                    <AdminTabPanel v-for="tab in detailTabs" :key="tab.key" v-model="activeTab" :value="tab.key" id-prefix="user-profile-tab" class="space-y-4">
                         <div v-if="activeTab === 'activity'" class="grid gap-3 sm:grid-cols-2">
                             <input v-model="tabSearch" type="search" placeholder="Search this tab…" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
                             <select v-model="tabCategory" class="rounded-2xl border px-3 py-3 text-sm font-bold" :class="shell.input">
@@ -270,7 +292,7 @@
                             </select>
                         </div>
                         <ListBlock :title="tabTitle" :items="filteredTabData" empty="Nothing to show here yet." />
-                    </section>
+                    </AdminTabPanel>
 
                     <div class="grid gap-3 sm:grid-cols-2">
                         <button type="button" class="rounded-2xl px-4 py-3 text-sm font-black" :class="shell.btnGhost" @click="openCommunication('notification')">Send message</button>
@@ -291,10 +313,13 @@ import InfoCard from '@/Components/Admin/InfoCard.vue';
 import ListBlock from '@/Components/Admin/ListBlock.vue';
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
+import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
+import AdminTabs from '@/Components/Admin/AdminTabs.vue';
+import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { Link, router } from '@inertiajs/vue3';
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
     users: { type: Object, required: true },
@@ -326,7 +351,7 @@ const slideOpen = ref(false);
 const profileLoading = ref(false);
 const selectedUser = ref(null);
 const profile = ref(null);
-const activeTab = ref('overview');
+const profileCache = ref({});
 const tabSearch = ref('');
 const tabCategory = ref('');
 const noteBody = ref('');
@@ -342,6 +367,11 @@ const tabs = [
     { key: 'reviews', label: 'Reviews' },
     { key: 'notes', label: 'Admin notes' },
 ];
+const detailTabs = tabs.filter((tab) => !['overview', 'notes'].includes(tab.key));
+const { activeTab, setTab } = useTabState(tabs.map((tab) => tab.key), 'overview', {
+    extraParams: () => ({ user: selectedUser.value?.id }),
+    writeDefault: false,
+});
 
 const booleanFilters = [
     { key: 'verified', label: 'Verified' },
@@ -443,29 +473,42 @@ function toggleVisible(event) {
 
 async function openProfile(user) {
     selectedUser.value = user;
-    activeTab.value = 'overview';
+    profileCache.value = {};
     slideOpen.value = true;
+    writeProfileUrl('overview');
     await loadProfile('overview');
 }
 
 async function loadProfile(tab) {
     if (!selectedUser.value) return;
 
+    if (profileCache.value[tab]) {
+        profile.value = profileCache.value[tab];
+        setTab(tab);
+        tabSearch.value = '';
+        tabCategory.value = '';
+        return;
+    }
+
     profileLoading.value = true;
-    const { data } = await window.axios.get(route('admin.users.profile', selectedUser.value.id), { params: { tab } });
+    const { data } = await window.axios.get(route('admin.api.users.profile-tab', selectedUser.value.id), { params: { tab } });
     profile.value = data;
-    activeTab.value = tab;
+    profileCache.value = { ...profileCache.value, [tab]: data };
+    setTab(tab);
     tabSearch.value = '';
     tabCategory.value = '';
     profileLoading.value = false;
 }
 
 function loadTab(tab) {
-    if (tab === 'overview') {
-        activeTab.value = 'overview';
-        return;
-    }
     loadProfile(tab);
+}
+
+function writeProfileUrl(tab) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('user', selectedUser.value.id);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState({ ...window.history.state, adminTabState: true }, '', url.toString());
 }
 
 async function addNote() {
@@ -477,6 +520,30 @@ async function addNote() {
     shareNote.value = false;
     await loadProfile('notes');
 }
+
+watch(slideOpen, (open) => {
+    if (open) {
+        return;
+    }
+
+    selectedUser.value = null;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('user');
+    url.searchParams.delete('tab');
+    window.history.replaceState({ ...window.history.state, adminTabState: true }, '', url.toString());
+});
+
+onMounted(() => {
+    const params = new URLSearchParams(window.location.search);
+    const userId = params.get('user');
+    if (!userId) {
+        return;
+    }
+
+    selectedUser.value = (props.users.data || []).find((user) => String(user.id) === String(userId)) || { id: userId, name: 'User profile' };
+    slideOpen.value = true;
+    loadProfile(params.get('tab') || 'overview');
+});
 
 async function runBulkAction() {
     const count = selectedIds.value.length;
@@ -570,5 +637,9 @@ function statusClass(status) {
 function dateLabel(value) {
     if (!value) return '—';
     return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+}
+
+function money(minor) {
+    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(Number(minor || 0) / 100);
 }
 </script>

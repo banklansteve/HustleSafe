@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountReactivateController;
+use App\Http\Controllers\Auth\AdminStaffInvitationController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
@@ -12,6 +13,13 @@ use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
+
+Route::middleware(['signed', 'throttle:12,1'])->group(function (): void {
+    Route::get('admin-invitation/{user}', [AdminStaffInvitationController::class, 'show'])
+        ->name('admin.invitation.show');
+    Route::post('admin-invitation/{user}', [AdminStaffInvitationController::class, 'update'])
+        ->name('admin.invitation.update');
+});
 
 Route::middleware('guest')->group(function () {
     Route::post('account/reactivate', AccountReactivateController::class)

@@ -11,6 +11,7 @@ use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Services\Admin\AdminActivityFeedService;
 use App\Services\FreelancerWorkspaceReadinessService;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Carbon;
 
@@ -20,6 +21,7 @@ class QuestOfferController extends Controller
         StoreQuestProposalRequest $request,
         Quest $quest,
         FreelancerWorkspaceReadinessService $readiness,
+        VerificationEngineService $verificationEngine,
     ): RedirectResponse {
         $this->authorize('view', $quest);
 
@@ -64,10 +66,18 @@ class QuestOfferController extends Controller
 
         $quest->increment('offers_count');
 
-        broadcast(new QuestProposalListUpdated((int) $quest->id));
+        try {
+            broadcast(new QuestProposalListUpdated((int) $quest->id));
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
 
         DeliverQuestOfferClientNotification::dispatch($offer->id, 'new')->afterResponse();
         ScanContentForModerationJob::dispatch(QuestOffer::class, (int) $offer->id)->afterResponse();
+        $verificationEngine->runAnomalyChecks($user, $quest, $offer);
+        if ($verificationEngine->arbitrationRequired($quest, $offer)) {
+            $verificationEngine->recordArbitrationAgreement($quest, $offer, $user, 'freelancer');
+        }
 
         if ($grand >= (int) config('quests.high_value_proposal_minor', 5_000_000)) {
             $quest->loadMissing(['client', 'questCategory', 'stateModel']);
@@ -102,6 +112,7 @@ class QuestOfferController extends Controller
         Quest $quest,
         QuestOffer $offer,
         FreelancerWorkspaceReadinessService $readiness,
+        VerificationEngineService $verificationEngine,
     ): RedirectResponse {
         if ((int) $offer->quest_id !== (int) $quest->id) {
             abort(404);

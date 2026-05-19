@@ -143,9 +143,6 @@ export function validateQuestCreateStep(step, deps) {
     }
 
     if (step === 6) {
-        if (!form.promotion_tier) {
-            errors.promotion_tier = 'Pick a listing promotion tier.';
-        }
         const exp = form.auto_listing_expiry_days;
         if (exp != null && exp !== '' && (Number(exp) < 1 || Number(exp) > 90)) {
             errors.auto_listing_expiry_days = 'Expiry must be between 1 and 90 days.';

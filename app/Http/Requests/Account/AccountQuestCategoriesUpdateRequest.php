@@ -22,7 +22,7 @@ class AccountQuestCategoriesUpdateRequest extends FormRequest
             'quest_category_ids.*' => [
                 'integer',
                 'distinct',
-                Rule::exists('quest_categories', 'id')->whereNotNull('parent_id')->where('is_active', true),
+                Rule::exists('quest_categories', 'id')->whereNotNull('parent_id')->where('is_active', true)->where('status', 'active'),
             ],
         ];
     }

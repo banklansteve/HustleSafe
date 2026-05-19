@@ -7,6 +7,7 @@ use App\Enums\UserVerificationStatus;
 use App\Http\Requests\Verification\StoreUserVerificationRequest;
 use App\Models\UserVerification;
 use App\Services\Kyc\KycCaseIntakeService;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -68,7 +69,13 @@ class UserVerificationController extends Controller
         $paths = [];
         $metadata = [];
 
-        if ($category === UserVerificationCategory::LivePresence) {
+        if (in_array($category, [UserVerificationCategory::Nin, UserVerificationCategory::Bvn, UserVerificationCategory::Tin], true)) {
+            $metadata = [
+                'identifier_number' => $category === UserVerificationCategory::Bvn ? null : $data['identifier_number'],
+                'identifier_masked' => $this->maskIdentifier((string) $data['identifier_number']),
+                'kind' => $category->value,
+            ];
+        } elseif ($category === UserVerificationCategory::LivePresence) {
             $file = $request->file('live_photo');
             $path = $file->store($dir, $disk);
             $paths[] = $path;
@@ -83,6 +90,7 @@ class UserVerificationController extends Controller
             $fileList = is_array($rawFiles) ? array_values($rawFiles) : [$rawFiles];
             $metadata = [
                 'id_type' => $data['id_type'] ?? null,
+                'address_document_type' => $data['address_document_type'] ?? null,
                 'identifier_number' => $data['identifier_number'] ?? null,
                 'cac_number' => $data['cac_number'] ?? null,
                 'registered_business_name' => $data['registered_business_name'] ?? null,
@@ -104,12 +112,15 @@ class UserVerificationController extends Controller
 
         $verification = UserVerification::query()->create([
             'user_id' => $request->user()->id,
+            'submitted_by' => $request->user()->id,
             'category' => $category,
+            'verification_type' => $this->verificationTypeFor($category),
             'target_tier' => $this->targetTierFor($category, $data['id_type'] ?? null),
             'freelancer_credential_id' => $data['freelancer_credential_id'] ?? null,
             'status' => UserVerificationStatus::Pending,
             'document_paths' => $paths,
             'metadata' => $metadata,
+            'encrypted_identifier' => $category === UserVerificationCategory::Bvn ? Crypt::encryptString((string) $data['identifier_number']) : null,
             'queue_reason' => $this->queueReasonFor($category, $request->user()),
             'attempt_count' => UserVerification::query()
                 ->where('user_id', $request->user()->id)
@@ -128,8 +139,16 @@ class UserVerificationController extends Controller
     protected function categoryLabel(UserVerificationCategory $c): string
     {
         return match ($c) {
+            UserVerificationCategory::Email => __('Email verification'),
             UserVerificationCategory::Identity => __('Government ID'),
             UserVerificationCategory::Address => __('Proof of address'),
+            UserVerificationCategory::IdentityAddress => __('Identity & address'),
+            UserVerificationCategory::Nin => __('NIN verification'),
+            UserVerificationCategory::Bvn => __('BVN verification'),
+            UserVerificationCategory::Cac => __('CAC verification'),
+            UserVerificationCategory::Tin => __('TIN verification'),
+            UserVerificationCategory::ProfessionalCertificate => __('Professional certificate'),
+            UserVerificationCategory::PortfolioReview => __('Portfolio review'),
             UserVerificationCategory::Qualification => __('Qualification'),
             UserVerificationCategory::Business => __('Business verification'),
             UserVerificationCategory::LivePresence => __('Selfie + ID'),
@@ -143,6 +162,12 @@ class UserVerificationController extends Controller
         }
 
         return match ($c) {
+            UserVerificationCategory::Email => 1,
+            UserVerificationCategory::Nin => 2,
+            UserVerificationCategory::IdentityAddress => 2,
+            UserVerificationCategory::Bvn => 3,
+            UserVerificationCategory::Cac, UserVerificationCategory::Tin => 4,
+            UserVerificationCategory::ProfessionalCertificate, UserVerificationCategory::PortfolioReview => 4,
             UserVerificationCategory::Identity => 2,
             UserVerificationCategory::Address => 3,
             UserVerificationCategory::LivePresence => 4,
@@ -164,10 +189,24 @@ class UserVerificationController extends Controller
             return $duplicate ? 'duplicate_identity' : 'manual_escalation';
         }
 
-        if ($c === UserVerificationCategory::Business) {
+        if (in_array($c, [UserVerificationCategory::Business, UserVerificationCategory::Cac], true)) {
             return 'cac_review_required';
         }
 
         return $c === UserVerificationCategory::LivePresence ? 'liveness_review' : 'manual_review';
+    }
+
+    protected function verificationTypeFor(UserVerificationCategory $c): string
+    {
+        return match ($c) {
+            UserVerificationCategory::Business => 'cac',
+            UserVerificationCategory::Qualification => 'professional_certificate',
+            default => $c->value,
+        };
+    }
+
+    protected function maskIdentifier(string $value): string
+    {
+        return strlen($value) <= 4 ? str_repeat('*', strlen($value)) : str_repeat('*', max(0, strlen($value) - 4)).substr($value, -4);
     }
 }

@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignAdminStaffRoleRequest;
 use App\Http\Requests\Admin\ImportAdminStaffCsvRequest;
 use App\Http\Requests\Admin\InviteOperationsStaffRequest;
+use App\Mail\OperationsStaffInvitationMail;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AdminActivityLogger;
 use App\Services\ProvisionOperationsStaffAccount;
 use App\Support\AdminCsv;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -81,9 +84,20 @@ class AdminStaffController extends Controller
 
         $adminRole = Role::query()->where('slug', 'admin')->firstOrFail();
 
-        $target->update([
+        $target->forceFill([
             'role_id' => $adminRole->id,
-        ]);
+            'operations_staff_invited_at' => now(),
+            'operations_staff_invited_by' => $actor->id,
+            'operations_staff_password_set_at' => null,
+        ])->save();
+
+        $setupUrl = URL::temporarySignedRoute(
+            'operations.invitation.show',
+            now()->addDays(7),
+            ['user' => $target->id]
+        );
+
+        Mail::to($target)->send(new OperationsStaffInvitationMail($target, $setupUrl));
 
         $logger->log(
             actor: $actor,
@@ -97,7 +111,7 @@ class AdminStaffController extends Controller
             request: $request,
         );
 
-        return redirect()->route('admin.staff.index')->with('success', __('Operational admin access granted.'));
+        return redirect()->route('admin.staff.index')->with('success', __('Operational admin access granted and a password setup invite was sent.'));
     }
 
     public function invite(InviteOperationsStaffRequest $request, ProvisionOperationsStaffAccount $provision): RedirectResponse

@@ -5,10 +5,10 @@ namespace App\Http\Requests\Quests;
 use App\Enums\QuestAvailabilityNeed;
 use App\Enums\QuestFreelancerLocationPref;
 use App\Enums\QuestProjectType;
-use App\Enums\QuestPromotionTier;
 use App\Enums\QuestStartTiming;
 use App\Enums\QuestTeamSize;
 use App\Enums\QuestVisibility;
+use App\Models\QuestCategory;
 use App\Services\QuestDescriptionSanitizer;
 use App\Services\QuestFormFieldProfileService;
 use Illuminate\Foundation\Http\FormRequest;
@@ -69,6 +69,16 @@ class UpdateQuestRequest extends FormRequest
 
             $catId = (int) ($this->input('quest_category_id', $quest?->quest_category_id ?? 0));
             $profile = app(QuestFormFieldProfileService::class)->profileForLeafCategoryId($catId > 0 ? $catId : null);
+            $category = QuestCategory::query()->with('parent')->find($catId);
+            $budget = (int) ($this->input('budget_amount_minor', $quest?->budget_amount_minor ?? 0));
+            $guardrail = $category?->budget_guardrails_enabled ? $category : ($category?->parent?->budget_guardrails_enabled ? $category->parent : null);
+            if ($guardrail && (($guardrail->min_budget_minor && $budget < $guardrail->min_budget_minor) || ($guardrail->max_budget_minor && $budget > $guardrail->max_budget_minor))) {
+                $v->errors()->add('budget_amount_minor', __('Typical budgets for :category are between :min and :max.', [
+                    'category' => $category?->name,
+                    'min' => '₦'.number_format(((int) $guardrail->min_budget_minor) / 100, 0),
+                    'max' => '₦'.number_format(((int) $guardrail->max_budget_minor) / 100, 0),
+                ]));
+            }
 
             if (! empty($profile['show_site_access'])
                 && ($this->has('site_access_level') || $this->has('pets_on_site') || $this->has('pets_detail'))) {
@@ -96,7 +106,7 @@ class UpdateQuestRequest extends FormRequest
         return [
             'title' => ['sometimes', 'string', 'max:200'],
             'description' => ['sometimes', 'string', 'max:50000'],
-            'quest_category_id' => ['sometimes', 'integer', Rule::exists('quest_categories', 'id')->whereNotNull('parent_id')->where('is_active', true)],
+            'quest_category_id' => ['sometimes', 'integer', Rule::exists('quest_categories', 'id')->whereNotNull('parent_id')->where('is_active', true)->where('status', 'active')],
             'state_id' => ['sometimes', 'integer', 'exists:states,id'],
             'local_government_id' => [
                 'sometimes',
@@ -119,7 +129,6 @@ class UpdateQuestRequest extends FormRequest
             'project_type' => ['nullable', Rule::enum(QuestProjectType::class)],
             'estimated_hours' => ['nullable', 'integer', 'min:1', 'max:2000'],
             'team_size' => ['nullable', Rule::enum(QuestTeamSize::class)],
-            'promotion_tier' => ['sometimes', Rule::enum(QuestPromotionTier::class)],
             'auto_listing_expiry_days' => ['nullable', 'integer', 'min:1', 'max:90'],
             'max_offers' => ['nullable', 'integer', 'min:1', 'max:200'],
             'slug' => [

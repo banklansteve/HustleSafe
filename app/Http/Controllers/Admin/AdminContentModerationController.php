@@ -23,7 +23,7 @@ class AdminContentModerationController extends Controller
 
     public function index(Request $request): Response
     {
-        $section = (string) $request->query('section', 'quests');
+        $section = (string) $request->query('tab', $request->query('section', 'quests'));
         if (! in_array($section, ['quests', 'profiles', 'reviews', 'history', 'settings'], true)) {
             $section = 'quests';
         }
@@ -31,11 +31,14 @@ class AdminContentModerationController extends Controller
         return Inertia::render('Admin/ContentModeration/Index', [
             'section' => $section,
             'summary' => $this->moderation->summary(),
-            'queue' => fn () => in_array($section, ['quests', 'profiles', 'reviews'], true)
-                ? $this->moderation->queue($request, $section)
-                : ['data' => []],
-            'history' => fn () => $section === 'history' ? $this->moderation->history($request) : ['data' => []],
-            'settings' => fn () => $section === 'settings' ? $this->moderation->settings() : null,
+            'queues' => fn () => [
+                'quests' => $this->moderation->queue($request, 'quests'),
+                'profiles' => $this->moderation->queue($request, 'profiles'),
+                'reviews' => $this->moderation->queue($request, 'reviews'),
+            ],
+            'queue' => fn () => $this->moderation->queue($request, $section),
+            'history' => fn () => $this->moderation->history($request),
+            'settings' => fn () => $this->moderation->settings(),
             'metrics' => fn () => $this->moderation->metrics(),
             'filters' => $request->only(['q', 'severity', 'sort', 'per_page']),
             'reasonOptions' => [

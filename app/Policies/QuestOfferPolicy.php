@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\AdminProposalStatus;
 use App\Enums\QuestStatus;
 use App\Models\QuestOffer;
 use App\Models\User;
@@ -12,6 +13,10 @@ class QuestOfferPolicy
     {
         if (in_array($user->role?->slug, ['admin', 'super_admin'], true)) {
             return true;
+        }
+
+        if (($offer->admin_status?->value ?? (string) $offer->admin_status) === AdminProposalStatus::Suspended->value) {
+            return false;
         }
 
         if ((int) $offer->freelancer_id === (int) $user->id) {

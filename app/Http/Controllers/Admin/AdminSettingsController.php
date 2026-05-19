@@ -3,28 +3,26 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\Admin\AdminSettingsRegistry;
 use App\Support\AdminCsv;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminSettingsController extends Controller
 {
-    public function show(): Response
+    public function show(AdminSettingsRegistry $settings): Response
     {
-        return Inertia::render('Admin/Settings/Index', [
-            'app' => [
-                'env' => config('app.env'),
-                'debug' => (bool) config('app.debug'),
-                'timezone' => config('app.timezone'),
-                'force_https' => (bool) config('app.force_https'),
-                'url_scheme' => config('app.url_scheme'),
-                'url' => config('app.url'),
-            ],
-            'mail' => [
-                'default' => config('mail.default'),
-            ],
-        ]);
+        return Inertia::render('Admin/Settings/Index', $settings->payload());
+    }
+
+    public function update(Request $request, string $section, AdminSettingsRegistry $settings): RedirectResponse
+    {
+        $settings->updateSection($section, $request->input('settings', []), $request);
+
+        return back()->with('success', 'Settings saved.');
     }
 
     public function export(): StreamedResponse

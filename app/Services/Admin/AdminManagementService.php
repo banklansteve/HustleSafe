@@ -247,6 +247,11 @@ final class AdminManagementService
         }
 
         if ($resourceKey === 'users' && $model === null) {
+            $data['name'] = trim(collect([
+                $data['first_name'] ?? null,
+                $data['last_name'] ?? null,
+            ])->filter(fn ($part) => filled($part))->join(' '));
+
             $roleSlug = isset($data['role_id']) && $data['role_id']
                 ? Role::query()->whereKey($data['role_id'])->value('slug')
                 : null;

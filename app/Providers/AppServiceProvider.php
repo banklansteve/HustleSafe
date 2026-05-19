@@ -20,6 +20,7 @@ use App\Policies\QuestPolicy;
 use App\Policies\ReviewPolicy;
 use App\Policies\UserVerificationPolicy;
 use App\Services\TrustScoreOrchestrator;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -75,6 +76,17 @@ class AppServiceProvider extends ServiceProvider
             dispatch(function () use ($userId): void {
                 $user = User::query()->find($userId);
                 if ($user !== null) {
+                    $user->userVerifications()->updateOrCreate(
+                        ['category' => 'email', 'verification_type' => 'email'],
+                        [
+                            'status' => 'verified',
+                            'submitted_by' => $user->id,
+                            'submitted_at' => $user->email_verified_at ?? now(),
+                            'reviewed_at' => $user->email_verified_at ?? now(),
+                            'metadata' => ['email' => $user->email, 'source' => 'email_confirmation_link'],
+                        ],
+                    );
+                    app(VerificationEngineService::class)->recalculate($user->fresh(), null, 'Email verification completed.');
                     app(TrustScoreOrchestrator::class)->recalculate($user->fresh());
                 }
             })->afterResponse();

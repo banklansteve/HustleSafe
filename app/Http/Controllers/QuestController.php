@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AdminProposalStatus;
 use App\Enums\QuestAvailabilityNeed;
 use App\Enums\QuestFreelancerLocationPref;
 use App\Enums\QuestProjectType;
-use App\Enums\QuestPromotionTier;
 use App\Enums\QuestStartTiming;
 use App\Enums\QuestStatus;
 use App\Enums\QuestTeamSize;
 use App\Enums\QuestVisibility;
+use App\Enums\AdminQuestStatus;
 use App\Http\Requests\Quests\StoreQuestRequest;
 use App\Http\Requests\Quests\UpdateQuestRequest;
 use App\Jobs\ScanContentForModerationJob;
@@ -32,7 +33,7 @@ use App\Services\QuestFileStorageService;
 use App\Services\QuestFormFieldProfileService;
 use App\Services\QuestPublishedNotificationService;
 use App\Services\QuestSlugService;
-use App\Services\Kyc\KycTierGateService;
+use App\Services\Verification\VerificationEngineService;
 use App\Support\QuestCommerceUi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -96,6 +97,8 @@ class QuestController extends Controller
             'startTimingOptions' => $this->startTimingOptions(),
             'maxBudgetMinor' => 100_000_000,
             'minBudgetMinor' => 10_000,
+            'verificationLimit' => app(VerificationEngineService::class)->clientPostingLimitMinor($user),
+            'verificationCooldown' => app(VerificationEngineService::class)->cooldown($user),
             'fieldProfileUrl' => route('quests.field-profile'),
             'freelancersYouFollow' => $this->questCreateFreelancerNetworkFollowing($user),
             'freelancersFollowingYou' => $this->questCreateFreelancerNetworkFollowers($user),
@@ -109,21 +112,19 @@ class QuestController extends Controller
         QuestSlugService $slugService,
         QuestFileStorageService $questFiles,
         QuestCoverService $cover,
-        KycTierGateService $kycGate,
+        VerificationEngineService $verificationEngine,
     ): RedirectResponse {
         $user = $request->user();
         $data = $request->validated();
-        if (! $kycGate->allows($user, 'post_quest')) {
-            return back()->withErrors(['verification' => __('Verify your email and phone number before posting quests.')]);
-        }
-        $questLimit = $kycGate->clientQuestLimitMinor($user);
-        if ((int) ($data['budget_amount_minor'] ?? 0) > $questLimit) {
-            return back()->withErrors(['budget_amount_minor' => __('Your current verification tier allows quests up to :amount. Complete the next KYC tier to post higher-value work.', [
-                'amount' => '₦'.number_format($questLimit / 100, 0, '.', ','),
-            ])]);
-        }
+        $verificationEngine->assertClientCanPostQuest($user, (int) ($data['budget_amount_minor'] ?? 0));
         $publish = $request->boolean('publish_now', true);
-        $status = $publish ? QuestStatus::Open : QuestStatus::Draft;
+        $category = QuestCategory::query()->with('parent')->find((int) $data['quest_category_id']);
+        $approvalRule = $category?->high_value_approval_enabled ? $category : ($category?->parent?->high_value_approval_enabled ? $category->parent : null);
+        $requiresApproval = $publish
+            && $approvalRule
+            && $approvalRule->high_value_threshold_minor
+            && (int) $data['budget_amount_minor'] >= (int) $approvalRule->high_value_threshold_minor;
+        $status = $publish ? ($requiresApproval ? QuestStatus::PendingReview : QuestStatus::Open) : QuestStatus::Draft;
         $tagged = array_values(array_unique(array_map('intval', $data['tagged_freelancer_ids'] ?? [])));
 
         $slug = $slugService->uniqueSlugFromTitle($data['title']);
@@ -174,7 +175,6 @@ class QuestController extends Controller
                 'team_size' => isset($data['team_size']) && $data['team_size']
                     ? QuestTeamSize::from($data['team_size'])
                     : null,
-                'promotion_tier' => QuestPromotionTier::from($data['promotion_tier']),
                 'auto_listing_expiry_days' => $data['auto_listing_expiry_days'] ?? null,
                 'listing_expires_at' => $listingExpiresAt,
                 'client_edit_until' => $clientEditUntil,
@@ -210,6 +210,8 @@ class QuestController extends Controller
         });
 
         $cover->sync($quest);
+        $verificationEngine->flagDuplicateQuestIfNeeded($quest);
+        $verificationEngine->runAnomalyChecks($user, $quest);
 
         if ($status === QuestStatus::Open) {
             $notifier->notifyAudiences($quest, $tagged);
@@ -244,11 +246,13 @@ class QuestController extends Controller
 
         $redirect = redirect()
             ->route('quests.show', $quest)
-            ->with('success', $publish
+            ->with('success', $requiresApproval
+                ? __('Your quest was submitted for admin review because it is above this category’s high-value threshold.')
+                : ($publish
                 ? __('Your quest is live — freelancers have been alerted.')
-                : __('Draft saved. Publish when you are ready.'));
+                : __('Draft saved. Publish when you are ready.')));
 
-        if ($publish) {
+        if ($publish && ! $requiresApproval) {
             $redirect->with('quest_submitted_next_steps', true);
         }
 
@@ -271,6 +275,7 @@ class QuestController extends Controller
             'stateModel:id,name',
             'localGovernment:id,name',
             'files',
+            'visibleAdminQuestNotices.creator:id,name',
             'invitedFreelancers:id,first_name,name,slug,avatar_url',
             'acceptedOffer',
         ]);
@@ -293,18 +298,28 @@ class QuestController extends Controller
             && $quest->visibility === QuestVisibility::InviteOnly
             && $quest->isInvitedFreelancer($user);
 
+        $verificationEngine = app(VerificationEngineService::class);
+        $freelancerLimit = $user && $user->role?->slug === 'freelancer' ? $verificationEngine->freelancerProposalLimitMinor($user) : null;
+        $verificationCanOffer = $freelancerLimit === null || ((int) $quest->budget_amount_minor > 0 && (int) $quest->budget_amount_minor <= $freelancerLimit);
+
         $canOffer = $user
             && $user->role?->slug === 'freelancer'
             && ($summary['can_submit_proposals'] ?? false)
-            && ($workspace->matchesQuestCategory($user, $quest) || $inviteOffer);
+            && ($workspace->matchesQuestCategory($user, $quest) || $inviteOffer)
+            && $verificationCanOffer;
 
         $myOffer = null;
         if ($user && $user->role?->slug === 'freelancer') {
             $myOffer = $quest->offers()
                 ->where('freelancer_id', $user->id)
                 ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
+                ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
                 ->first()
-                ?? $quest->offers()->where('freelancer_id', $user->id)->latest('id')->first();
+                ?? $quest->offers()
+                    ->where('freelancer_id', $user->id)
+                    ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
+                    ->latest('id')
+                    ->first();
         }
 
         $isBookmarked = false;
@@ -318,6 +333,7 @@ class QuestController extends Controller
         $similar = Quest::query()
             ->where('id', '<>', $quest->id)
             ->where('status', QuestStatus::Open)
+            ->where(fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminQuestStatus::Suspended->value))
             ->where('visibility', QuestVisibility::Public)
             ->whereNull('freelancer_id')
             ->where('state_id', $quest->state_id)
@@ -355,6 +371,7 @@ class QuestController extends Controller
             ->where('id', '<>', $quest->id)
             ->where('client_id', $quest->client_id)
             ->where('status', QuestStatus::Open)
+            ->where(fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminQuestStatus::Suspended->value))
             ->where('visibility', QuestVisibility::Public)
             ->whereNull('freelancer_id')
             ->with(['questCategory:id,name', 'stateModel:id,name'])
@@ -368,6 +385,7 @@ class QuestController extends Controller
             ->where('quest_category_id', $quest->quest_category_id)
             ->where('state_id', '<>', $quest->state_id)
             ->where('status', QuestStatus::Open)
+            ->where(fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminQuestStatus::Suspended->value))
             ->where('visibility', QuestVisibility::Public)
             ->whereNull('freelancer_id')
             ->with(['questCategory:id,name', 'stateModel:id,name'])
@@ -384,6 +402,7 @@ class QuestController extends Controller
         if ($user && (int) $user->id === (int) $quest->client_id) {
             $offerFreelancerIds = QuestOffer::query()
                 ->where('quest_id', $quest->id)
+                ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
                 ->pluck('freelancer_id');
 
             $threadFreelancerIds = QuestConversationThread::query()
@@ -433,6 +452,12 @@ class QuestController extends Controller
             'is_quest_owner' => (bool) ($user && $user->id === $quest->client_id),
             'can_edit' => $user?->can('update', $quest) ?? false,
             'can_offer' => $canOffer,
+            'verification_access' => $user && $user->role?->slug === 'freelancer' ? [
+                'effective_level' => $verificationEngine->effectiveLevel($user),
+                'proposal_limit_minor' => $freelancerLimit,
+                'cooldown' => $verificationEngine->cooldown($user),
+                'can_submit_for_budget' => $verificationCanOffer,
+            ] : null,
             'workspace' => $summary ? array_merge(['enabled' => true], $summary) : ['enabled' => false],
             'my_offer' => $myOffer ? [
                 'id' => $myOffer->id,
@@ -463,11 +488,15 @@ class QuestController extends Controller
         ]);
     }
 
-    public function update(UpdateQuestRequest $request, Quest $quest): RedirectResponse
+    public function update(UpdateQuestRequest $request, Quest $quest, VerificationEngineService $verificationEngine): RedirectResponse
     {
         $data = $request->validated();
         if ($data === []) {
             return back();
+        }
+
+        if (array_key_exists('budget_amount_minor', $data) && (int) $quest->client_id === (int) $request->user()->id) {
+            $verificationEngine->assertClientCanPostQuest($request->user(), (int) $data['budget_amount_minor']);
         }
 
         $days = $data['estimated_completion_days'] ?? null;
@@ -496,6 +525,7 @@ class QuestController extends Controller
             $recipientIds = QuestOffer::query()
                 ->where('quest_id', $quest->id)
                 ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
+                ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
                 ->pluck('freelancer_id')
                 ->unique()
                 ->values();
@@ -774,6 +804,13 @@ class QuestController extends Controller
         $isStaff = $viewer && in_array($viewer->role?->slug, ['admin', 'super_admin'], true);
         $isOwner = $viewer && (int) $viewer->id === (int) $quest->client_id;
         $showInternalCodes = $isOwner || $isStaff;
+        $activeBoost = FeaturedQuestListing::query()
+            ->where('quest_id', $quest->id)
+            ->where('status', 'active')
+            ->where('starts_at', '<=', now())
+            ->where('expires_at', '>', now())
+            ->latest('id')
+            ->first();
 
         $data = [
             'id' => $quest->id,
@@ -786,7 +823,14 @@ class QuestController extends Controller
             'project_type' => $quest->project_type?->value,
             'estimated_hours' => $quest->estimated_hours,
             'team_size' => $quest->team_size?->value,
-            'promotion_tier' => $quest->promotion_tier?->value,
+            'featured_boost' => $activeBoost ? [
+                'tier' => $activeBoost->tier,
+                'label' => Str::headline($activeBoost->tier).' Boost',
+                'expires_at' => $activeBoost->expires_at?->timezone('Africa/Lagos')->toIso8601String(),
+                'homepage_carousel' => (bool) $activeBoost->homepage_carousel,
+                'weekly_digest' => (bool) $activeBoost->weekly_digest,
+                'social_post_required' => (bool) $activeBoost->social_post_required,
+            ] : null,
             'auto_listing_expiry_days' => $quest->auto_listing_expiry_days,
             'listing_expires_at' => $quest->listing_expires_at?->timezone('Africa/Lagos')->toIso8601String(),
             'client_edit_until' => $quest->client_edit_until?->timezone('Africa/Lagos')->toIso8601String(),
@@ -805,6 +849,12 @@ class QuestController extends Controller
             'reference_code' => $quest->reference_code,
             'title' => $quest->title,
             'description' => $quest->description,
+            'admin_notices' => $quest->visibleAdminQuestNotices->map(fn ($notice) => [
+                'id' => $notice->id,
+                'type' => $notice->type,
+                'body' => $notice->body,
+                'created_at' => $notice->created_at?->timezone('Africa/Lagos')->toIso8601String(),
+            ])->values()->all(),
             'cover_url' => $quest->displayCoverUrl(),
             'status' => $quest->status->value,
             'budget_minor' => (int) ($quest->budget_amount_minor ?? 0),
@@ -888,7 +938,9 @@ class QuestController extends Controller
     {
         return QuestCategory::query()
             ->whereNull('parent_id')
-            ->with(['children' => fn ($q) => $q->orderBy('sort_order')->orderBy('name')])
+            ->where('is_active', true)
+            ->where('status', 'active')
+            ->with(['children' => fn ($q) => $q->where('is_active', true)->where('status', 'active')->orderBy('sort_order')->orderBy('name')])
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get(['id', 'name', 'slug'])
@@ -924,6 +976,7 @@ class QuestController extends Controller
     {
         return QuestOffer::query()
             ->where('quest_id', $quest->id)
+            ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
             ->with(['freelancer:id,first_name,name,slug,avatar_url,headline'])
             ->latest('created_at')
             ->limit(120)

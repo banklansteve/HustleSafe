@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Enums\QuestAvailabilityNeed;
 use App\Enums\QuestFreelancerLocationPref;
 use App\Enums\QuestProjectType;
-use App\Enums\QuestPromotionTier;
 use App\Enums\QuestStartTiming;
 use App\Enums\QuestTeamSize;
 use App\Enums\QuestVisibility;
@@ -164,7 +163,6 @@ class QuestWizardStepValidator
     protected function step6Rules(): array
     {
         return [
-            'promotion_tier' => ['required', Rule::enum(QuestPromotionTier::class)],
             'auto_listing_expiry_days' => ['nullable', 'integer', 'min:1', 'max:90'],
             'max_offers' => ['nullable', 'integer', 'min:1', 'max:200'],
             'tagged_freelancer_ids' => ['nullable', 'array', 'max:20'],

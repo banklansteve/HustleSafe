@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Quest;
 use App\Models\QuestDispute;
 use App\Models\User;
+use App\Services\Operations\StaffOperationsDashboardService;
 use App\Support\AdminCsv;
 use Carbon\Carbon;
 use Inertia\Inertia;
@@ -16,13 +17,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class OperationsDashboardController extends Controller
 {
-    public function __invoke(): Response
+    public function __invoke(StaffOperationsDashboardService $dashboard): Response
     {
         $tz = config('app.timezone');
         $kpi = $this->kpiSnapshot();
 
         return Inertia::render('Operations/Dashboard', [
             'kpi' => $kpi,
+            'payload' => $dashboard->payload(request()->user()),
             'generated_at' => Carbon::now($tz)->toIso8601String(),
         ]);
     }

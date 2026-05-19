@@ -146,6 +146,146 @@
 
                 <div class="space-y-6">
                 <section
+                    v-if="verificationEngine"
+                    class="rounded-[1.75rem] border border-primary-100 bg-gradient-to-r from-primary-50/90 via-white to-teal-50/80 p-6 shadow-sm ring-1 ring-primary-100 sm:p-8"
+                >
+                    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <h2 class="font-display text-lg font-bold text-slate-900">
+                                Verification engine access
+                            </h2>
+                            <p class="mt-1 text-sm font-medium text-slate-600">
+                                Your effective level controls Quest posting, proposal access, escrow safeguards, and high-value checks across HustleSafe.
+                            </p>
+                            <p v-if="verificationEngine.cooldown?.active" class="mt-2 text-sm font-black text-amber-700">
+                                New-account cool-down active until {{ dateLabel(verificationEngine.cooldown.expires_at) }}.
+                            </p>
+                            <p v-if="verificationEngine.restricted" class="mt-2 text-sm font-black text-rose-700">
+                                Verification restriction: {{ verificationEngine.restriction_reason || 'Admin review in progress' }}
+                            </p>
+                        </div>
+                        <Link
+                            :href="route('verifications.index')"
+                            class="inline-flex shrink-0 items-center justify-center rounded-full bg-primary-700 px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-primary-800"
+                        >
+                            Manage verification
+                        </Link>
+                    </div>
+                    <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <div class="rounded-2xl border border-white bg-white/80 p-4 shadow-sm">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Earned level</p>
+                            <p class="mt-1 text-2xl font-black text-slate-950">L{{ verificationEngine.earned_level }}</p>
+                        </div>
+                        <div class="rounded-2xl border border-white bg-white/80 p-4 shadow-sm">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Effective level</p>
+                            <p class="mt-1 text-2xl font-black text-primary-800">L{{ verificationEngine.effective_level }}</p>
+                        </div>
+                        <div class="rounded-2xl border border-white bg-white/80 p-4 shadow-sm">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Quest posting limit</p>
+                            <p class="mt-1 text-lg font-black text-slate-950">{{ money(verificationEngine.client_posting_limit_minor) }}</p>
+                        </div>
+                        <div class="rounded-2xl border border-white bg-white/80 p-4 shadow-sm">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Proposal limit</p>
+                            <p class="mt-1 text-lg font-black text-slate-950">{{ money(verificationEngine.freelancer_proposal_limit_minor) }}</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section
+                    v-if="user.role_slug === 'freelancer' && powerHours"
+                    id="account-power-hours"
+                    class="overflow-hidden rounded-[1.75rem] border border-primary-100 bg-white shadow-sm ring-1 ring-primary-100 sm:p-0"
+                >
+                    <div class="bg-gradient-to-r from-primary-50 via-white to-teal-50/70 p-6 sm:p-8">
+                        <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                                <p class="text-xs font-black uppercase tracking-[0.2em] text-primary-700">Power Hours</p>
+                                <h2 class="font-display mt-2 text-xl font-black text-slate-950">Availability signal for serious clients</h2>
+                                <p class="mt-2 max-w-2xl text-sm font-semibold leading-relaxed text-slate-700">
+                                    Publish your preferred working windows so clients know when to expect fast replies. This is optional and can be turned off anytime.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                class="inline-flex items-center justify-center rounded-full border border-primary-200 bg-white px-5 py-2.5 text-sm font-black text-primary-800 shadow-sm hover:bg-primary-50"
+                                @click="toggleSection('power-hours')"
+                            >
+                                {{ editSection === 'power-hours' ? 'Close editor' : 'Edit Power Hours' }}
+                            </button>
+                        </div>
+
+                        <div v-if="editSection !== 'power-hours'" class="mt-6 grid gap-3 md:grid-cols-3">
+                            <div class="rounded-2xl border border-white bg-white/90 p-4 shadow-sm">
+                                <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Signal</p>
+                                <p class="mt-1 text-lg font-black" :class="powerHours.status === 'available_now' ? 'text-emerald-700' : powerHours.status === 'outside_hours' ? 'text-amber-700' : 'text-slate-800'">
+                                    {{ powerHours.label }}
+                                </p>
+                                <p class="mt-1 text-xs font-bold text-slate-500">{{ powerHours.local_time ? `${powerHours.local_time} local time` : 'Hidden from public profile until enabled.' }}</p>
+                            </div>
+                            <div class="rounded-2xl border border-white bg-white/90 p-4 shadow-sm md:col-span-2">
+                                <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Published schedule</p>
+                                <p class="mt-1 text-sm font-black text-slate-950">{{ powerHours.summary }}</p>
+                                <p v-if="powerHours.note" class="mt-2 text-sm font-semibold text-slate-700">{{ powerHours.note }}</p>
+                            </div>
+                        </div>
+
+                        <form v-else class="mt-6 space-y-5" @submit.prevent="submitPowerHours">
+                            <label class="flex items-start gap-3 rounded-2xl border border-primary-100 bg-white p-4">
+                                <input v-model="powerHoursForm.enabled" type="checkbox" class="mt-1 h-5 w-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
+                                <span>
+                                    <span class="block text-sm font-black text-slate-950">Publish my Power Hours</span>
+                                    <span class="mt-1 block text-xs font-semibold text-slate-600">Clients will see a clear availability badge on your public profile.</span>
+                                </span>
+                            </label>
+                            <div class="grid gap-4 md:grid-cols-2">
+                                <label class="block">
+                                    <span class="text-xs font-black uppercase tracking-wide text-slate-500">Timezone</span>
+                                    <select v-model="powerHoursForm.timezone" class="mt-1 w-full rounded-xl border-slate-200 text-sm font-bold shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                                        <option value="Africa/Lagos">Africa/Lagos</option>
+                                        <option value="Africa/Accra">Africa/Accra</option>
+                                        <option value="Africa/Nairobi">Africa/Nairobi</option>
+                                        <option value="Europe/London">Europe/London</option>
+                                        <option value="America/New_York">America/New_York</option>
+                                    </select>
+                                    <InputError class="mt-1" :message="powerHoursForm.errors.timezone" />
+                                </label>
+                                <label class="block">
+                                    <span class="text-xs font-black uppercase tracking-wide text-slate-500">Response promise</span>
+                                    <select v-model="powerHoursForm.response_mode" class="mt-1 w-full rounded-xl border-slate-200 text-sm font-bold shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                                        <option value="same_day">Same-day replies during Power Hours</option>
+                                        <option value="next_business_day">Next business day</option>
+                                        <option value="flexible">Flexible availability</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+                                <div v-for="day in powerHourDays" :key="day.key" class="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+                                    <label class="flex items-center gap-2 text-xs font-black text-slate-900">
+                                        <input v-model="powerHoursForm.weekly[day.key].enabled" type="checkbox" class="rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
+                                        {{ day.label }}
+                                    </label>
+                                    <div class="mt-3 space-y-2">
+                                        <input v-model="powerHoursForm.weekly[day.key].start" type="time" class="w-full rounded-xl border-slate-200 text-xs font-bold" />
+                                        <input v-model="powerHoursForm.weekly[day.key].end" type="time" class="w-full rounded-xl border-slate-200 text-xs font-bold" />
+                                    </div>
+                                </div>
+                            </div>
+                            <label class="block">
+                                <span class="text-xs font-black uppercase tracking-wide text-slate-500">Client-facing note</span>
+                                <textarea v-model="powerHoursForm.note" rows="3" maxlength="240" class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm focus:border-primary-500 focus:ring-primary-500" placeholder="Example: I reply fastest on weekdays and reserve Fridays for delivery reviews." />
+                                <InputError class="mt-1" :message="powerHoursForm.errors.note" />
+                            </label>
+                            <div class="flex justify-end gap-2">
+                                <button type="button" class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-800 hover:bg-slate-50" @click="toggleSection('power-hours')">Cancel</button>
+                                <button type="submit" class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md hover:bg-primary-700 disabled:opacity-50" :disabled="powerHoursForm.processing">
+                                    {{ powerHoursForm.processing ? 'Saving Power Hours...' : 'Save Power Hours' }}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <section
                     v-if="commerce_hub"
                     class="rounded-[1.75rem] border border-emerald-100 bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/80 p-6 shadow-sm ring-1 ring-emerald-100 sm:p-8"
                 >
@@ -1132,7 +1272,9 @@ const props = defineProps({
     activeTab: { type: String, default: 'overview' },
     mustVerifyEmail: { type: Boolean, default: false },
     user: { type: Object, required: true },
+    powerHours: { type: Object, default: null },
     trust: { type: Object, required: true },
+    verificationEngine: { type: Object, default: null },
     reviewStats: { type: Object, required: true },
     recentReviews: { type: Array, default: () => [] },
     portfolio: { type: Object, required: true },
@@ -1251,6 +1393,18 @@ const visibilityForm = useForm({
     settings: Object.fromEntries(props.visibilityKeys.map((k) => [k, !!props.visibility[k]])),
 });
 
+const powerHourDays = [
+    { key: 'mon', label: 'Mon' },
+    { key: 'tue', label: 'Tue' },
+    { key: 'wed', label: 'Wed' },
+    { key: 'thu', label: 'Thu' },
+    { key: 'fri', label: 'Fri' },
+    { key: 'sat', label: 'Sat' },
+    { key: 'sun', label: 'Sun' },
+];
+
+const powerHoursForm = useForm(powerHoursFormDefaults(props.powerHours));
+
 const deactivateForm = useForm({
     password: '',
     confirm: '',
@@ -1267,6 +1421,7 @@ const visibilityLabels = {
     show_cac: 'CAC registration',
     show_portfolio: 'Portfolio previews',
     show_experience: 'Profession & experience',
+    show_power_hours: 'Power Hours availability',
     show_company: 'Company or organisation',
 };
 
@@ -1281,6 +1436,7 @@ const visibilityHints = {
     show_cac: 'Registered business signals seriousness.',
     show_portfolio: 'Link visitors to your best work.',
     show_experience: 'Years and profession badges on your hero.',
+    show_power_hours: 'Shows when clients can expect faster replies.',
     show_company: 'Displays your organisation when you sponsor or collaborate on quests.',
 };
 
@@ -1331,11 +1487,13 @@ function toggleSection(section) {
         detailsForm.clearErrors();
         visibilityForm.clearErrors();
         presenceForm.clearErrors();
+        powerHoursForm.clearErrors();
 
         return;
     }
     editSection.value = section;
     hydrateDetailsForm();
+    hydratePowerHoursForm();
 }
 
 function hydrateDetailsForm() {
@@ -1356,6 +1514,34 @@ function hydrateDetailsForm() {
     detailsForm.address_line = u.address_line ?? '';
     detailsForm.state_id = u.state_id ?? null;
     detailsForm.local_government_id = u.local_government_id ?? null;
+}
+
+function powerHoursFormDefaults(powerHours) {
+    const weekly = {};
+    for (const day of powerHourDays) {
+        weekly[day.key] = {
+            enabled: !!powerHours?.weekly?.[day.key]?.enabled,
+            start: powerHours?.weekly?.[day.key]?.start || '09:00',
+            end: powerHours?.weekly?.[day.key]?.end || '17:00',
+        };
+    }
+
+    return {
+        enabled: !!powerHours?.enabled,
+        timezone: powerHours?.timezone || 'Africa/Lagos',
+        response_mode: powerHours?.response_mode || 'same_day',
+        note: powerHours?.note || '',
+        weekly,
+    };
+}
+
+function hydratePowerHoursForm() {
+    const next = powerHoursFormDefaults(props.powerHours);
+    powerHoursForm.enabled = next.enabled;
+    powerHoursForm.timezone = next.timezone;
+    powerHoursForm.response_mode = next.response_mode;
+    powerHoursForm.note = next.note;
+    powerHoursForm.weekly = next.weekly;
 }
 
 watch(
@@ -1385,6 +1571,16 @@ watch(
     () => props.user,
     () => {
         hydrateDetailsForm();
+    },
+    { deep: true },
+);
+
+watch(
+    () => props.powerHours,
+    () => {
+        if (editSection.value !== 'power-hours') {
+            hydratePowerHoursForm();
+        }
     },
     { deep: true },
 );
@@ -1578,6 +1774,16 @@ function submitVisibility() {
     });
 }
 
+function submitPowerHours() {
+    powerHoursForm.patch(route('account.power-hours'), {
+        preserveScroll: true,
+        replace: true,
+        onSuccess: () => {
+            editSection.value = null;
+        },
+    });
+}
+
 function submitPresence() {
     presenceForm.patch(route('account.presence'), {
         preserveScroll: true,
@@ -1609,6 +1815,14 @@ function formatWhen(iso) {
     } catch {
         return '';
     }
+}
+
+function dateLabel(iso) {
+    return formatWhen(iso);
+}
+
+function money(minor) {
+    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(Number(minor || 0) / 100);
 }
 
 function formatCac(s) {

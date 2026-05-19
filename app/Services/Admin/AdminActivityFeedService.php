@@ -53,7 +53,11 @@ class AdminActivityFeedService
             'occurred_at' => $occurredAt ? Carbon::parse($occurredAt) : now(),
         ]);
 
-        broadcast(new AdminActivityFeedEventCreated($event))->toOthers();
+        try {
+            broadcast(new AdminActivityFeedEventCreated($event))->toOthers();
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
 
         return $event;
     }

@@ -43,6 +43,18 @@ class StoreUserVerificationRequest extends FormRequest
             'document_labels.*' => ['required', 'string', 'max:160'],
         ];
 
+        if (in_array($cat, [UserVerificationCategory::Nin->value, UserVerificationCategory::Bvn->value], true)) {
+            return array_merge($base, [
+                'identifier_number' => ['required', 'digits:11'],
+            ]);
+        }
+
+        if ($cat === UserVerificationCategory::Tin->value) {
+            return array_merge($base, [
+                'identifier_number' => ['required', 'string', 'max:40'],
+            ]);
+        }
+
         if ($cat === UserVerificationCategory::Identity->value) {
             return array_merge($base, $doc, [
                 'id_type' => ['required', Rule::in(['nin', 'bvn', 'passport', 'drivers_licence'])],
@@ -50,8 +62,15 @@ class StoreUserVerificationRequest extends FormRequest
             ]);
         }
 
-        if (in_array($cat, [UserVerificationCategory::Address->value, UserVerificationCategory::Qualification->value, UserVerificationCategory::Business->value], true)) {
-            return array_merge($base, $doc, $cat === UserVerificationCategory::Business->value ? [
+        if ($cat === UserVerificationCategory::IdentityAddress->value) {
+            return array_merge($base, $doc, [
+                'id_type' => ['required', Rule::in(['passport', 'drivers_licence', 'voters_card'])],
+                'address_document_type' => ['required', Rule::in(['utility_bill', 'tenancy_agreement', 'bank_statement'])],
+            ]);
+        }
+
+        if (in_array($cat, [UserVerificationCategory::Address->value, UserVerificationCategory::Qualification->value, UserVerificationCategory::ProfessionalCertificate->value, UserVerificationCategory::PortfolioReview->value, UserVerificationCategory::Business->value, UserVerificationCategory::Cac->value], true)) {
+            return array_merge($base, $doc, in_array($cat, [UserVerificationCategory::Business->value, UserVerificationCategory::Cac->value], true) ? [
                 'cac_number' => ['required', 'string', 'max:80'],
                 'registered_business_name' => ['required', 'string', 'max:255'],
             ] : []);
@@ -74,9 +93,13 @@ class StoreUserVerificationRequest extends FormRequest
 
             if (! in_array($cat, [
                 UserVerificationCategory::Identity->value,
+                UserVerificationCategory::IdentityAddress->value,
                 UserVerificationCategory::Address->value,
                 UserVerificationCategory::Qualification->value,
+                UserVerificationCategory::ProfessionalCertificate->value,
+                UserVerificationCategory::PortfolioReview->value,
                 UserVerificationCategory::Business->value,
+                UserVerificationCategory::Cac->value,
             ], true)) {
                 return;
             }
