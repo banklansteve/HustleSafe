@@ -59,6 +59,8 @@ class NewQuestProposalNotification extends Notification
             'preview' => Str::limit((string) $this->offer->pitch, 160),
             'href' => route('quests.proposals.show', [$quest, $this->offer], absolute: false),
             'kind' => 'quest_proposal_received',
+            'quest_id' => (int) $quest?->id,
+            'offer_id' => (int) $this->offer->id,
         ];
     }
 }

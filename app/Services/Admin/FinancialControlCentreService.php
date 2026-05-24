@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Models\AdminFinancialLedgerEntry;
+use App\Support\PlatformSettings;
 use App\Models\FeaturedQuestListing;
 use App\Models\Quest;
 use App\Models\QuestCategory;
@@ -177,7 +178,7 @@ class FinancialControlCentreService
             'controls' => [
                 'held_minor' => $this->heldMinor($quest),
                 'held' => $this->money($this->heldMinor($quest)),
-                'fee_percent' => (float) config('quests.platform_fee_percent_display', 5),
+                'fee_percent' => PlatformSettings::platformFeePercent(),
             ],
         ];
     }
@@ -190,7 +191,7 @@ class FinancialControlCentreService
             $type = (string) $data['action'];
             $amount = isset($data['amount']) ? (int) round(((float) $data['amount']) * 100) : $held;
             $reason = (string) $data['reason'];
-            $feePercent = (float) config('quests.platform_fee_percent_display', 5);
+            $feePercent = PlatformSettings::platformFeePercent();
             $fee = in_array($type, ['manual_release', 'partial_refund'], true) ? (int) round($amount * ($feePercent / 100)) : 0;
 
             if (in_array($type, ['manual_release', 'full_refund', 'partial_refund'], true) && ($amount <= 0 || $amount > $held)) {
@@ -231,15 +232,24 @@ class FinancialControlCentreService
                 $quest->forceFill(['escrow_status' => 'funded', 'escrow_frozen_at' => null, 'escrow_freeze_reason' => null])->save();
                 $amount = 0;
             } elseif ($type === 'manual_release') {
-                $quest->forceFill([
-                    'paid_out_minor' => (int) $quest->paid_out_minor + $amount,
-                    'escrow_status' => ((int) $quest->paid_out_minor + $amount) >= $this->escrowAmount($quest) ? 'released' : 'partially_released',
-                ])->save();
+                $eligibleAt = \App\Support\EscrowReleaseCooldown::releaseEligibleAt($quest);
+                $earlyOverride = $eligibleAt !== null && now()->lt($eligibleAt)
+                    && \App\Support\EscrowReleaseCooldown::actorMayBypass($admin);
+
+                app(\App\Services\Payments\EscrowPaymentService::class)
+                    ->releaseEscrowToWallet($quest, $admin, $reason);
+
+                if ($earlyOverride) {
+                    app(\App\Services\QuestCompletionEventLogger::class)
+                        ->record($quest->fresh(), 'admin_override_release', $admin, request(), ['reason' => $reason]);
+                }
+
+                $quest = $quest->fresh();
+                $amount = min($amount, $this->escrowAmount($quest));
             } elseif ($type === 'full_refund') {
-                $quest->forceFill([
-                    'refunded_minor' => (int) $quest->refunded_minor + $held,
-                    'escrow_status' => 'refunded',
-                ])->save();
+                app(\App\Services\Payments\EscrowPaymentService::class)
+                    ->refundEscrow($quest, $admin, $reason, $held);
+                $quest = $quest->fresh();
                 $amount = $held;
             } elseif ($type === 'partial_refund') {
                 $freelancerAmount = isset($data['freelancer_amount']) ? (int) round(((float) $data['freelancer_amount']) * 100) : max(0, $held - $amount);
@@ -251,6 +261,32 @@ class FinancialControlCentreService
                     'paid_out_minor' => (int) $quest->paid_out_minor + $freelancerAmount,
                     'escrow_status' => 'released',
                 ])->save();
+            }
+
+            $quest = $quest->fresh();
+            $paymentEscrowExists = \App\Models\PaymentEscrow::query()->where('quest_id', $quest->id)->exists();
+            if ($paymentEscrowExists && in_array($type, ['manual_release', 'full_refund'], true)) {
+                return AdminFinancialLedgerEntry::query()
+                    ->where('quest_id', $quest->id)
+                    ->latest('id')
+                    ->first() ?? AdminFinancialLedgerEntry::query()->create([
+                        'quest_id' => $quest->id,
+                        'quest_offer_id' => $quest->accepted_quest_offer_id,
+                        'client_id' => $quest->client_id,
+                        'freelancer_id' => $quest->freelancer_id,
+                        'admin_user_id' => $admin->id,
+                        'type' => $entryType,
+                        'direction' => $direction,
+                        'source' => 'admin',
+                        'description' => $this->actionDescription($type, $data),
+                        'gross_amount_minor' => $amount,
+                        'fee_amount_minor' => $fee,
+                        'net_amount_minor' => $type === 'manual_release' ? max(0, $amount - $fee) : -$amount,
+                        'balance_after_minor' => $this->heldMinor($quest),
+                        'admin_reason' => $reason,
+                        'meta' => ['milestone' => $data['milestone'] ?? null, 'raw_action' => $type, 'via_payment_engine' => true],
+                        'occurred_at' => now(),
+                    ]);
             }
 
             return AdminFinancialLedgerEntry::query()->create([
@@ -266,7 +302,7 @@ class FinancialControlCentreService
                 'gross_amount_minor' => $amount,
                 'fee_amount_minor' => $fee,
                 'net_amount_minor' => $type === 'manual_release' ? max(0, $amount - $fee) : -$amount,
-                'balance_after_minor' => $this->heldMinor($quest->fresh()),
+                'balance_after_minor' => $this->heldMinor($quest),
                 'admin_reason' => $reason,
                 'meta' => ['milestone' => $data['milestone'] ?? null, 'raw_action' => $type],
                 'occurred_at' => now(),
@@ -352,7 +388,7 @@ class FinancialControlCentreService
 
     private function serviceFeeMinor(Carbon $from, Carbon $to): int
     {
-        return (int) round(((int) Quest::query()->whereBetween('completed_at', [$from, $to])->sum('paid_out_minor')) * ((float) config('quests.platform_fee_percent_display', 5) / 100));
+        return (int) round(((int) Quest::query()->whereBetween('completed_at', [$from, $to])->sum('paid_out_minor')) * (PlatformSettings::platformFeePercent() / 100));
     }
 
     private function featuredRevenueMinor(Carbon $from, Carbon $to): int
@@ -423,7 +459,7 @@ class FinancialControlCentreService
     private function revenueByCategory(): array
     {
         $from = now()->startOfMonth();
-        $feePercent = (float) config('quests.platform_fee_percent_display', 5);
+        $feePercent = PlatformSettings::platformFeePercent();
 
         return QuestCategory::query()
             ->withCount(['quests as contracts_completed' => fn (Builder $q) => $q->whereBetween('completed_at', [$from, now()])])
@@ -445,7 +481,7 @@ class FinancialControlCentreService
     private function revenueByState(): array
     {
         $from = now()->startOfMonth();
-        $feePercent = (float) config('quests.platform_fee_percent_display', 5);
+        $feePercent = PlatformSettings::platformFeePercent();
 
         return DB::table('quests')
             ->leftJoin('states', 'states.id', '=', 'quests.state_id')
@@ -493,5 +529,46 @@ class FinancialControlCentreService
         $prefix = $minor < 0 ? '-' : '';
 
         return $prefix.'₦'.number_format(abs((int) $minor) / 100, 2);
+    }
+
+    /**
+     * @return array{queue: \Illuminate\Contracts\Pagination\LengthAwarePaginator, summary: array<string, string>}
+     */
+    public function payoutsPage(Request $request): array
+    {
+        $min = (int) config('payment.withdrawal.min_amount_minor', 100000);
+        $perPage = min(50, max(10, $request->integer('per_page', 20)));
+
+        $query = \App\Models\WalletWithdrawal::query()
+            ->with('user:id,name,email')
+            ->when($request->filled('status'), fn (Builder $q) => $q->where('status', $request->input('status')))
+            ->when($request->filled('q'), function (Builder $q) use ($request): void {
+                $term = '%'.trim((string) $request->input('q')).'%';
+                $q->whereHas('user', fn (Builder $u) => $u->where('name', 'like', $term)->orWhere('email', 'like', $term));
+            });
+
+        $queue = $query->latest('id')->paginate($perPage)->withQueryString();
+
+        $queue->setCollection(
+            $queue->getCollection()->map(fn (\App\Models\WalletWithdrawal $w) => [
+                'id' => $w->id,
+                'user' => $w->user?->name,
+                'email' => $w->user?->email,
+                'amount' => $this->money((int) $w->amount_minor),
+                'fee' => $this->money((int) $w->fee_minor),
+                'status' => $w->status,
+                'reference' => $w->reference,
+                'created_at' => $w->created_at?->toIso8601String(),
+            ])
+        );
+
+        return [
+            'queue' => $queue,
+            'summary' => [
+                'minimum_payout' => $this->money($min),
+                'pending' => (string) \App\Models\WalletWithdrawal::query()->where('status', 'pending')->count(),
+            ],
+            'filters' => $request->only(['q', 'status', 'per_page']),
+        ];
     }
 }

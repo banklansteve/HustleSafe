@@ -15,16 +15,27 @@ class AdminActivityLogController extends Controller
     public function index(Request $request): Response
     {
         $perPage = min(100, max(10, (int) $request->input('per_page', 25)));
+        $actionFilter = (string) $request->input('action', '');
 
         $logs = AdminActivityLog::query()
             ->with('actor:id,name,email')
+            ->when($actionFilter === 'quest_completion', function ($query): void {
+                $query->where(function ($sub): void {
+                    $sub->where('action', 'like', 'quest.completion.%')
+                        ->orWhere('action', 'quest.escrow.released_admin_override');
+                });
+            })
+            ->when($actionFilter !== '' && $actionFilter !== 'quest_completion', fn ($query) => $query->where('action', 'like', '%'.$actionFilter.'%'))
             ->orderByDesc('id')
             ->paginate($perPage)
             ->withQueryString();
 
         return Inertia::render('Admin/Activity/Index', [
             'logs' => $logs,
-            'filters' => ['per_page' => $perPage],
+            'filters' => [
+                'per_page' => $perPage,
+                'action' => $actionFilter,
+            ],
         ]);
     }
 

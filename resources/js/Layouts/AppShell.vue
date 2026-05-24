@@ -40,16 +40,10 @@
                     class="flex shrink-0 items-center gap-3 rounded-xl outline-none ring-2 ring-transparent ring-offset-2 transition focus-visible:ring-primary-600"
                     :class="homeActive ? 'ring-primary-200' : ''"
                 >
-                    <span
-                        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 text-sm font-black tracking-wide text-white shadow-md shadow-primary-900/20 ring-1 ring-white/25"
-                    >
-                        HS
-                    </span>
-                    <div class="hidden leading-tight sm:block">
-                        <p class="font-display text-lg font-bold tracking-tight text-slate-900">
-                            HustleSafe
-                        </p>
-                        <p class="text-sm font-semibold text-slate-500">
+                    <HustleSafeLogo variant="icon" theme="light" icon-class="h-11 w-11" />
+                    <div class="hidden min-w-0 leading-tight sm:block">
+                        <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-8 w-auto max-w-[10rem]" />
+                        <p class="mt-0.5 text-sm font-semibold text-slate-500">
                             Escrow-first marketplace
                         </p>
                     </div>
@@ -69,6 +63,16 @@
                     >
                         <HomeIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
                         Dashboard
+                    </Link>
+                    <Link
+                        :href="route('wallet.index')"
+                        prefetch="false"
+                        preserve-scroll
+                        class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                        :class="pillClass(walletActive)"
+                    >
+                        <BanknotesIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                        Wallet
                     </Link>
                     <Link
                         v-if="adminEntryUrl"
@@ -335,16 +339,23 @@
             </div>
             <slot />
         </main>
+
+        <CustomerSupportBubble
+            v-if="showSupportBubble"
+            :bootstrap="customerSupportWidget"
+        />
     </div>
 </template>
 
 <script setup>
+import HustleSafeLogo from '@/Components/Brand/HustleSafeLogo.vue';
+import CustomerSupportBubble from '@/Components/Support/CustomerSupportBubble.vue';
 import NavUserMenu from '@/Components/Layout/NavUserMenu.vue';
 import AppToastHost from '@/Components/Ui/AppToastHost.vue';
 import { useNotificationVisit } from '@/composables/useNotificationVisit';
 import { pathMatches, usePathname } from '@/composables/usePathname';
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { BellAlertIcon, BriefcaseIcon, ChartBarIcon, ChartPieIcon, ClipboardDocumentListIcon, HomeIcon, MagnifyingGlassIcon, PlusCircleIcon, XMarkIcon } from '@heroicons/vue/24/outline';
+import { BanknotesIcon, BellAlertIcon, BriefcaseIcon, ChartBarIcon, ChartPieIcon, ClipboardDocumentListIcon, HomeIcon, MagnifyingGlassIcon, PlusCircleIcon, XMarkIcon } from '@heroicons/vue/24/outline';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
@@ -374,6 +385,10 @@ async function openNotification(n) {
 const recentNotifications = computed(() => page.props.recentNotifications ?? []);
 
 const unreadNotificationsCount = computed(() => Number(page.props.unreadNotificationsCount ?? 0) || 0);
+
+const customerSupportWidget = computed(() => page.props.customer_support_widget ?? { enabled: false });
+
+const showSupportBubble = computed(() => customerSupportWidget.value?.enabled === true);
 
 function formatNotifWhen(iso) {
     if (!iso) {
@@ -422,11 +437,20 @@ onMounted(() => {
             if (document.visibilityState !== 'visible' || notifOpen.value) {
                 return;
             }
-            router.reload({ preserveScroll: true, preserveState: true });
+            router.reload({
+                only: ['recentNotifications', 'unreadNotificationsCount'],
+                preserveScroll: true,
+                preserveState: true,
+            });
         };
+        const onNotificationsChanged = () => tick();
         window.addEventListener('focus', tick);
+        window.addEventListener('app:notifications-changed', onNotificationsChanged);
         notifPollTimer = window.setInterval(tick, 35000);
-        removeInertiaListeners.push(() => window.removeEventListener('focus', tick));
+        removeInertiaListeners.push(() => {
+            window.removeEventListener('focus', tick);
+            window.removeEventListener('app:notifications-changed', onNotificationsChanged);
+        });
     }
 });
 onBeforeUnmount(() => {
@@ -525,6 +549,7 @@ const announcementClass = computed(() => ({
 const homeActive = computed(() => pathname.value === '/');
 
 const dashboardActive = computed(() => pathMatches(pathname, route('dashboard')));
+const walletActive = computed(() => pathMatches(pathname, route('wallet.index')));
 
 const adminActive = computed(() => pathname.value.startsWith('/admin'));
 

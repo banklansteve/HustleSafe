@@ -10,6 +10,7 @@ use App\Mail\OperationsStaffInvitationMail;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AdminActivityLogger;
+use App\Services\Support\CustomerSupportService;
 use App\Services\ProvisionOperationsStaffAccount;
 use App\Support\AdminCsv;
 use Illuminate\Http\RedirectResponse;
@@ -21,7 +22,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminStaffController extends Controller
 {
-    public function index(): Response
+    public function index(CustomerSupportService $support): Response
     {
         $adminRoleId = Role::query()->where('slug', 'admin')->value('id');
         $superRoleId = Role::query()->where('slug', 'super_admin')->value('id');
@@ -32,6 +33,14 @@ class AdminStaffController extends Controller
             ->orderByDesc('id')
             ->paginate(20)
             ->withQueryString();
+
+        if ($support->tablesReady()) {
+            $staff->getCollection()->transform(function (User $user) use ($support) {
+                $user->setAttribute('support_ratings', $support->adminSupportRatingStats((int) $user->id));
+
+                return $user;
+            });
+        }
 
         return Inertia::render('Admin/Staff/Index', [
             'staff' => $staff,

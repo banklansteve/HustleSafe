@@ -3,7 +3,7 @@
         title="Record management"
         subtitle="Pick a resource from the sidebar Data registry. Search, create, edit, or delete with a mandatory audit reason."
     >
-        <div class="space-y-2">
+        <div :key="resource_key" class="space-y-2">
             <AdminPanel :title="definition.label" :description="definition.description">
                 <template #actions>
                     <button
@@ -18,9 +18,29 @@
                 </template>
 
                 <p class="text-sm font-semibold" :class="shell.cardMuted">
-                    Use the table search below to filter instantly in your browser without a page reload.
+                    Search runs across the full dataset (including user names and emails). Use column headers in the table below for instant sorting on this page.
                 </p>
             </AdminPanel>
+
+            <div class="flex flex-col gap-2 rounded-2xl border p-4 sm:flex-row sm:items-end" :class="shell.card">
+                <label class="min-w-[12rem] flex-1">
+                    <span class="text-[10px] font-black uppercase tracking-[0.2em]" :class="shell.cardMuted">Server search</span>
+                    <input
+                        v-model="serverSearch"
+                        type="search"
+                        class="mt-1 w-full rounded-xl border px-3 py-2 text-sm font-semibold"
+                        :class="shell.input"
+                        placeholder="Search user name, email, status, type…"
+                        @keydown.enter="applyServerSearch"
+                    />
+                </label>
+                <button type="button" class="rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" @click="applyServerSearch">
+                    Search
+                </button>
+                <button v-if="filters.q" type="button" class="rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnGhost" @click="clearServerSearch">
+                    Clear
+                </button>
+            </div>
 
             <AdminDataTable
                 :rows="tableRows"
@@ -247,7 +267,7 @@ import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import { adminActionColumn, buildAdminColumns } from '@/composables/useAdminTableColumns';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { Link, router, useForm } from '@inertiajs/vue3';
-import { computed, reactive, ref, toRaw } from 'vue';
+import { computed, reactive, ref, toRaw, watch } from 'vue';
 
 const props = defineProps({
     resource_key: { type: String, required: true },
@@ -274,6 +294,28 @@ const editReason = ref('');
 const createForm = reactive({ audit_reason: '' });
 const deleteForm = useForm({ audit_reason: '' });
 const suspendForm = useForm({ suspend: true, audit_reason: '' });
+
+const serverSearch = ref(props.filters.q || '');
+
+watch(
+    () => props.filters.q,
+    (value) => {
+        serverSearch.value = value || '';
+    },
+);
+
+function applyServerSearch() {
+    router.get(
+        route('admin.management.index'),
+        { resource: props.resource_key, q: serverSearch.value.trim() || undefined, per_page: props.filters.per_page },
+        { preserveState: true, preserveScroll: true, replace: true },
+    );
+}
+
+function clearServerSearch() {
+    serverSearch.value = '';
+    applyServerSearch();
+}
 
 const tableRows = computed(() =>
     (props.records.data || []).map((row) => {

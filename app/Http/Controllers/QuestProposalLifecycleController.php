@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Enums\AdminProposalStatus;
 use App\Enums\QuestStatus;
+use App\Models\PaymentEscrow;
 use App\Models\Quest;
 use App\Models\QuestOffer;
+use App\Services\Payments\PaystackClient;
 use App\Notifications\ProposalAcceptedClientNotification;
 use App\Notifications\ProposalAcceptedFreelancerNotification;
 use App\Notifications\ProposalDeclinedFreelancerNotification;
@@ -230,6 +232,17 @@ class QuestProposalLifecycleController extends Controller
 
         if ($verificationEngine->arbitrationRequired($quest, $offer) && ! $verificationEngine->hasBothArbitrationAgreements($quest, $offer)) {
             throw ValidationException::withMessages(['arbitration' => __('Both parties must accept platform-mediated arbitration before this high-value Quest can move to In Progress.')]);
+        }
+
+        $paymentEscrow = PaymentEscrow::query()->where('quest_id', $quest->id)->first();
+        if (app(PaystackClient::class)->enabled()) {
+            if ($paymentEscrow?->status !== 'funded') {
+                throw ValidationException::withMessages([
+                    'escrow' => [__('Complete payment via Paystack before confirming escrow.')],
+                ]);
+            }
+
+            return back()->with('success', __('Escrow is already funded via Paystack.'));
         }
 
         $quest->update([

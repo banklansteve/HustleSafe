@@ -3,6 +3,7 @@
 namespace App\Services\Verification;
 
 use App\Enums\QuestStatus;
+use App\Enums\UserVerificationCategory;
 use App\Enums\UserVerificationStatus;
 use App\Models\KycSetting;
 use App\Models\Quest;
@@ -43,7 +44,97 @@ class VerificationEngineService
 
     public function levelRequirements(): array
     {
-        return $this->setting('verification_level_requirements', config('verification_engine.levels', []));
+        return $this->setting('verification_client_level_requirements', config('verification_engine.client_levels', config('verification_engine.levels', [])));
+    }
+
+    public function clientLevelRequirements(): array
+    {
+        return $this->levelRequirements();
+    }
+
+    public function freelancerLevelRequirements(): array
+    {
+        return $this->setting('verification_freelancer_level_requirements', config('verification_engine.freelancer_levels', []));
+    }
+
+    public function stageContent(): array
+    {
+        return $this->setting('verification_stage_content', config('verification_engine.stage_content', []));
+    }
+
+    public function levelRequirementsFor(User $user): array
+    {
+        return $this->isFreelancer($user) ? $this->freelancerLevelRequirements() : $this->clientLevelRequirements();
+    }
+
+    public function isFreelancer(User $user): bool
+    {
+        $slug = $user->role?->slug ?? $user->account_type;
+
+        return in_array($slug, ['freelancer', 'seller', 'provider'], true);
+    }
+
+    /**
+     * @return array{title?: string, message?: string, info_bar?: string}
+     */
+    public function stageContentFor(User $user, int $level): array
+    {
+        $role = $this->isFreelancer($user) ? 'freelancer' : 'client';
+        $defaults = Arr::get(config('verification_engine.stage_content', []), "{$role}.{$level}", []);
+        $stored = Arr::get($this->stageContent(), "{$role}.{$level}", []);
+
+        return array_merge($defaults, array_filter($stored ?? [], fn ($v) => $v !== null && $v !== ''));
+    }
+
+    public function limitAtLevel(User $user, int $level): int
+    {
+        $key = $this->isFreelancer($user) ? 'freelancer_proposal_minor' : 'client_posting_minor';
+        $map = Arr::get($this->limits(), $key, []);
+
+        return $this->limitFromLevelMap(is_array($map) ? $map : [], $level);
+    }
+
+    /**
+     * Limit for the user's current stored verification level (UI display).
+     */
+    public function displayClientPostingLimitMinor(User $user): int
+    {
+        if ($user->verification_restricted_at !== null) {
+            return 0;
+        }
+        if ($user->custom_client_post_limit_minor !== null) {
+            return (int) $user->custom_client_post_limit_minor;
+        }
+
+        return $this->limitAtLevel($user, $this->storedLevel($user));
+    }
+
+    /**
+     * Limit for the user's current stored verification level (UI display).
+     */
+    public function displayFreelancerProposalLimitMinor(User $user): int
+    {
+        if ($user->verification_restricted_at !== null) {
+            return 0;
+        }
+        if ($user->custom_freelancer_proposal_limit_minor !== null) {
+            return (int) $user->custom_freelancer_proposal_limit_minor;
+        }
+
+        return $this->limitAtLevel($user, $this->storedLevel($user));
+    }
+
+    /**
+     * @param  array<int|string, int>  $map
+     */
+    private function limitFromLevelMap(array $map, int $level): int
+    {
+        return (int) ($map[$level] ?? $map[(string) $level] ?? 0);
+    }
+
+    public function formatMoneyMinor(int $minor): string
+    {
+        return '₦'.number_format($minor / 100, 0);
     }
 
     public function limits(): array
@@ -74,26 +165,24 @@ class VerificationEngineService
                 continue;
             }
 
-            $completed[] = (string) ($record->verification_type ?: $record->category?->value ?: $record->category);
+            $category = $record->category instanceof UserVerificationCategory
+                ? $record->category
+                : UserVerificationCategory::tryFrom((string) $record->category);
+
+            $completed[] = $this->levelKeyForCategory($category, (string) ($record->verification_type ?: ''));
         }
 
         if (in_array('identity', $completed, true) && in_array('address', $completed, true)) {
             $completed[] = 'identity_address';
         }
-        if (in_array('business', $completed, true)) {
-            $completed[] = 'cac';
-        }
-        if (in_array('qualification', $completed, true)) {
-            $completed[] = 'professional_certificate';
-        }
 
-        return array_values(array_unique($completed));
+        return array_values(array_unique(array_filter($completed)));
     }
 
     public function earnedLevel(User $user): int
     {
         $completed = $this->completedVerificationTypes($user);
-        $levels = $this->levelRequirements();
+        $levels = $this->levelRequirementsFor($user);
         $earned = 0;
 
         foreach (range(self::LEVEL_MIN, self::LEVEL_MAX) as $level) {
@@ -149,22 +238,26 @@ class VerificationEngineService
             'verification_tier' => (int) ($user->verification_tier ?? 0),
         ];
         $earned = $this->earnedLevel($user);
+        $level = $user->verification_level_override !== null
+            ? max(self::LEVEL_MIN, min(self::LEVEL_MAX, (int) $user->verification_level_override))
+            : $earned;
 
         $user->forceFill([
-            'current_verification_level' => $earned,
-            'kyc_tier' => $earned,
-            'verification_tier' => $earned,
+            'current_verification_level' => $level,
+            'kyc_tier' => $level,
+            'verification_tier' => $level,
             'kyc_status' => $earned > 0 ? 'verified' : 'unverified',
             'kyc_verified_at' => $earned > 0 ? ($user->kyc_verified_at ?? now()) : null,
         ])->saveQuietly();
 
-        if ($old['current_verification_level'] !== $earned) {
+        if ($old['current_verification_level'] !== $level) {
             $this->audit($actor, $user, 'verification_level.recalculated', $old, [
-                'current_verification_level' => $earned,
+                'current_verification_level' => $level,
+                'earned_level' => $earned,
             ], $reason);
         }
 
-        return $earned;
+        return $level;
     }
 
     public function clientPostingLimitMinor(User $user): int
@@ -176,7 +269,9 @@ class VerificationEngineService
             return (int) $user->custom_client_post_limit_minor;
         }
 
-        return (int) Arr::get($this->limits(), 'client_posting_minor.'.$this->effectiveLevel($user), 0);
+        $map = Arr::get($this->limits(), 'client_posting_minor', []);
+
+        return $this->limitFromLevelMap(is_array($map) ? $map : [], $this->effectiveLevel($user));
     }
 
     public function freelancerProposalLimitMinor(User $user): int
@@ -188,7 +283,9 @@ class VerificationEngineService
             return (int) $user->custom_freelancer_proposal_limit_minor;
         }
 
-        return (int) Arr::get($this->limits(), 'freelancer_proposal_minor.'.$this->effectiveLevel($user), 0);
+        $map = Arr::get($this->limits(), 'freelancer_proposal_minor', []);
+
+        return $this->limitFromLevelMap(is_array($map) ? $map : [], $this->effectiveLevel($user));
     }
 
     public function assertClientCanPostQuest(User $user, int $budgetMinor): void
@@ -329,15 +426,33 @@ class VerificationEngineService
 
     public function overrideLevel(User $target, User $actor, int $level, string $reason): void
     {
-        $old = $target->only(['verification_level_override', 'verification_level_override_reason']);
+        $level = max(self::LEVEL_MIN, min(self::LEVEL_MAX, $level));
+        $old = $target->only([
+            'verification_level_override',
+            'verification_level_override_reason',
+            'current_verification_level',
+            'kyc_tier',
+            'verification_tier',
+        ]);
         $target->forceFill([
-            'verification_level_override' => max(self::LEVEL_MIN, min(self::LEVEL_MAX, $level)),
+            'verification_level_override' => $level,
             'verification_level_override_reason' => $reason,
             'verification_level_overridden_by' => $actor->id,
             'verification_level_overridden_at' => now(),
+            'current_verification_level' => $level,
+            'kyc_tier' => $level,
+            'verification_tier' => $level,
+            'kyc_status' => $level > 0 ? 'verified' : 'unverified',
+            'kyc_verified_at' => $level > 0 ? ($target->kyc_verified_at ?? now()) : null,
         ])->save();
 
-        $this->audit($actor, $target, 'verification_level.overridden', $old, $target->only(['verification_level_override', 'verification_level_override_reason']), $reason);
+        $this->audit($actor, $target, 'verification_level.overridden', $old, $target->only([
+            'verification_level_override',
+            'verification_level_override_reason',
+            'current_verification_level',
+            'kyc_tier',
+            'verification_tier',
+        ]), $reason);
     }
 
     public function resetUserLimit(User $target, User $actor, ?int $clientLimitMinor, ?int $freelancerLimitMinor, string $reason): void
@@ -403,11 +518,97 @@ class VerificationEngineService
             : __("Your current verification level ({$level}) allows up to {$amount}. Complete: {$missing} to unlock a higher limit.");
     }
 
+    /**
+     * @return list<string>
+     */
+    public function missingForNextLevelPublic(User $user): array
+    {
+        return $this->missingForNextLevel($user);
+    }
+
+    public function levelLabel(int $level, ?User $user = null): string
+    {
+        $levels = $user ? $this->levelRequirementsFor($user) : $this->clientLevelRequirements();
+
+        return (string) Arr::get($levels, "{$level}.label", "L{$level}");
+    }
+
+    /**
+     * @return array{current_level: int, current_label: string, next_level: ?int, next_level_label: ?string, limit_minor: int, limit_label: string, limit_formatted: string, limit_description: string, next_level_limit_minor: ?int, next_level_limit_formatted: ?string, cooldown: array<string, mixed>, has_override: bool}
+     */
+    public function trustSummaryFor(User $user, bool $isFreelancer): array
+    {
+        $current = $this->storedLevel($user);
+        $next = $current < self::LEVEL_MAX ? $current + 1 : null;
+        $limitMinor = $isFreelancer
+            ? $this->displayFreelancerProposalLimitMinor($user)
+            : $this->displayClientPostingLimitMinor($user);
+        $nextLimitMinor = $next !== null ? $this->limitAtLevel($user, $next) : null;
+
+        return [
+            'current_level' => $current,
+            'current_label' => $this->levelLabel($current, $user),
+            'next_level' => $next,
+            'next_level_label' => $next !== null ? $this->levelLabel($next, $user) : null,
+            'limit_minor' => $limitMinor,
+            'limit_label' => $isFreelancer ? __('Proposal limit') : __('Quest posting limit'),
+            'limit_formatted' => $this->formatMoneyMinor($limitMinor),
+            'limit_description' => $isFreelancer
+                ? __('Maximum quest value you can propose on at your current verification level (from platform limit settings).')
+                : __('Maximum budget for a quest you can post at your current verification level (from platform limit settings).'),
+            'enforced_limit_minor' => $isFreelancer
+                ? $this->freelancerProposalLimitMinor($user)
+                : $this->clientPostingLimitMinor($user),
+            'enforced_limit_formatted' => $this->formatMoneyMinor($isFreelancer
+                ? $this->freelancerProposalLimitMinor($user)
+                : $this->clientPostingLimitMinor($user)),
+            'next_level_limit_minor' => $nextLimitMinor,
+            'next_level_limit_formatted' => $nextLimitMinor !== null ? $this->formatMoneyMinor($nextLimitMinor) : null,
+            'cooldown' => $this->cooldown($user),
+            'has_override' => $user->verification_level_override !== null,
+        ];
+    }
+
+    public function accountAgeDaysRemaining(User $user, ?int $requiredDays = null): int
+    {
+        if ($requiredDays === null) {
+            $requiredDays = $this->isFreelancer($user) ? 90 : 180;
+        }
+        $ageDays = (int) ($user->created_at?->diffInDays(now()) ?? 0);
+
+        return max(0, $requiredDays - $ageDays);
+    }
+
+    public function accountAgeRequirementDays(User $user): int
+    {
+        return $this->isFreelancer($user) ? 90 : 180;
+    }
+
+    private function levelKeyForCategory(?UserVerificationCategory $category, string $verificationType): string
+    {
+        if ($verificationType !== '') {
+            return match ($verificationType) {
+                'cac', 'business' => 'cac',
+                'qualification' => 'professional_certificate',
+                default => $verificationType,
+            };
+        }
+
+        return match ($category) {
+            UserVerificationCategory::IdentityAddress => 'identity_address',
+            UserVerificationCategory::Cac => 'cac',
+            UserVerificationCategory::Tin => 'tin',
+            UserVerificationCategory::Business => 'cac',
+            UserVerificationCategory::Qualification => 'professional_certificate',
+            default => $category?->value ?? '',
+        };
+    }
+
     private function missingForNextLevel(User $user): array
     {
         $next = min(self::LEVEL_MAX, $this->storedLevel($user) + 1);
         $completed = $this->completedVerificationTypes($user);
-        $requirements = Arr::get($this->levelRequirements(), "{$next}.requirements", []);
+        $requirements = Arr::get($this->levelRequirementsFor($user), "{$next}.requirements", []);
         $missing = [];
 
         foreach ($requirements as $requirement) {

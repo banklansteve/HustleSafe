@@ -336,7 +336,19 @@ class AdminDocumentationService
                     'Resolve: close a concern after the issue is handled.',
                 ], ['admin actions', 'flag', 'restrict', 'suspend', 'refer']),
             ], ['overview', 'troubleshooting']),
+
+            ...$this->extendedTopics(),
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function extendedTopics(): array
+    {
+        $path = database_path('seeders/data/admin_documentation_topics.php');
+
+        return is_file($path) ? require $path : [];
     }
 
     /**

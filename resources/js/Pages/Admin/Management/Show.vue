@@ -20,7 +20,16 @@
                 </button>
             </template>
 
-            <dl class="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
+            <VerificationReviewPanel
+                v-if="verificationReviewState"
+                :presentation="verificationReviewState.presentation"
+                :can-decide="true"
+                :decide-url="verificationReviewState.decide_url"
+                :decision-reasons="verificationReviewState.decision_reasons || []"
+                @decided="onVerificationDecided"
+            />
+
+            <dl v-if="!verificationReviewState || filteredDetailColumns.length" class="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
                 <div v-for="column in definition.detail_columns" :key="column" class="rounded-xl border p-3" :class="shell.card">
                     <dt class="text-[10px] font-black uppercase tracking-wider" :class="shell.cardMuted">
                         {{ column.replace(/_/g, ' ') }}
@@ -118,6 +127,7 @@
 </template>
 
 <script setup>
+import VerificationReviewPanel from '@/Components/Verification/VerificationReviewPanel.vue';
 import AdminManagementField from '@/Components/Admin/AdminManagementField.vue';
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
@@ -131,7 +141,10 @@ const props = defineProps({
     definition: { type: Object, required: true },
     record: { type: Object, required: true },
     files: { type: Array, default: () => [] },
+    verification_review: { type: Object, default: null },
 });
+
+const verificationReviewState = ref(props.verification_review);
 
 const { shell } = useInjectedAdminTheme();
 const preview = ref(null);
@@ -140,6 +153,24 @@ const editReason = ref('');
 const editFields = reactive({});
 
 const recordTitle = computed(() => props.record.title || props.record.name || props.record.email || `Record #${props.record.id}`);
+
+const filteredDetailColumns = computed(() => {
+    if (!verificationReviewState.value) {
+        return props.definition.detail_columns || [];
+    }
+    const hidden = new Set(['document_paths', 'metadata', 'provider_response', 'encrypted_identifier', 'provider', 'provider_reference']);
+    return (props.definition.detail_columns || []).filter((column) => !hidden.has(column));
+});
+
+function onVerificationDecided(data) {
+    if (data?.presentation) {
+        verificationReviewState.value = {
+            ...verificationReviewState.value,
+            presentation: data.presentation,
+        };
+    }
+    router.reload({ only: ['record', 'verification_review'], preserveScroll: true });
+}
 
 function display(value) {
     if (value === null || value === undefined || value === '') {

@@ -5,6 +5,7 @@ namespace App\Services\Operations;
 use App\Mail\StaffBulkMessageMail;
 use App\Mail\SupportTicketStatusMail;
 use App\Models\AdminNotification;
+use App\Models\Quest;
 use App\Models\QuestConversationThread;
 use App\Models\StaffBulkMessageRequest;
 use App\Models\SupportChatAssignment;
@@ -308,6 +309,121 @@ class StaffSupportMessagingService
             && Schema::hasTable('staff_bulk_message_requests');
     }
 
+    public function unassignedChats(): Collection
+    {
+        if (! Schema::hasTable('support_chat_assignments')) {
+            return collect();
+        }
+
+        return SupportChatAssignment::query()
+            ->with(['thread.quest:id,title,reference_code', 'thread.client:id,name,email', 'thread.freelancer:id,name,email'])
+            ->where(fn ($query) => $query->whereNull('assigned_admin_id')->orWhere('status', 'unassigned'))
+            ->latest('created_at')
+            ->limit(30)
+            ->get()
+            ->map(fn (SupportChatAssignment $assignment) => $this->chatPayload($assignment));
+    }
+
+    public function claimChat(SupportChatAssignment $assignment, User $staff): SupportChatAssignment
+    {
+        $assignment->forceFill([
+            'assigned_admin_id' => $staff->id,
+            'status' => 'open',
+            'assigned_at' => now(),
+        ])->save();
+
+        $this->logger->log($staff, 'support_chat.claimed', SupportChatAssignment::class, $assignment->id, []);
+
+        return $assignment->fresh(['thread.quest', 'thread.client', 'thread.freelancer', 'admin']);
+    }
+
+    public function chatThread(SupportChatAssignment $assignment): array
+    {
+        $assignment->load(['thread.messages.user:id,name,email', 'thread.quest', 'thread.client', 'thread.freelancer', 'admin']);
+
+        return [
+            'assignment' => $this->chatPayload($assignment),
+            'messages' => $assignment->thread?->messages->map(fn ($message) => [
+                'id' => $message->id,
+                'body' => $message->body,
+                'sender' => $message->user?->name,
+                'sender_id' => $message->user_id,
+                'created_at' => $message->created_at?->toIso8601String(),
+            ]) ?? collect(),
+        ];
+    }
+
+    public function replyToChat(SupportChatAssignment $assignment, User $staff, string $body): void
+    {
+        $assignment->loadMissing('thread');
+        if ($assignment->thread === null) {
+            throw new \RuntimeException('Conversation thread missing.');
+        }
+
+        $assignment->thread->messages()->create([
+            'user_id' => $staff->id,
+            'body' => $body,
+        ]);
+
+        $assignment->thread->forceFill(['last_message_at' => now()])->save();
+        $this->logger->log($staff, 'support_chat.reply', SupportChatAssignment::class, $assignment->id, []);
+    }
+
+    public function userContext(User $user): array
+    {
+        $user->loadMissing('role');
+
+        $activeQuests = Quest::query()
+            ->where(fn ($q) => $q->where('client_id', $user->id)->orWhere('freelancer_id', $user->id))
+            ->whereNotIn('status', ['completed', 'cancelled', 'archived'])
+            ->latest()
+            ->limit(8)
+            ->get(['id', 'title', 'reference_code', 'status', 'escrow_status']);
+
+        $verifications = $user->userVerifications()
+            ->latest()
+            ->limit(5)
+            ->get(['id', 'category', 'verification_type', 'status', 'submitted_at']);
+
+        return [
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role?->slug,
+                'verification_level' => $user->current_verification_level ?? $user->verification_tier ?? 0,
+            ],
+            'active_quests' => $activeQuests->map(fn (Quest $quest) => [
+                'id' => $quest->id,
+                'title' => $quest->title,
+                'reference_code' => $quest->reference_code,
+                'status' => $quest->status?->value ?? (string) $quest->status,
+                'escrow_status' => $quest->escrow_status,
+            ]),
+            'verifications' => $verifications->map(fn ($v) => [
+                'id' => $v->id,
+                'type' => $v->verification_type ?: $v->category?->value,
+                'status' => $v->status?->value ?? (string) $v->status,
+                'submitted_at' => $v->submitted_at?->toIso8601String(),
+            ]),
+            'recent_activity' => [],
+        ];
+    }
+
+    public function sendPanelEmail(User $staff, User $recipient, array $data): void
+    {
+        $recipient->notify(new AdminUserMessageNotification($data['subject'], $data['body']));
+
+        if (($data['channel'] ?? 'both') !== 'in_app' && $recipient->email) {
+            Mail::raw($data['body'], fn ($mail) => $mail->to($recipient->email)->subject($data['subject']));
+        }
+
+        $this->logger->log($staff, 'operations.panel_email', User::class, $recipient->id, [
+            'subject' => $data['subject'],
+            'context' => $data['context'] ?? null,
+        ]);
+    }
+
     private function bulkRequestPayload(StaffBulkMessageRequest $request): array
     {
         return [
@@ -359,7 +475,7 @@ class StaffSupportMessagingService
         ];
     }
 
-    private function ticketPayload(SupportTicket $ticket): array
+    public function ticketPayload(SupportTicket $ticket): array
     {
         return [
             'id' => $ticket->id,

@@ -302,25 +302,53 @@ class QuestEngagementLifecycleService
             return false;
         }
 
+        $logger = app(\App\Services\QuestCompletionEventLogger::class);
         $quest->loadMissing('acceptedOffer', 'client', 'freelancer');
+
+        if ($quest->delivery_acknowledged_at === null) {
+            $quest->update([
+                'delivery_acknowledged_at' => now(),
+                'delivery_acknowledged_by' => null,
+            ]);
+            $quest->refresh();
+            $logger->record($quest, 'auto_delivery_acknowledged', null, null, [
+                'reason' => '72h_post_due_window',
+            ]);
+        }
+
+        if (! \App\Support\EscrowReleasePolicy::canReleaseFunds($quest)) {
+            $logger->record($quest, 'auto_release_blocked', null, null, [
+                'reason' => \App\Support\EscrowReleasePolicy::blockedReleaseReason($quest),
+            ]);
+
+            return false;
+        }
+
+        try {
+            app(\App\Services\Payments\EscrowPaymentService::class)
+                ->releaseEscrowToWallet($quest, null, __('Auto-released after 72-hour review window'));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return false;
+        }
 
         $payoutMinor = (int) ($quest->acceptedOffer?->quoted_amount_minor ?? $quest->budget_amount_minor ?? 0);
 
-        DB::transaction(function () use ($quest, $payoutMinor): void {
-            $payload = [
-                'status' => QuestStatus::Completed,
-                'completed_at' => now(),
-                'completed_on_time' => false,
-                'auto_completed_at' => now(),
-                'closure_type' => 'auto_completed_silent_72h',
-            ];
-            if ($payoutMinor > 0) {
-                $payload['paid_out_minor'] = $payoutMinor;
-            }
-            $quest->update($payload);
-        });
+        $quest->update([
+            'status' => QuestStatus::Completed,
+            'completed_at' => now(),
+            'funds_released_at' => now(),
+            'completed_on_time' => false,
+            'auto_completed_at' => now(),
+            'closure_type' => 'auto_completed_silent_72h',
+            'paid_out_minor' => $payoutMinor > 0 ? $payoutMinor : $quest->paid_out_minor,
+        ]);
 
         $quest->refresh();
+        $logger->record($quest, 'auto_funds_released', null, null, [
+            'closure_type' => 'auto_completed_silent_72h',
+        ]);
 
         foreach (array_filter([$quest->client, $quest->freelancer]) as $party) {
             $party?->notify(new QuestAutoCompletedNotification($quest));

@@ -19,7 +19,7 @@ export function useNotificationVisit() {
                 headers: { Accept: 'application/json' },
             });
             const target = typeof data?.redirect === 'string' && data.redirect !== '' ? data.redirect : route('dashboard');
-            await router.visit(target, { preserveScroll: true });
+            await router.visit(target, { preserveScroll: true, preserveState: true });
         } finally {
             busyId.value = null;
         }

@@ -365,7 +365,7 @@
 
                 <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="quest-engine" />
 
-                <AdminTabPanel v-model="activeTab" value="overview" id-prefix="quest-engine">
+                <AdminTabPanel :current-tab="activeTab" value="overview" id-prefix="quest-engine">
                     <div class="grid gap-5 xl:grid-cols-[1fr_20rem]">
                         <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-slate-100">
                             <h3 class="font-display text-xl font-black text-slate-950">{{ questDetail.overview.quest.title }}</h3>
@@ -408,7 +408,7 @@
                     <Timeline :items="questDetail.overview.timeline" />
                 </AdminTabPanel>
 
-                <AdminTabPanel v-model="activeTab" value="proposals" id-prefix="quest-engine">
+                <AdminTabPanel :current-tab="activeTab" value="proposals" id-prefix="quest-engine">
                     <div class="grid gap-3 md:grid-cols-4">
                         <InfoCard label="Total proposals" :value="questDetail.proposals.summary.total" />
                         <InfoCard label="Average quote" :value="questDetail.proposals.summary.average" />
@@ -432,35 +432,103 @@
                     </div>
                 </AdminTabPanel>
 
-                <AdminTabPanel v-model="activeTab" value="escrow" id-prefix="quest-engine">
+                <AdminTabPanel :current-tab="activeTab" value="escrow" id-prefix="quest-engine">
                     <div class="grid gap-4 lg:grid-cols-[20rem_1fr]">
-                        <div class="rounded-3xl border border-white/10 bg-slate-900/70 p-5">
-                            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Contract & escrow</p>
-                            <dl class="mt-4 space-y-3">
-                                <InfoItem label="Has contract" :value="questDetail.escrow.has_contract ? 'Yes' : 'No'" />
-                                <InfoItem label="Escrow status" :value="questDetail.escrow.contract.escrow_status || 'Not funded'" />
-                                <InfoItem label="Paid out" :value="questDetail.escrow.contract.paid_out" />
-                                <InfoItem label="Refunded" :value="questDetail.escrow.contract.refunded" />
-                            </dl>
-                            <button type="button" class="primary-button mt-5 w-full">Attach / adjust escrow</button>
+                        <div class="space-y-4">
+                            <div class="rounded-3xl border border-white/10 bg-slate-900/70 p-5">
+                                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Contract & escrow</p>
+                                <dl class="mt-4 space-y-3">
+                                    <InfoItem label="Has contract" :value="questDetail.escrow.has_contract ? 'Yes' : 'No'" />
+                                    <InfoItem label="Escrow status" :value="questDetail.escrow.contract.escrow_status || 'Not funded'" />
+                                    <InfoItem label="Paid out" :value="questDetail.escrow.contract.paid_out" />
+                                    <InfoItem label="Refunded" :value="questDetail.escrow.contract.refunded" />
+                                    <InfoItem
+                                        v-if="questDetail.escrow.contract.receipt_url"
+                                        label="VAT receipt"
+                                        :value="'Printable summary'"
+                                    />
+                                </dl>
+                                <a
+                                    v-if="questDetail.escrow.contract.receipt_url"
+                                    :href="questDetail.escrow.contract.receipt_url"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="secondary-button mt-4 inline-flex w-full justify-center"
+                                >
+                                    Open contract receipt
+                                </a>
+                            </div>
+                            <div v-if="questDetail.release_controls" class="rounded-3xl border border-amber-300/30 bg-amber-400/5 p-5">
+                                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-200">Release controls</p>
+                                <dl class="mt-3 space-y-2 text-xs font-semibold text-slate-300">
+                                    <div class="flex justify-between gap-2"><dt>Contract value</dt><dd class="font-black text-white">{{ questDetail.release_controls.amount }}</dd></div>
+                                    <div class="flex justify-between gap-2"><dt>High-value threshold</dt><dd>{{ questDetail.release_controls.high_value_threshold }}</dd></div>
+                                    <div class="flex justify-between gap-2"><dt>Needs authorisation</dt><dd>{{ questDetail.release_controls.requires_authorization ? 'Yes' : 'No' }}</dd></div>
+                                    <div class="flex justify-between gap-2"><dt>Authorised</dt><dd>{{ questDetail.release_controls.has_authorization ? 'Yes' : 'No' }}</dd></div>
+                                    <div class="flex justify-between gap-2"><dt>On hold</dt><dd>{{ questDetail.release_controls.release_held ? 'Yes' : 'No' }}</dd></div>
+                                </dl>
+                                <form class="mt-4 space-y-2" @submit.prevent="submitReleaseAuthorize">
+                                    <textarea v-model="releaseControlForm.authorize_reason" rows="2" class="panel-input w-full text-xs" placeholder="Authorise high-value release (min 10 chars)…" />
+                                    <button type="submit" class="primary-button w-full text-xs" :disabled="actionBusy || releaseControlForm.authorize_reason.length < 10">
+                                        Authorise release
+                                    </button>
+                                </form>
+                                <form class="mt-3 space-y-2" @submit.prevent="submitReleaseHold">
+                                    <textarea v-model="releaseControlForm.hold_reason" rows="2" class="panel-input w-full text-xs" placeholder="Hold reason (min 10 chars)…" />
+                                    <label class="flex items-center gap-2 text-xs font-bold text-slate-300">
+                                        <input v-model="releaseControlForm.indefinite" type="checkbox" /> Indefinite hold
+                                    </label>
+                                    <input v-if="!releaseControlForm.indefinite" v-model="releaseControlForm.hold_until" type="date" class="panel-input w-full text-xs" />
+                                    <button type="submit" class="danger-button w-full text-xs" :disabled="actionBusy || releaseControlForm.hold_reason.length < 10">Place hold</button>
+                                </form>
+                                <form class="mt-3 space-y-2" @submit.prevent="submitReleaseLiftHold">
+                                    <textarea v-model="releaseControlForm.lift_reason" rows="2" class="panel-input w-full text-xs" placeholder="Lift hold reason…" />
+                                    <button type="submit" class="secondary-button w-full text-xs" :disabled="actionBusy || releaseControlForm.lift_reason.length < 10">Lift hold</button>
+                                </form>
+                            </div>
                         </div>
-                        <div class="rounded-3xl border border-white/10 bg-slate-900/60 p-5">
-                            <h3 class="font-display text-lg font-black text-white">Escrow ledger</h3>
-                            <div class="mt-4 space-y-3">
-                                <div v-for="entry in questDetail.escrow.ledger.entries || []" :key="entry.reference" class="rounded-2xl border border-white/10 bg-slate-950/70 p-3">
-                                    <div class="flex items-center justify-between gap-3">
-                                        <p class="font-bold text-white">{{ entry.description }}</p>
-                                        <p class="font-black text-primary-100">{{ entry.amount }}</p>
-                                    </div>
-                                    <p class="mt-1 text-xs text-slate-500">{{ entry.reference }} · {{ formatDate(entry.occurred_at) }}</p>
+                        <div class="space-y-4">
+                            <div class="rounded-3xl border border-white/10 bg-slate-900/60 p-5">
+                                <div class="flex items-center justify-between gap-3">
+                                    <h3 class="font-display text-lg font-black text-white">Completion timeline</h3>
+                                    <Link
+                                        :href="route('admin.quest-completion-events.index', { q: activeQuest?.title })"
+                                        class="text-[10px] font-black uppercase tracking-wide text-primary-300 hover:text-white"
+                                    >
+                                        All events →
+                                    </Link>
                                 </div>
-                                <p v-if="!(questDetail.escrow.ledger.entries || []).length" class="text-sm text-slate-400">No escrow ledger entries yet.</p>
+                                <ol class="mt-4 space-y-3">
+                                    <li
+                                        v-for="(item, idx) in questDetail.completion_timeline || []"
+                                        :key="idx"
+                                        class="rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2"
+                                    >
+                                        <p class="text-sm font-bold text-white">{{ item.label }}</p>
+                                        <p class="text-xs text-slate-500">{{ item.actor }} · {{ formatDate(item.at) }}</p>
+                                        <p v-if="item.detail" class="mt-1 font-mono text-[10px] text-slate-400">{{ item.detail }}</p>
+                                    </li>
+                                    <li v-if="!(questDetail.completion_timeline || []).length" class="text-sm text-slate-400">No completion events logged yet.</li>
+                                </ol>
+                            </div>
+                            <div class="rounded-3xl border border-white/10 bg-slate-900/60 p-5">
+                                <h3 class="font-display text-lg font-black text-white">Escrow ledger</h3>
+                                <div class="mt-4 space-y-3">
+                                    <div v-for="entry in questDetail.escrow.ledger.entries || []" :key="entry.reference" class="rounded-2xl border border-white/10 bg-slate-950/70 p-3">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <p class="font-bold text-white">{{ entry.description }}</p>
+                                            <p class="font-black text-primary-100">{{ entry.amount }}</p>
+                                        </div>
+                                        <p class="mt-1 text-xs text-slate-500">{{ entry.reference }} · {{ formatDate(entry.occurred_at) }}</p>
+                                    </div>
+                                    <p v-if="!(questDetail.escrow.ledger.entries || []).length" class="text-sm text-slate-400">No escrow ledger entries yet.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </AdminTabPanel>
 
-                <AdminTabPanel v-model="activeTab" value="media" id-prefix="quest-engine">
+                <AdminTabPanel :current-tab="activeTab" value="media" id-prefix="quest-engine">
                     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                         <article v-for="media in questDetail.media.items" :key="media.id" class="rounded-3xl border border-white/10 bg-slate-900/60 p-4">
                             <img v-if="media.is_image" :src="media.url" :alt="media.name" class="h-40 w-full rounded-2xl object-cover" />
@@ -476,7 +544,7 @@
                     <p v-if="!questDetail.media.items.length" class="rounded-3xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-400">No quest media uploaded.</p>
                 </AdminTabPanel>
 
-                <AdminTabPanel v-model="activeTab" value="flags" id-prefix="quest-engine">
+                <AdminTabPanel :current-tab="activeTab" value="flags" id-prefix="quest-engine">
                     <div class="grid gap-4 xl:grid-cols-2">
                         <FlagStack :flags="questDetail.flags" @resolve="openResolve" />
                         <div class="rounded-3xl border border-white/10 bg-slate-900/70 p-5">
@@ -501,11 +569,11 @@
                     </div>
                 </AdminTabPanel>
 
-                <AdminTabPanel v-model="activeTab" value="activity" id-prefix="quest-engine">
+                <AdminTabPanel :current-tab="activeTab" value="activity" id-prefix="quest-engine">
                     <Timeline :items="questDetail.activity.items.map((item) => ({ label: labelize(item.action), actor: item.actor || 'System', at: item.created_at, meta: item.properties }))" />
                 </AdminTabPanel>
 
-                <AdminTabPanel v-model="activeTab" value="notes" id-prefix="quest-engine">
+                <AdminTabPanel :current-tab="activeTab" value="notes" id-prefix="quest-engine">
                     <div class="grid gap-4 xl:grid-cols-[1fr_20rem]">
                         <div class="space-y-3">
                             <article v-for="note in questDetail.notes" :key="note.id" class="rounded-3xl border border-white/10 bg-slate-900/60 p-4" :class="note.is_pinned ? 'border-amber-300/40 bg-amber-400/10' : ''">
@@ -529,7 +597,7 @@
                     </div>
                 </AdminTabPanel>
 
-                <AdminTabPanel v-model="activeTab" value="communications" id-prefix="quest-engine">
+                <AdminTabPanel :current-tab="activeTab" value="communications" id-prefix="quest-engine">
                     <div class="rounded-3xl border border-white/10 bg-slate-900/60 p-5">
                         <h3 class="font-display text-xl font-black text-white">Quest communications</h3>
                         <p class="mt-2 text-sm text-slate-400">Compose contextual admin notifications to the client or proposing freelancers from this panel. Message delivery can be connected to the existing notification centre without leaving the Quest Engine.</p>
@@ -618,6 +686,13 @@ const bulkAction = ref(null);
 const resolvingFlag = ref(null);
 const toasts = ref([]);
 const noteForm = reactive({ body: '', is_pinned: false });
+const releaseControlForm = reactive({
+    authorize_reason: '',
+    hold_reason: '',
+    hold_until: '',
+    indefinite: false,
+    lift_reason: '',
+});
 
 watch(viewMode, (value) => localStorage.setItem('adminQuestViewMode', value));
 watch(density, (value) => localStorage.setItem('adminQuestDensity', value));
@@ -775,6 +850,44 @@ async function submitResolveFlag(payload) {
         return;
     }
     await postAction(() => axios.post(route('admin.quests.flags.resolve', [activeQuest.value.route_key, resolvingFlag.value.id]), payload));
+}
+
+async function submitReleaseAuthorize() {
+    if (!activeQuest.value?.id) {
+        return;
+    }
+    await postAction(() =>
+        axios.post(route('admin.quests.release.authorize', activeQuest.value.id), {
+            reason: releaseControlForm.authorize_reason,
+        }),
+    );
+    releaseControlForm.authorize_reason = '';
+}
+
+async function submitReleaseHold() {
+    if (!activeQuest.value?.id) {
+        return;
+    }
+    await postAction(() =>
+        axios.post(route('admin.quests.release.hold', activeQuest.value.id), {
+            reason: releaseControlForm.hold_reason,
+            hold_until: releaseControlForm.indefinite ? null : releaseControlForm.hold_until,
+            indefinite: releaseControlForm.indefinite,
+        }),
+    );
+    releaseControlForm.hold_reason = '';
+}
+
+async function submitReleaseLiftHold() {
+    if (!activeQuest.value?.id) {
+        return;
+    }
+    await postAction(() =>
+        axios.post(route('admin.quests.release.lift-hold', activeQuest.value.id), {
+            reason: releaseControlForm.lift_reason,
+        }),
+    );
+    releaseControlForm.lift_reason = '';
 }
 
 async function postAction(callback) {

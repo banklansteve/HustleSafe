@@ -8,10 +8,10 @@
                 type="button"
                 role="tab"
                 class="inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-1 pb-3 pt-2 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-                :class="modelValue === tab.key ? activeClass : inactiveClass"
-                :aria-selected="modelValue === tab.key"
+                :class="activeTab === tab.key ? activeClass : inactiveClass"
+                :aria-selected="activeTab === tab.key"
                 :aria-controls="`${idPrefix}-${tab.key}-panel`"
-                @click="emit('update:modelValue', tab.key)"
+                @click="activeTab = tab.key"
             >
                 <component v-if="tab.icon" :is="tab.icon" class="h-4 w-4" aria-hidden="true" />
                 <span class="whitespace-nowrap">{{ tab.label }}</span>
@@ -28,12 +28,12 @@ import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 
 defineProps({
     tabs: { type: Array, required: true },
-    modelValue: { type: String, required: true },
     ariaLabel: { type: String, default: 'Admin tabs' },
     idPrefix: { type: String, default: 'admin-tab' },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const activeTab = defineModel({ type: String, required: true });
+
 const { isDark } = useInjectedAdminTheme();
 
 const activeClass = 'border-primary-600 text-primary-700 font-semibold dark:border-primary-400 dark:text-primary-300';

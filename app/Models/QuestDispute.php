@@ -16,6 +16,8 @@ class QuestDispute extends Model
         'quest_id',
         'quest_offer_id',
         'opened_by_user_id',
+        'assigned_staff_id',
+        'staff_claimed_at',
         'reason',
         'structured_intake',
         'phase',
@@ -60,6 +62,7 @@ class QuestDispute extends Model
             'resolved_at' => 'datetime',
             'client_agrees_resolve_at' => 'datetime',
             'freelancer_agrees_resolve_at' => 'datetime',
+            'staff_claimed_at' => 'datetime',
         ];
     }
 
@@ -90,6 +93,14 @@ class QuestDispute extends Model
     public function openedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'opened_by_user_id');
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function assignedStaff(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_staff_id');
     }
 
     /**

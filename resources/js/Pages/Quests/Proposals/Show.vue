@@ -11,6 +11,24 @@
                 {{ page.props.flash.success }}
             </div>
 
+            <section
+                v-if="!observer_mode && showFundingNotice"
+                class="rounded-2xl border-2 border-amber-400 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-950 ring-2 ring-amber-200 sm:px-5"
+                role="alert"
+                aria-live="polite"
+            >
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-900">Escrow funded — read before you act</p>
+                <p class="mt-2 text-xs leading-relaxed">
+                    Work may begin now. Fund release stays locked for
+                    <span class="font-black">{{ completionUi.cooldown_hours }} hours</span>
+                    after funding (until {{ completionUi.release_eligible_label || 'the cooldown ends' }}).
+                </p>
+                <p class="mt-2 text-xs font-black leading-relaxed text-amber-950">
+                    Do not tap “Confirm delivery” unless work has actually been delivered. That step only acknowledges delivery — it does not pay the freelancer.
+                    Release is a separate step after the cooldown (and any high-value authorisation).
+                </p>
+            </section>
+
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <BackChevronLink :href="route('quests.show', quest.route_key)" aria-label="Back to quest" />
                 <div class="flex flex-wrap gap-2">
@@ -140,17 +158,20 @@
                     (including fees in the breakdown) before the freelancer is expected to start. Nothing is released to them until you mark the job
                     completed.
                 </p>
-                <div v-if="commerce?.show_fund_button && commerce?.funding_post_url" class="mt-3 flex flex-wrap gap-2">
+                <form
+                    v-if="commerce?.show_fund_button && commerce?.funding_post_url"
+                    :action="commerce.funding_post_url"
+                    method="POST"
+                    class="mt-3 inline-block"
+                >
+                    <input type="hidden" name="_token" :value="csrfToken" />
                     <button
-                        type="button"
-                        class="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-800 disabled:opacity-50"
-                        :disabled="fundingIntentForm.processing"
-                        @click="submitFundingIntent"
+                        type="submit"
+                        class="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-800"
                     >
-                        <ReLoader4Line v-if="fundingIntentForm.processing" class="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
-                        Fund via gateway
+                        Pay with Paystack
                     </button>
-                </div>
+                </form>
                 <div v-if="commerce && (!observer_mode && (is_client || is_author))" class="mt-3 flex flex-wrap gap-2">
                     <Link
                         v-if="commerce.active_dispute"
@@ -181,6 +202,49 @@
                     The client accepted your proposal. Please wait until escrow is funded and confirmed — only then should you begin billable work. Payouts
                     unlock when the client marks the quest complete.
                 </p>
+            </section>
+
+            <section
+                v-if="!observer_mode && completionUi.show_completion_section"
+                class="rounded-2xl border border-emerald-200/90 bg-emerald-50/90 px-4 py-3 text-sm font-semibold text-emerald-950 ring-1 ring-emerald-100 sm:px-5"
+            >
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-900">Delivery & escrow release</p>
+                <p class="mt-1 text-xs leading-relaxed">
+                    Two separate steps: confirm delivery when work is done, then release funds after the protection window (and any platform authorisation for high-value contracts).
+                </p>
+                <p v-if="completionUi.delivery_acknowledged" class="mt-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-950">
+                    Delivery acknowledged — escrow stays locked until you release funds when eligible.
+                </p>
+                <p v-if="completionUi.requires_admin_authorization && !completionUi.has_admin_authorization" class="mt-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-950">
+                    This contract is {{ completionUi.high_value_threshold }} or above. HustleSafe must authorise release before funds can move, even after the cooldown.
+                </p>
+                <p v-if="completionUi.release_held" class="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-950">
+                    {{ completionUi.release_hold_reason || 'Release is on hold by platform staff.' }}
+                </p>
+                <p v-if="completionUi.blocked_release_reason" class="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-950">
+                    {{ completionUi.blocked_release_reason }}
+                    <span v-if="cooldownLabel && completionUi.delivery_acknowledged" class="mt-1 block font-black">Release unlocks in {{ cooldownLabel }}</span>
+                </p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    <button
+                        v-if="!completionUi.delivery_acknowledged"
+                        type="button"
+                        class="inline-flex rounded-full bg-sky-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-sky-800 disabled:opacity-50"
+                        :disabled="!completionUi.can_acknowledge_delivery"
+                        @click="openAcknowledgeModal"
+                    >
+                        Confirm delivery
+                    </button>
+                    <button
+                        v-else
+                        type="button"
+                        class="inline-flex rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-emerald-800 disabled:opacity-50"
+                        :disabled="!completionUi.can_release_funds"
+                        @click="openReleaseModal"
+                    >
+                        Release funds to freelancer
+                    </button>
+                </div>
             </section>
 
             <section v-if="!observer_mode && is_client && conversation_with_freelancer_url" class="rounded-xl border border-primary-200 bg-primary-50/80 px-4 py-3 text-sm font-semibold text-primary-950 ring-1 ring-primary-100">
@@ -456,6 +520,37 @@
                             <InputError :message="escrowForm.errors.confirm_funds_in_escrow" />
                         </template>
 
+                        <template v-else-if="activeModal === 'acknowledge'">
+                            <p class="text-xs font-semibold text-slate-600">
+                                This records that you received the deliverables. Escrow is <span class="font-black">not</span> released yet — use “Release funds” only after the
+                                {{ completionUi.cooldown_hours }}-hour protection window and any required authorisations.
+                            </p>
+                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
+                                <input v-model="acknowledgeForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
+                                <span>I confirm deliverables meet the agreed brief. I am not releasing payment yet.</span>
+                            </label>
+                            <InputError :message="acknowledgeForm.errors.confirm" />
+                            <InputError :message="acknowledgeForm.errors.quest" />
+                        </template>
+
+                        <template v-else-if="activeModal === 'release'">
+                            <p class="text-xs font-semibold text-slate-600">
+                                This releases escrow to the freelancer's wallet (minus platform fee) and marks the quest complete. Logged for compliance. Release is blocked until
+                                {{ completionUi.cooldown_hours }} hours after funding unless platform staff intervene.
+                            </p>
+                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
+                                <input v-model="releaseForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>I confirm deliverables are satisfactory and I want to release escrow now.</span>
+                            </label>
+                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
+                                <input v-model="releaseForm.acknowledge_release" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>I understand funds move to the freelancer's wallet and this cannot be undone from the app.</span>
+                            </label>
+                            <InputError :message="releaseForm.errors.confirm" />
+                            <InputError :message="releaseForm.errors.acknowledge_release" />
+                            <InputError :message="releaseForm.errors.escrow" />
+                        </template>
+
                         <template v-else-if="activeModal === 'withdraw'">
                             <p class="text-xs font-semibold text-slate-600">
                                 Withdrawing removes your proposal from the client’s queue. They are notified. You may submit a fresh proposal if the quest remains
@@ -502,7 +597,7 @@ import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const props = defineProps({
     quest: { type: Object, required: true },
@@ -517,13 +612,88 @@ const props = defineProps({
 
 const page = usePage();
 
-const fundingIntentForm = useForm({});
-function submitFundingIntent() {
-    const url = props.commerce?.funding_post_url;
-    if (!url) {
+const acknowledgeForm = useForm({ confirm: false });
+const releaseForm = useForm({ confirm: false, acknowledge_release: false });
+
+const showFundingNotice = computed(() => Boolean(page.props.flash?.show_escrow_funding_notice));
+
+const completionUi = computed(() => {
+    const c = props.commerce?.completion ?? {};
+    return {
+        show_completion_section: Boolean(c.show_completion_section),
+        can_acknowledge_delivery: Boolean(c.can_acknowledge_delivery),
+        can_release_funds: Boolean(c.can_release_funds),
+        delivery_acknowledged: Boolean(c.delivery_acknowledged),
+        blocked_release_reason: c.blocked_release_reason ?? null,
+        cooldown_hours: c.cooldown_hours ?? 24,
+        seconds_until_release: Number(c.seconds_until_release ?? 0),
+        release_eligible_label: c.release_eligible_label ?? null,
+        requires_admin_authorization: Boolean(c.requires_admin_authorization),
+        has_admin_authorization: Boolean(c.has_admin_authorization),
+        release_held: Boolean(c.release_held),
+        release_hold_reason: c.release_hold_reason ?? null,
+        high_value_threshold: c.high_value_threshold ?? null,
+    };
+});
+
+const cooldownSeconds = ref(completionUi.value.seconds_until_release);
+let cooldownTimer = null;
+
+function formatCooldown(totalSeconds) {
+    const s = Math.max(0, totalSeconds);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h > 0) {
+        return `${h}h ${m}m`;
+    }
+    if (m > 0) {
+        return `${m}m ${sec}s`;
+    }
+    return `${sec}s`;
+}
+
+const cooldownLabel = computed(() => formatCooldown(cooldownSeconds.value));
+
+onMounted(() => {
+    cooldownSeconds.value = completionUi.value.seconds_until_release;
+    cooldownTimer = window.setInterval(() => {
+        if (cooldownSeconds.value > 0) {
+            cooldownSeconds.value -= 1;
+        }
+    }, 1000);
+});
+
+onBeforeUnmount(() => {
+    if (cooldownTimer) {
+        window.clearInterval(cooldownTimer);
+    }
+});
+
+const csrfToken = computed(() => {
+    const fromPage = page.props?.csrf_token;
+    if (fromPage) {
+        return fromPage;
+    }
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+});
+
+function openAcknowledgeModal() {
+    if (!completionUi.value.can_acknowledge_delivery) {
         return;
     }
-    fundingIntentForm.post(url, { preserveScroll: true });
+    acknowledgeForm.clearErrors();
+    acknowledgeForm.reset();
+    openModal('acknowledge');
+}
+
+function openReleaseModal() {
+    if (!completionUi.value.can_release_funds) {
+        return;
+    }
+    releaseForm.clearErrors();
+    releaseForm.reset();
+    openModal('release');
 }
 
 const activeModal = ref(null);
@@ -549,8 +719,9 @@ const anyModalFormProcessing = computed(
         || declineForm.processing
         || acceptForm.processing
         || escrowForm.processing
-        || withdrawForm.processing
-        || fundingIntentForm.processing,
+        || acknowledgeForm.processing
+        || releaseForm.processing
+        || withdrawForm.processing,
 );
 
 const clientDecisionOffer = computed(
@@ -594,6 +765,8 @@ const modalTitle = computed(() => {
         decline: 'Decline proposal',
         accept: 'Accept proposal',
         escrow: 'Confirm escrow funded',
+        acknowledge: 'Confirm delivery',
+        release: 'Release funds to freelancer',
         withdraw: 'Withdraw proposal',
     };
 
@@ -622,6 +795,12 @@ const modalIntro = computed(() => {
     if (m === 'escrow') {
         return 'You are confirming funds are in escrow so the freelancer receives the official go-ahead.';
     }
+    if (m === 'acknowledge') {
+        return 'This step does not pay the freelancer — it only records that delivery happened.';
+    }
+    if (m === 'release') {
+        return 'Please read each line carefully. Releasing escrow by mistake is difficult to reverse.';
+    }
     if (m === 'withdraw') {
         return 'Use withdraw only while the client has not accepted. After acceptance, contact support to unwind.';
     }
@@ -639,6 +818,12 @@ const modalPrimaryClass = computed(() => {
     }
     if (m === 'escrow') {
         return 'bg-amber-600 hover:bg-amber-700';
+    }
+    if (m === 'acknowledge') {
+        return 'bg-sky-600 hover:bg-sky-700';
+    }
+    if (m === 'release') {
+        return 'bg-emerald-600 hover:bg-emerald-700';
     }
 
     return 'bg-primary-600 hover:bg-primary-700';
@@ -667,6 +852,12 @@ const modalSubmitDisabled = computed(() => {
     if (m === 'withdraw') {
         return withdrawForm.processing || !withdrawForm.confirm || !withdrawForm.understand_withdraw;
     }
+    if (m === 'acknowledge') {
+        return acknowledgeForm.processing || !acknowledgeForm.confirm;
+    }
+    if (m === 'release') {
+        return releaseForm.processing || !releaseForm.confirm || !releaseForm.acknowledge_release;
+    }
 
     return true;
 });
@@ -679,6 +870,8 @@ function openModal(id) {
     declineForm.clearErrors();
     acceptForm.clearErrors();
     escrowForm.clearErrors();
+    acknowledgeForm.clearErrors();
+    releaseForm.clearErrors();
     withdrawForm.clearErrors();
     shortlistForm.reset('confirm');
     unshortlistForm.reset('confirm');
@@ -686,6 +879,8 @@ function openModal(id) {
     declineForm.reset();
     acceptForm.reset();
     escrowForm.reset();
+    acknowledgeForm.reset();
+    releaseForm.reset();
     withdrawForm.reset();
 }
 
@@ -739,6 +934,19 @@ function submitModal() {
                 confirm_funds_in_escrow: bool(escrowForm.confirm_funds_in_escrow),
             }))
             .post(route('quests.proposals.escrow-funded', [rk, oid]), { preserveScroll: true, onSuccess: closeModal });
+    } else if (m === 'acknowledge') {
+        const questKey = props.quest.route_key ?? props.quest.slug ?? props.quest.uuid ?? props.quest.id;
+        acknowledgeForm
+            .transform(() => ({ confirm: bool(acknowledgeForm.confirm) }))
+            .post(route('quests.acknowledge-delivery', questKey), { preserveScroll: true, onSuccess: closeModal });
+    } else if (m === 'release') {
+        const questKey = props.quest.route_key ?? props.quest.slug ?? props.quest.uuid ?? props.quest.id;
+        releaseForm
+            .transform(() => ({
+                confirm: bool(releaseForm.confirm),
+                acknowledge_release: bool(releaseForm.acknowledge_release),
+            }))
+            .post(route('quests.release-funds', questKey), { preserveScroll: true, onSuccess: closeModal });
     } else if (m === 'withdraw') {
         withdrawForm
             .transform(() => ({

@@ -22,44 +22,42 @@
         </button>
 
         <Teleport to="body">
-            <Transition name="ui-sel-dim">
-                <div
-                    v-if="open"
-                    class="fixed inset-0 z-[280] bg-slate-900/20 backdrop-blur-[1px]"
-                    aria-hidden="true"
-                    @click="open = false"
-                />
-            </Transition>
-            <Transition name="ui-sel-panel">
-                <ul
-                    v-if="open"
-                    ref="panelRef"
-                    tabindex="-1"
-                    class="fixed z-[290] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200/90 bg-white py-2 shadow-2xl shadow-primary-900/15 ring-1 ring-primary-100/70 outline-none"
-                    role="listbox"
-                    :style="panelStyle"
-                    @keydown="onPanelKeydown"
-                >
-                    <li v-for="(opt, idx) in options" :key="String(opt.value)">
-                        <button
-                            type="button"
-                            role="option"
-                            class="flex w-full items-start gap-3 px-4 py-3.5 text-left text-[15px] font-semibold leading-snug tracking-tight transition"
-                            :class="optionClasses(opt, idx)"
-                            :aria-selected="isSelected(opt)"
-                            @click="select(opt.value)"
-                            @mouseenter="activeIndex = idx"
-                        >
-                            <span
-                                class="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ring-2 ring-offset-1 ring-offset-white transition"
-                                :class="isSelected(opt) ? 'bg-primary-600 ring-primary-200' : 'bg-slate-200 ring-transparent'"
-                                aria-hidden="true"
-                            />
-                            <span class="min-w-0 flex-1 text-slate-900">{{ opt.label }}</span>
-                        </button>
-                    </li>
-                </ul>
-            </Transition>
+            <div
+                v-if="open"
+                class="fixed inset-0 z-[10040] bg-slate-900/25 backdrop-blur-[1px]"
+                aria-hidden="true"
+                @click="open = false"
+            />
+            <ul
+                v-if="open"
+                ref="panelRef"
+                tabindex="-1"
+                class="fixed z-[10041] min-h-[3rem] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200/90 bg-white py-2 shadow-2xl shadow-primary-900/20 ring-1 ring-primary-100/70 outline-none"
+                role="listbox"
+                :style="panelStyle"
+                @mousedown.stop
+                @click.stop
+                @keydown="onPanelKeydown"
+            >
+                <li v-for="(opt, idx) in options" :key="String(opt.value)">
+                    <button
+                        type="button"
+                        role="option"
+                        class="flex w-full items-start gap-3 px-4 py-3.5 text-left text-[15px] font-semibold leading-snug tracking-tight transition"
+                        :class="optionClasses(opt, idx)"
+                        :aria-selected="isSelected(opt)"
+                        @click="select(opt.value)"
+                        @mouseenter="activeIndex = idx"
+                    >
+                        <span
+                            class="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ring-2 ring-offset-1 ring-offset-white transition"
+                            :class="isSelected(opt) ? 'bg-primary-600 ring-primary-200' : 'bg-slate-200 ring-transparent'"
+                            aria-hidden="true"
+                        />
+                        <span class="min-w-0 flex-1 text-slate-900">{{ opt.label }}</span>
+                    </button>
+                </li>
+            </ul>
         </Teleport>
     </div>
 </template>
@@ -149,26 +147,70 @@ function optionClasses(opt, idx) {
     return 'text-slate-800 hover:bg-primary-500/[0.08] hover:text-primary-950';
 }
 
+function getTriggerEl() {
+    return triggerRef.value ?? rootRef.value?.querySelector?.('button') ?? null;
+}
+
 function updatePanelPosition() {
-    const tr = triggerRef.value;
+    const tr = getTriggerEl();
     if (!tr) {
-        return;
+        return false;
     }
     const r = tr.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0 && r.top === 0 && r.left === 0) {
+        return false;
+    }
     const vw = window.innerWidth;
+    const vh = window.innerHeight;
     const margin = 12;
     const gap = 10;
-    const maxH = Math.min(400, Math.max(160, window.innerHeight - r.bottom - margin - gap));
-    let left = r.left;
     const width = Math.min(Math.max(r.width, 220), vw - margin * 2);
-    left = Math.min(Math.max(margin, left), vw - width - margin);
+    const left = Math.min(Math.max(margin, r.left), vw - width - margin);
 
-    panelStyle.value = {
-        top: `${r.bottom + gap}px`,
-        left: `${left}px`,
-        width: `${width}px`,
-        maxHeight: `${maxH}px`,
-    };
+    const spaceBelow = vh - r.bottom - margin - gap;
+    const spaceAbove = r.top - margin - gap;
+    const preferBelow = spaceBelow >= 120 || spaceBelow >= spaceAbove;
+    const maxH = Math.min(400, Math.max(120, preferBelow ? spaceBelow : spaceAbove));
+
+    if (preferBelow) {
+        panelStyle.value = {
+            top: `${r.bottom + gap}px`,
+            left: `${left}px`,
+            width: `${width}px`,
+            maxHeight: `${maxH}px`,
+        };
+    } else {
+        panelStyle.value = {
+            top: `${Math.max(margin, r.top - gap - maxH)}px`,
+            left: `${left}px`,
+            width: `${width}px`,
+            maxHeight: `${maxH}px`,
+        };
+    }
+
+    return true;
+}
+
+function schedulePanelPosition() {
+    if (updatePanelPosition()) {
+        return;
+    }
+    requestAnimationFrame(() => {
+        if (!updatePanelPosition()) {
+            requestAnimationFrame(updatePanelPosition);
+        }
+    });
+}
+
+function openPanel() {
+    clearTypeAheadState();
+    syncActiveToSelection();
+    updatePanelPosition();
+    open.value = true;
+    nextTick(() => {
+        schedulePanelPosition();
+        panelRef.value?.focus?.();
+    });
 }
 
 function syncActiveToSelection() {
@@ -265,10 +307,11 @@ function handleTypeAhead(e) {
     }
 
     if (!open.value) {
+        updatePanelPosition();
         open.value = true;
+        activeIndex.value = found;
         nextTick(() => {
-            updatePanelPosition();
-            activeIndex.value = found;
+            schedulePanelPosition();
             panelRef.value?.focus?.();
             scrollOptionIntoView(found);
         });
@@ -290,12 +333,7 @@ function onTriggerKeydown(e) {
         e.preventDefault();
         clearTypeAheadState();
         if (!open.value) {
-            open.value = true;
-            syncActiveToSelection();
-            nextTick(() => {
-                updatePanelPosition();
-                panelRef.value?.focus?.();
-            });
+            openPanel();
         }
 
         return;
@@ -352,15 +390,12 @@ function toggle() {
     if (props.disabled) {
         return;
     }
-    open.value = !open.value;
     if (open.value) {
-        clearTypeAheadState();
-        syncActiveToSelection();
-        nextTick(() => {
-            updatePanelPosition();
-            panelRef.value?.focus?.();
-        });
+        open.value = false;
+
+        return;
     }
+    openPanel();
 }
 
 function select(v) {
@@ -393,27 +428,33 @@ function commitActive() {
 
 function onScrollOrResize() {
     if (open.value) {
-        updatePanelPosition();
+        schedulePanelPosition();
     }
 }
 
-watch(open, (v) => {
+watch(
+    open,
+    (v) => {
     if (v) {
+        schedulePanelPosition();
         window.addEventListener('scroll', onScrollOrResize, true);
         window.addEventListener('resize', onScrollOrResize);
     } else {
+        panelStyle.value = {};
         window.removeEventListener('scroll', onScrollOrResize, true);
         window.removeEventListener('resize', onScrollOrResize);
         activeIndex.value = -1;
         clearTypeAheadState();
     }
-});
+    },
+    { flush: 'post' },
+);
 
 watch(
     () => props.options,
     () => {
         if (open.value) {
-            nextTick(updatePanelPosition);
+            nextTick(schedulePanelPosition);
         }
     },
     { deep: true },

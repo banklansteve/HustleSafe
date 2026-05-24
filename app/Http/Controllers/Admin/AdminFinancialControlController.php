@@ -25,10 +25,7 @@ class AdminFinancialControlController extends Controller
             'escrow' => fn () => $this->finance->escrowPage($request),
             'revenue' => fn () => $this->finance->revenuePage(),
             'ledger' => fn () => $this->finance->ledgerPage($request),
-            'payouts' => fn () => [
-                'queue' => [],
-                'message' => 'Payout rail integration is scaffolded here; completed admin releases and payout ledger entries will appear in this queue.',
-            ],
+            'payouts' => fn () => $this->finance->payoutsPage($request),
             'refunds' => fn () => [
                 'queue' => [],
                 'message' => 'Refund review workflows are scaffolded here; refund ledger entries and disputed escrows will appear in this queue.',

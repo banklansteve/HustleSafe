@@ -6,6 +6,7 @@ use App\Models\AdminComplianceRequest;
 use App\Models\AdminFinancialLedgerEntry;
 use App\Models\AdminFraudCase;
 use App\Models\AdminNotification;
+use App\Services\Operations\StaffNotificationCentreService;
 use App\Models\AdminRiskRule;
 use App\Models\AdminTask;
 use App\Models\Quest;
@@ -18,6 +19,8 @@ use Illuminate\Support\Str;
 
 class AdminCommandCentreService
 {
+    public function __construct(private readonly StaffNotificationCentreService $notificationCentre) {}
+
     public function search(string $term): array
     {
         $q = trim($term);
@@ -81,8 +84,8 @@ class AdminCommandCentreService
                 'critical' => $items->where('priority', 'critical')->whereNull('actioned_at')->count(),
                 'snoozed' => AdminNotification::query()->where('snoozed_until', '>', now())->count(),
             ],
-            'critical_alerts' => $items->where('priority', 'critical')->whereNull('actioned_at')->values()->map(fn (AdminNotification $n) => $this->notificationRow($n)),
-            'items' => $items->map(fn (AdminNotification $n) => $this->notificationRow($n))->values(),
+            'critical_alerts' => $items->where('priority', 'critical')->whereNull('actioned_at')->values()->map(fn (AdminNotification $n) => $this->notificationRow($n, $admin)),
+            'items' => $items->map(fn (AdminNotification $n) => $this->notificationRow($n, $admin))->values(),
             'preferences' => collect(['disputes', 'payments', 'verifications', 'flags', 'security', 'system'])->map(fn ($category) => [
                 'category' => $category,
                 'in_app' => true,
@@ -272,8 +275,12 @@ class AdminCommandCentreService
         }
     }
 
-    private function notificationRow(AdminNotification $notification): array
+    private function notificationRow(AdminNotification $notification, ?User $viewer): array
     {
+        $actionUrl = $viewer
+            ? $this->notificationCentre->resolvedActionUrl($notification, $viewer)
+            : $notification->action_url;
+
         return [
             'id' => $notification->id,
             'category' => $notification->category,
@@ -281,7 +288,7 @@ class AdminCommandCentreService
             'title' => $notification->title,
             'body' => $notification->body,
             'action_label' => $notification->action_label,
-            'action_url' => $notification->action_url,
+            'action_url' => $actionUrl,
             'read' => $notification->read_at !== null,
             'created_at' => $notification->created_at?->toIso8601String(),
         ];

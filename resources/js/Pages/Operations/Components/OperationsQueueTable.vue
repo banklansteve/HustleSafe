@@ -1,14 +1,22 @@
 <template>
-    <div class="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm ring-1 ring-slate-100">
-        <div class="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm ring-1 ring-slate-100">
+        <div
+            v-if="showSearch || showPerPage"
+            class="flex flex-col gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
             <div class="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
                 <input
+                    v-if="showSearch"
                     v-model="searchModel"
                     type="search"
                     class="min-h-10 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
                     :placeholder="searchPlaceholder"
                 />
-                <select v-model="perPageModel" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                <select
+                    v-if="showPerPage"
+                    v-model="perPageModel"
+                    class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-700"
+                >
                     <option :value="15">15 / page</option>
                     <option :value="25">25 / page</option>
                     <option :value="50">50 / page</option>
@@ -86,6 +94,8 @@ const props = defineProps({
     emptyMessage: { type: String, default: 'No items in this queue.' },
     searchPlaceholder: { type: String, default: 'Search loaded results…' },
     rowKeyField: { type: String, default: 'id' },
+    showSearch: { type: Boolean, default: true },
+    showPerPage: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['update:search', 'update:perPage', 'sort', 'page', 'open']);

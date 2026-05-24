@@ -17,9 +17,8 @@
                 </div>
             </div>
 
-            <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="kyc-tab" aria-label="KYC sections" />
-
-            <AdminTabPanel v-model="activeTab" value="queue" id-prefix="kyc-tab">
+            <AdminTabbedPage v-model="activeTab" :tabs="tabs" id-prefix="kyc-tab" aria-label="KYC sections">
+            <AdminTabPanel :current-tab="activeTab" value="queue" id-prefix="kyc-tab">
                 <AdminPanel title="Verification queue" description="Only cases needing human judgment appear here. Clear, high-confidence API matches can auto-approve outside this queue.">
                     <div class="mb-4 grid gap-3 md:grid-cols-[1fr_10rem_10rem_10rem_auto]">
                         <input v-model="filtersState.q" type="search" placeholder="Search name or email…" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @input="debouncedApply" />
@@ -96,7 +95,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="analytics" id-prefix="kyc-tab" class="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+            <AdminTabPanel :current-tab="activeTab" value="analytics" id-prefix="kyc-tab" class="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
                 <AdminPanel title="Verification funnel" description="How users move from signup to verified status.">
                     <div class="space-y-3">
                         <div v-for="step in analytics.funnel" :key="step.label" class="rounded-3xl border p-4" :class="shell.card">
@@ -142,7 +141,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="settings" id-prefix="kyc-tab">
+            <AdminTabPanel :current-tab="activeTab" value="settings" id-prefix="kyc-tab">
                 <AdminPanel title="KYC settings" description="Super-admin controls for providers, confidence thresholds, feature gates, resubmission rules, fees, and limits.">
                     <form class="grid gap-5 xl:grid-cols-2" @submit.prevent="saveSettings">
                         <div class="space-y-4">
@@ -187,6 +186,7 @@
                     </form>
                 </AdminPanel>
             </AdminTabPanel>
+            </AdminTabbedPage>
         </div>
 
         <AdminSlideOver :open="reviewOpen" :title="selectedCase?.user?.name || 'Verification review'" eyebrow="KYC review" @close="reviewOpen = false">
@@ -272,7 +272,7 @@
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
-import AdminTabs from '@/Components/Admin/AdminTabs.vue';
+import AdminTabbedPage from '@/Components/Admin/AdminTabbedPage.vue';
 import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';

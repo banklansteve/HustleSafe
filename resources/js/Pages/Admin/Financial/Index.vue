@@ -4,6 +4,16 @@
         subtitle="Monitor escrow, revenue, ledger movements, payouts, and refunds with fintech-grade clarity."
     >
         <div class="space-y-5">
+            <div v-if="isSuperAdmin" class="flex flex-wrap items-center justify-end gap-2">
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-2 rounded-full bg-primary-600 px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-primary-700"
+                    @click="platformFeesOpen = true"
+                >
+                    Platform fee ledger
+                </button>
+            </div>
+
             <div class="grid gap-3 md:grid-cols-4">
                 <div v-for="item in summaryItems" :key="item.label" class="rounded-3xl border p-4 shadow-sm transition" :class="[shell.card, changedKeys.includes(item.key) ? 'scale-[1.02] ring-2 ring-primary-400' : '']">
                     <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ item.label }}</p>
@@ -12,9 +22,8 @@
                 </div>
             </div>
 
-            <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="financial-tab" aria-label="Financial control sections" />
-
-            <AdminTabPanel v-model="activeTab" value="escrow" id-prefix="financial-tab" class="space-y-5">
+            <AdminTabbedPage v-model="activeTab" :tabs="tabs" id-prefix="financial-tab" aria-label="Financial control sections">
+            <AdminTabPanel :current-tab="activeTab" value="escrow" id-prefix="financial-tab" class="space-y-5">
                 <div class="grid gap-3 md:grid-cols-3">
                     <div v-for="tile in escrow.tiles" :key="tile.label" class="rounded-3xl border p-4" :class="shell.card">
                         <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ tile.label }}</p>
@@ -68,7 +77,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="revenue" id-prefix="financial-tab" class="space-y-5">
+            <AdminTabPanel :current-tab="activeTab" value="revenue" id-prefix="financial-tab" class="space-y-5">
                 <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     <div v-for="kpi in revenue.kpis" :key="kpi.label" class="rounded-3xl border p-4" :class="shell.card">
                         <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ kpi.label }}</p>
@@ -96,7 +105,7 @@
                 </div>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="ledger" id-prefix="financial-tab" class="space-y-5">
+            <AdminTabPanel :current-tab="activeTab" value="ledger" id-prefix="financial-tab" class="space-y-5">
                 <AdminPanel title="Transaction ledger" description="Immutable append-only financial movement log.">
                     <div class="mb-4 grid gap-3 md:grid-cols-4">
                         <input v-model="ledgerFilters.q" type="search" placeholder="Transaction ID, user, quest…" class="rounded-2xl border px-4 py-3 text-sm font-semibold md:col-span-2" :class="shell.input" @input="debouncedApplyLedger" />
@@ -150,17 +159,80 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="payouts" id-prefix="financial-tab" class="rounded-3xl border p-6" :class="shell.card">
-                <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ activeSection }}</p>
-                <h2 class="mt-2 text-2xl font-black" :class="shell.title">{{ placeholderMessage }}</h2>
-                <p class="mt-2 text-sm font-semibold" :class="shell.cardMuted">This section is scaffolded into the Financial Control Centre and ready for payout/refund processor integrations.</p>
+            <AdminTabPanel :current-tab="activeTab" value="payouts" id-prefix="financial-tab" class="space-y-5">
+                <div class="grid gap-3 md:grid-cols-3">
+                    <div class="rounded-3xl border p-4" :class="shell.card">
+                        <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">Minimum payout</p>
+                        <p class="mt-2 text-xl font-black" :class="shell.title">{{ payouts.summary?.minimum_payout ?? '—' }}</p>
+                    </div>
+                    <div class="rounded-3xl border p-4" :class="shell.card">
+                        <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">Pending withdrawals</p>
+                        <p class="mt-2 text-xl font-black" :class="shell.title">{{ payouts.summary?.pending ?? '0' }}</p>
+                    </div>
+                </div>
+                <AdminPanel title="Payout queue" description="Wallet withdrawal requests awaiting processing.">
+                    <div class="mb-4 grid gap-3 md:grid-cols-[1fr_12rem]">
+                        <input v-model="payoutFilters.q" type="search" placeholder="Search freelancer name or email…" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @input="debouncedApplyPayouts" />
+                        <select v-model="payoutFilters.status" class="rounded-2xl border px-3 py-3 text-sm font-bold" :class="shell.input" @change="applyPayoutFilters">
+                            <option value="">All statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="processing">Processing</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
+                        </select>
+                    </div>
+                    <div class="overflow-x-auto rounded-2xl border" :class="shell.card">
+                        <table class="min-w-full text-left text-sm" :class="['divide-y', shell.tableDivide]">
+                            <thead class="text-[10px] font-black uppercase tracking-wider" :class="shell.tableHead">
+                                <tr>
+                                    <th class="px-4 py-3">Reference</th>
+                                    <th class="px-4 py-3">User</th>
+                                    <th class="px-4 py-3">Amount</th>
+                                    <th class="px-4 py-3">Fee</th>
+                                    <th class="px-4 py-3">Status</th>
+                                    <th class="px-4 py-3">Requested</th>
+                                </tr>
+                            </thead>
+                            <tbody :class="['divide-y', shell.tableDivide]">
+                                <tr v-for="row in payouts.queue?.data || []" :key="row.id" class="hover:bg-slate-50 dark:hover:bg-white/5">
+                                    <td class="px-4 py-3 font-mono text-xs">{{ row.reference }}</td>
+                                    <td class="px-4 py-3">
+                                        <p class="font-bold">{{ row.user }}</p>
+                                        <p class="text-xs text-slate-500">{{ row.email }}</p>
+                                    </td>
+                                    <td class="px-4 py-3 font-black">{{ row.amount }}</td>
+                                    <td class="px-4 py-3">{{ row.fee }}</td>
+                                    <td class="px-4 py-3 capitalize">{{ row.status }}</td>
+                                    <td class="px-4 py-3 text-xs" :class="shell.cardMuted">{{ dateLabel(row.created_at) }}</td>
+                                </tr>
+                                <tr v-if="!(payouts.queue?.data || []).length">
+                                    <td colspan="6" class="px-4 py-10 text-center text-sm font-semibold text-slate-500">No withdrawals in this view.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <nav v-if="payouts.queue?.links?.length > 3" class="mt-4 flex flex-wrap justify-center gap-2">
+                        <component
+                            :is="link.url ? Link : 'span'"
+                            v-for="link in payouts.queue.links"
+                            :key="String(link.label) + (link.url || 'x')"
+                            :href="link.url || undefined"
+                            class="min-w-[2.5rem] rounded-lg px-3 py-1.5 text-center text-xs font-bold"
+                            :class="[link.active ? 'bg-primary-600 text-white' : 'border border-slate-200 dark:border-white/10', !link.url ? 'opacity-40' : '']"
+                            preserve-state
+                        >
+                            <span v-html="link.label" />
+                        </component>
+                    </nav>
+                </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="refunds" id-prefix="financial-tab" class="rounded-3xl border p-6" :class="shell.card">
+            <AdminTabPanel :current-tab="activeTab" value="refunds" id-prefix="financial-tab" class="rounded-3xl border p-6" :class="shell.card">
                 <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ activeSection }}</p>
                 <h2 class="mt-2 text-2xl font-black" :class="shell.title">{{ placeholderMessage }}</h2>
                 <p class="mt-2 text-sm font-semibold" :class="shell.cardMuted">This section is scaffolded into the Financial Control Centre and ready for payout/refund processor integrations.</p>
             </AdminTabPanel>
+            </AdminTabbedPage>
         </div>
 
         <AdminSlideOver :open="escrowOpen" :title="selectedEscrow?.title || 'Escrow ledger'" eyebrow="Escrow account" @close="escrowOpen = false">
@@ -218,19 +290,26 @@
                 </div>
             </dl>
         </AdminSlideOver>
+
+        <AdminPlatformFeesPanel :open="platformFeesOpen" @close="platformFeesOpen = false" />
     </AdminShell>
 </template>
 
 <script setup>
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
+import AdminPlatformFeesPanel from '@/Components/Admin/AdminPlatformFeesPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
-import AdminTabs from '@/Components/Admin/AdminTabs.vue';
+import AdminTabbedPage from '@/Components/Admin/AdminTabbedPage.vue';
 import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
-import { router } from '@inertiajs/vue3';
-import { computed, defineComponent, h, reactive, ref } from 'vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { computed, defineComponent, h, reactive, ref, watch } from 'vue';
+
+const page = usePage();
+const isSuperAdmin = computed(() => page.props.auth?.user?.role?.slug === 'super_admin');
+const platformFeesOpen = ref(false);
 
 const props = defineProps({
     section: { type: String, required: true },
@@ -259,10 +338,22 @@ const tabs = [
     { key: 'refunds', label: 'Refunds' },
 ];
 const { activeTab } = useTabState(tabs.map((tab) => tab.key), props.section || 'escrow');
+watch(
+    () => props.section,
+    (section) => {
+        if (section && tabs.some((tab) => tab.key === section)) {
+            activeTab.value = section;
+        }
+    },
+);
 const activeSection = computed(() => activeTab.value);
 
 const escrowStatuses = ['awaiting_funding', 'funded', 'partially_released', 'released', 'held', 'frozen', 'disputed', 'refunded'];
 const escrowFilters = reactive({ q: props.escrow.filters?.q || '', status: props.escrow.filters?.status || '' });
+const payoutFilters = reactive({
+    q: props.payouts?.filters?.q || '',
+    status: props.payouts?.filters?.status || '',
+});
 const ledgerFilters = reactive({
     q: props.ledger.filters?.q || '',
     type: props.ledger.filters?.type || '',
@@ -309,6 +400,15 @@ function applyLedgerFilters() {
 function debouncedApplyLedger() {
     clearTimeout(filterTimer);
     filterTimer = setTimeout(applyLedgerFilters, 250);
+}
+
+function applyPayoutFilters() {
+    router.get(route('admin.financial.index'), { tab: 'payouts', ...clean(payoutFilters) }, { preserveScroll: true, preserveState: true });
+}
+
+function debouncedApplyPayouts() {
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(applyPayoutFilters, 250);
 }
 
 async function openEscrow(row) {

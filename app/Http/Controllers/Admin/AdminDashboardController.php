@@ -24,7 +24,7 @@ class AdminDashboardController extends Controller
         $payload = $this->analytics->dashboardPayload();
         $payload['resource_groups'] = AdminManagementRegistry::groupedForUi();
         $this->feed->seedRecentFromExistingData();
-        $payload['live_activity'] = $this->feed->widgetPayload();
+        $payload['live_activity'] = $this->feed->widgetPayload(3);
 
         return Inertia::render('Admin/Dashboard', $payload);
     }

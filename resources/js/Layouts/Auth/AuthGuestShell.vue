@@ -10,12 +10,8 @@
             href="/"
             class="relative mb-8 inline-flex items-center gap-2 rounded-xl px-1 py-0.5 text-slate-900 transition hover:bg-white/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
         >
-            <span
-                class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600 text-sm font-black text-white shadow-sm ring-1 ring-primary-500/30"
-            >
-                HS
-            </span>
-            <span class="font-display text-xl font-bold tracking-tight">HustleSafe</span>
+            <HustleSafeLogo variant="icon" theme="light" icon-class="h-10 w-10" />
+            <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-8 w-auto max-w-[9.5rem]" />
         </Link>
         <div
             class="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-xl shadow-slate-300/45 ring-1 ring-slate-200/90"
@@ -26,5 +22,6 @@
 </template>
 
 <script setup>
+import HustleSafeLogo from '@/Components/Brand/HustleSafeLogo.vue';
 import { Link } from '@inertiajs/vue3';
 </script>

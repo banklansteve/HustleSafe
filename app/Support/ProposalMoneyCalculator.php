@@ -43,6 +43,10 @@ final class ProposalMoneyCalculator
         $travel = max(0, (int) ($pricing['travel_cost_ngn'] ?? 0)) * 100;
         $stamp = max(0, (int) ($pricing['stamp_duty_ngn'] ?? 0)) * 100;
         $platform = max(0, (int) ($pricing['platform_fee_ngn'] ?? 0)) * 100;
+        if ($platform === 0) {
+            $baseForFee = $prof + $matMinor + $travel;
+            $platform = (int) round($baseForFee * (PlatformSettings::platformFeePercent() / 100));
+        }
         $discount = max(0, (int) ($pricing['discount_ngn'] ?? 0)) * 100;
         $baseMinor = $prof + $matMinor + $travel;
         $vatRate = (float) config('quests.proposal_vat_percent', 7.5);

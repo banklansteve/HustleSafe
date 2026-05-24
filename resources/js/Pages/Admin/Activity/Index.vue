@@ -3,8 +3,19 @@
         title="Audit log"
         subtitle="Immutable-style trail of super-admin actions (role grants, CSV imports, support note batches)."
     >
-        <div class="mb-6 flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/40 p-4 ring-1 ring-white/5 sm:flex-row sm:items-center sm:justify-between">
-            <p class="text-sm font-semibold text-slate-400">Full export for compliance packs (latest first, chunked on the server).</p>
+        <div class="mb-6 flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between" :class="shell.card">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <p class="text-sm font-semibold" :class="shell.cardMuted">Full export for compliance packs (latest first, chunked on the server).</p>
+                <select
+                    :value="filters.action"
+                    class="rounded-xl border px-3 py-2 text-xs font-bold"
+                    :class="shell.input"
+                    @change="applyActionFilter"
+                >
+                    <option value="">All actions</option>
+                    <option value="quest_completion">Quest completion & releases</option>
+                </select>
+            </div>
             <div class="flex flex-wrap gap-2">
                 <a :href="route('admin.activity.export')" class="inline-flex rounded-xl bg-teal-500 px-4 py-2 text-sm font-black uppercase tracking-wide text-slate-950 hover:bg-teal-400">
                     Export CSV
@@ -15,9 +26,9 @@
             </div>
         </div>
 
-        <div class="overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/40 ring-1 ring-white/5">
-            <table class="min-w-full divide-y divide-white/10 text-left text-sm">
-                <thead class="bg-slate-900/80 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+        <div class="overflow-x-auto rounded-2xl border" :class="shell.card">
+            <table class="min-w-full text-left text-sm" :class="['divide-y', shell.tableDivide]">
+                <thead class="text-[10px] font-black uppercase tracking-[0.18em]" :class="shell.tableHead">
                     <tr>
                         <th class="px-4 py-3">When</th>
                         <th class="px-4 py-3">Actor</th>
@@ -25,14 +36,15 @@
                         <th class="px-4 py-3">Subject</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-white/5">
-                    <tr v-for="log in logs.data" :key="log.id" class="hover:bg-white/5">
-                        <td class="px-4 py-3 text-xs text-slate-400">{{ formatDate(log.created_at) }}</td>
-                        <td class="px-4 py-3 text-slate-200">{{ log.actor?.email ?? '—' }}</td>
-                        <td class="px-4 py-3 font-mono text-xs text-teal-200">{{ log.action }}</td>
-                        <td class="px-4 py-3 text-xs text-slate-500">
+                <tbody :class="['divide-y', shell.tableDivide]">
+                    <tr v-for="log in logs.data" :key="log.id" class="transition hover:bg-slate-50 dark:hover:bg-white/5">
+                        <td class="px-4 py-3 text-xs" :class="shell.cardMuted">{{ formatDate(log.created_at) }}</td>
+                        <td class="px-4 py-3" :class="shell.tableRow">{{ log.actor?.email ?? (log.properties?.actor_label === 'system' ? 'System' : '—') }}</td>
+                        <td class="px-4 py-3 font-mono text-xs text-primary-700 dark:text-teal-200">{{ log.action }}</td>
+                        <td class="px-4 py-3 text-xs" :class="shell.cardMuted">
                             <span v-if="log.subject_type">{{ shortType(log.subject_type) }}#{{ log.subject_id ?? '—' }}</span>
                             <span v-else>—</span>
+                            <span v-if="log.properties?.quest_title" class="mt-1 block font-semibold text-slate-600 dark:text-slate-300">{{ log.properties.quest_title }}</span>
                         </td>
                     </tr>
                 </tbody>
@@ -58,12 +70,23 @@
 
 <script setup>
 import AdminShell from '@/Layouts/AdminShell.vue';
-import { Link } from '@inertiajs/vue3';
+import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
+import { Link, router } from '@inertiajs/vue3';
 
-defineProps({
+const { shell } = useInjectedAdminTheme();
+
+const props = defineProps({
     logs: { type: Object, required: true },
     filters: { type: Object, required: true },
 });
+
+function applyActionFilter(event) {
+    router.get(
+        route('admin.activity.index'),
+        { action: event.target.value, per_page: props.filters.per_page },
+        { preserveState: true, preserveScroll: true },
+    );
+}
 
 function formatDate(iso) {
     if (!iso) {

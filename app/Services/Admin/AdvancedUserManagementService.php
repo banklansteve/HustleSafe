@@ -418,10 +418,15 @@ class AdvancedUserManagementService
      */
     private function activity(User $user): array
     {
+        $userClass = User::class;
         $feed = class_exists(AdminActivityFeedEvent::class)
             ? AdminActivityFeedEvent::query()
-                ->where(function (Builder $q) use ($user): void {
-                    $q->where('subject_user_id', $user->id)
+                ->where(function (Builder $q) use ($user, $userClass): void {
+                    $q->where(function (Builder $sub) use ($user, $userClass): void {
+                        $sub->where('subject_type', $userClass)
+                            ->where('subject_id', $user->id);
+                    })
+                        ->orWhere('actor_user_id', $user->id)
                         ->orWhereJsonContains('entities', [['type' => 'user', 'id' => $user->id]]);
                 })
                 ->latest('occurred_at')
@@ -437,21 +442,25 @@ class AdvancedUserManagementService
                 ])
             : collect();
 
-        $logs = ActivityLog::query()
-            ->where('subject_user_id', $user->id)
-            ->latest('created_at')
-            ->limit(40)
-            ->get()
-            ->map(fn (ActivityLog $log) => [
-                'id' => 'log-'.$log->id,
-                'type' => $log->type,
-                'category' => 'admin',
-                'title' => $log->title,
-                'summary' => $log->body,
-                'occurred_at' => $log->created_at?->toIso8601String(),
-            ]);
+        $logs = collect();
+        if (\Illuminate\Support\Facades\Schema::hasTable('activity_logs')
+            && \Illuminate\Support\Facades\Schema::hasColumn('activity_logs', 'subject_user_id')) {
+            $logs = ActivityLog::query()
+                ->where('subject_user_id', $user->id)
+                ->latest('created_at')
+                ->limit(40)
+                ->get()
+                ->map(fn (ActivityLog $log) => [
+                    'id' => 'log-'.$log->id,
+                    'type' => $log->type,
+                    'category' => 'admin',
+                    'title' => $log->title,
+                    'summary' => $log->body,
+                    'occurred_at' => $log->created_at?->toIso8601String(),
+                ]);
+        }
 
-        return $feed->concat($logs)->sortByDesc('occurred_at')->values()->all();
+        return $feed->concat($logs)->sortByDesc(fn ($row) => $row['occurred_at'] ?? '')->values()->all();
     }
 
     /**
@@ -461,8 +470,7 @@ class AdvancedUserManagementService
     {
         $quests = Quest::query()
             ->with('questCategory:id,name')
-            ->where('client_id', $user->id)
-            ->orWhere('freelancer_id', $user->id)
+            ->where(fn (Builder $q) => $q->where('client_id', $user->id)->orWhere('freelancer_id', $user->id))
             ->latest()
             ->limit(80)
             ->get();
@@ -509,8 +517,7 @@ class AdvancedUserManagementService
     {
         return Quest::query()
             ->with(['client:id,name,email', 'freelancer:id,name,email', 'questCategory:id,name'])
-            ->where('client_id', $user->id)
-            ->orWhere('freelancer_id', $user->id)
+            ->where(fn (Builder $q) => $q->where('client_id', $user->id)->orWhere('freelancer_id', $user->id))
             ->latest()
             ->limit(80)
             ->get()
@@ -557,8 +564,7 @@ class AdvancedUserManagementService
     {
         return Review::query()
             ->with(['reviewer:id,name,email', 'reviewee:id,name,email', 'quest:id,title'])
-            ->where('reviewer_id', $user->id)
-            ->orWhere('reviewee_id', $user->id)
+            ->where(fn (Builder $q) => $q->where('reviewer_id', $user->id)->orWhere('reviewee_id', $user->id))
             ->latest()
             ->limit(80)
             ->get()

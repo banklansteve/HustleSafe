@@ -71,6 +71,13 @@ class Quest extends Model
         'refunded_minor',
         'due_at',
         'escrow_funded_at',
+        'delivery_acknowledged_at',
+        'delivery_acknowledged_by',
+        'release_authorized_at',
+        'release_authorized_by',
+        'release_hold_until',
+        'release_hold_reason',
+        'release_hold_by',
         'escrow_held_at',
         'escrow_hold_reason',
         'escrow_hold_expected_resolution_at',
@@ -78,6 +85,7 @@ class Quest extends Model
         'escrow_freeze_reason',
         'delivered_at',
         'completed_at',
+        'funds_released_at',
         'auto_completed_at',
         'completed_on_time',
         'dispute_opened',
@@ -191,6 +199,10 @@ class Quest extends Model
             'terms_accepted_at' => 'datetime',
             'due_at' => 'datetime',
             'escrow_funded_at' => 'datetime',
+            'delivery_acknowledged_at' => 'datetime',
+            'release_authorized_at' => 'datetime',
+            'release_hold_until' => 'datetime',
+            'funds_released_at' => 'datetime',
             'escrow_held_at' => 'datetime',
             'escrow_hold_expected_resolution_at' => 'datetime',
             'escrow_frozen_at' => 'datetime',
@@ -305,6 +317,14 @@ class Quest extends Model
     public function lifecycleEmailLogs(): HasMany
     {
         return $this->hasMany(QuestLifecycleEmailLog::class);
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<PaymentEscrow, $this>
+     */
+    public function paymentEscrow(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(PaymentEscrow::class);
     }
 
     /**

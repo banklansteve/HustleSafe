@@ -64,7 +64,7 @@ return [
     | Display-only platform fee % (copy / emails — billing integration separate)
     |--------------------------------------------------------------------------
     */
-    'platform_fee_percent_display' => (float) env('QUEST_PLATFORM_FEE_PERCENT_DISPLAY', 5),
+    'platform_fee_percent_display' => (float) env('QUEST_PLATFORM_FEE_PERCENT_DISPLAY', 12),
 
     'high_value_proposal_minor' => (int) env('QUEST_HIGH_VALUE_PROPOSAL_MINOR', 5_000_000),
 ];

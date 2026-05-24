@@ -68,6 +68,21 @@ class AdminSettingsRegistry
                 continue;
             }
 
+            if ($sectionKey === 'maintenance' && $key === 'maintenance.enabled') {
+                $enabled = $this->castValue($values[$key], 'boolean');
+                $maintenance = app(MaintenanceModeService::class);
+                if ($enabled) {
+                    $maintenance->enable(
+                        $values['maintenance.message'] ?? null,
+                        $values['maintenance.return_time'] ?? null,
+                    );
+                } else {
+                    $maintenance->disable();
+                }
+
+                continue;
+            }
+
             $newValue = $this->castValue($values[$key], $definition['type']);
             $record = AdminPlatformSetting::query()->firstOrNew(['key' => $key]);
             $oldValue = $record->exists ? ($record->value['value'] ?? null) : $definition['default'];
@@ -78,6 +93,8 @@ class AdminSettingsRegistry
                 'is_sensitive' => (bool) ($definition['sensitive'] ?? false),
                 'updated_by_admin_id' => $request->user()?->id,
             ])->save();
+
+            \App\Support\PlatformSettings::forgetCache($key);
 
             if ($oldValue !== $newValue) {
                 $this->logger->log(
@@ -144,9 +161,13 @@ class AdminSettingsRegistry
             ]),
             $this->section('verification', 'Verification Tiers & Limits', 'Control what users can do at each trust tier.', $tierFields, 'matrix'),
             $this->section('financial', 'Financial & Escrow', 'Fees, escrow requirements, payout cadence, VAT and currency display.', [
-                $this->setting('financial.client_fee_percent', 'Client-side service fee %', 'number', 5, 'Added to client escrow funding.'),
+                $this->setting('financial.platform_fee_percent', 'Platform fee on quest quotes (%)', 'number', 12, 'Applied to proposal subtotals (professional fee + materials + travel) and escrow release calculations.'),
+                $this->setting('financial.high_value_quest_threshold_minor', 'High-value quest threshold (kobo)', 'money', 100_000_000, 'Quests at or above this budget may require extra verification or category approval rules.'),
+                $this->setting('financial.client_fee_percent', 'Legacy client-side fee % (display)', 'number', 12, 'Deprecated alias — prefer platform fee % above.'),
                 $this->setting('financial.freelancer_fee_percent', 'Freelancer-side service fee %', 'number', 10, 'Deducted from freelancer payout.'),
                 $this->setting('financial.minimum_escrow_minor', 'Minimum contract value requiring escrow', 'money', 0, 'Zero makes escrow mandatory for all contracts.'),
+                $this->setting('financial.escrow_release_cooldown_hours', 'Minimum hours after escrow funding before release', 'number', 24, 'Clients cannot mark complete or release funds until this period passes after escrow is funded. Super admins may override from Financial Control.'),
+                $this->setting('financial.high_value_release_authorization_minor', 'High-value release authorisation threshold (kobo)', 'money', 100_000_000, 'Contracts at or above this amount (₦1,000,000.00) require super-admin authorisation before escrow can be released, even after the cooldown.'),
                 $this->setting('financial.auto_release_hours', 'Escrow auto-release period', 'number', 72, 'Shorter favours freelancers, longer favours clients.'),
                 $this->setting('financial.minimum_payout_minor', 'Minimum payout threshold', 'money', 500000, 'Minimum pending earnings before payout.'),
                 $this->setting('financial.payout_schedule', 'Payout processing schedule', 'select', 'daily', 'Instant, daily batch or twice-weekly processing.', ['options' => ['instant' => 'Instant', 'daily' => 'Daily batch', 'twice_weekly' => 'Twice weekly']]),
@@ -343,9 +364,34 @@ class AdminSettingsRegistry
     {
         return match ($type) {
             'number', 'money' => is_numeric($value) ? (float) $value : 0,
-            'boolean' => filter_var($value, FILTER_VALIDATE_BOOL),
+            'boolean' => $this->castBoolean($value),
             default => is_array($value) ? $value : (string) $value,
         };
+    }
+
+    private function castBoolean(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (int) $value === 1;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+
+            if (in_array($normalized, ['1', 'true', 'yes', 'on'], true)) {
+                return true;
+            }
+
+            if (in_array($normalized, ['0', 'false', 'no', 'off', ''], true)) {
+                return false;
+            }
+        }
+
+        return (bool) filter_var($value, FILTER_VALIDATE_BOOLEAN);
     }
 
     private function mask(mixed $value): string

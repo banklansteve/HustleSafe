@@ -222,7 +222,7 @@
 
                     <AdminTabs :model-value="activeTab" :tabs="tabs" id-prefix="user-profile-tab" aria-label="User profile sections" @update:model-value="loadTab" />
 
-                    <AdminTabPanel v-model="activeTab" value="overview" id-prefix="user-profile-tab" class="space-y-5">
+                    <AdminTabPanel :current-tab="activeTab" value="overview" id-prefix="user-profile-tab" class="space-y-5">
                         <div class="grid gap-3 sm:grid-cols-2">
                             <InfoCard label="Phone" :value="profile.overview.user.phone || '—'" />
                             <InfoCard label="Location" :value="[profile.overview.user.city, profile.overview.user.state].filter(Boolean).join(', ') || '—'" />
@@ -270,7 +270,7 @@
                         <ListBlock title="Sanctions" :items="profile.overview.sanctions" empty="No sanctions on this user." />
                     </AdminTabPanel>
 
-                    <AdminTabPanel v-model="activeTab" value="notes" id-prefix="user-profile-tab" class="space-y-4">
+                    <AdminTabPanel :current-tab="activeTab" value="notes" id-prefix="user-profile-tab" class="space-y-4">
                         <form class="space-y-3 rounded-3xl border p-4" :class="shell.card" @submit.prevent="addNote">
                             <textarea v-model="noteBody" rows="4" class="w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" placeholder="Write a private append-only admin note…" required />
                             <label class="flex items-center gap-2 text-xs font-bold"><input v-model="shareNote" type="checkbox" /> Share context with regular admins</label>
@@ -279,7 +279,7 @@
                         <ListBlock title="Admin notes" :items="profile.tabData" empty="No admin notes yet." />
                     </AdminTabPanel>
 
-                    <AdminTabPanel v-for="tab in detailTabs" :key="tab.key" v-model="activeTab" :value="tab.key" id-prefix="user-profile-tab" class="space-y-4">
+                    <AdminTabPanel v-for="tab in detailTabs" :key="tab.key" :current-tab="activeTab" :value="tab.key" id-prefix="user-profile-tab" class="space-y-4">
                         <div v-if="activeTab === 'activity'" class="grid gap-3 sm:grid-cols-2">
                             <input v-model="tabSearch" type="search" placeholder="Search this tab…" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
                             <select v-model="tabCategory" class="rounded-2xl border px-3 py-3 text-sm font-bold" :class="shell.input">

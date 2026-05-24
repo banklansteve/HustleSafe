@@ -40,7 +40,7 @@ const lightChrome = {
     canvasMuted: 'text-slate-600',
     canvasLabel: 'text-slate-500',
     navActive: 'bg-primary-600 text-white shadow-md shadow-primary-900/15',
-    navIdle: 'text-slate-600 hover:bg-primary-50 hover:text-primary-900',
+    navIdle: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
     navIconActive: 'text-white',
     navIconIdle: 'text-slate-500 group-hover:text-primary-700',
     toggleBtn: 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',

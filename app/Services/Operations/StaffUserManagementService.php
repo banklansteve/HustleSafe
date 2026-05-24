@@ -6,6 +6,7 @@ use App\Models\ActivityLog;
 use App\Models\AdminUserNote;
 use App\Models\AdminUserSanction;
 use App\Models\AdminUserTag;
+use App\Models\SupportTicket;
 use App\Models\User;
 use App\Notifications\AdminUserMessageNotification;
 use App\Services\Admin\AdvancedUserManagementService;
@@ -42,7 +43,16 @@ class StaffUserManagementService
     {
         $this->guardMemberAccount($user);
 
-        return $this->users->profile($user, $tab);
+        $user->loadCount([
+            'questOffers as proposals_count',
+            'questsAsClient as client_quests_count',
+        ]);
+
+        $payload = $this->users->profile($user, $tab);
+
+        $payload['operations_sidebar'] = $this->buildOperationsSidebar($user);
+
+        return $payload;
     }
 
     public function storeNote(User $user, User $staff, array $data, Request $request): AdminUserNote
@@ -192,5 +202,115 @@ class StaffUserManagementService
                 'user' => __('Staff cannot modify other admin accounts from this console.'),
             ]);
         }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildOperationsSidebar(User $user): array
+    {
+        $row = $this->users->row($user);
+        $role = $row['role'] ?? 'member';
+        $isFreelancer = in_array($role, ['freelancer', 'hustler'], true);
+        $joined = $user->created_at;
+
+        $sanctions = AdminUserSanction::query()
+            ->where('user_id', $user->id)
+            ->get(['type']);
+
+        $warningsCount = $sanctions->where('type', 'warning')->count();
+        $suspensionCount = $sanctions->where('type', 'suspension')->count();
+
+        $openTickets = SupportTicket::query()
+            ->where('user_id', $user->id)
+            ->whereNotIn('status', ['closed', 'resolved'])
+            ->count();
+
+        $latestTicket = SupportTicket::query()
+            ->where('user_id', $user->id)
+            ->with(['messages' => fn ($query) => $query->latest('id')->limit(1)])
+            ->latest('updated_at')
+            ->first();
+
+        $lastTicketMessage = $latestTicket?->messages->first();
+
+        $lastNote = AdminUserNote::query()
+            ->where('user_id', $user->id)
+            ->latest('id')
+            ->first();
+
+        $links = [];
+
+        if ($latestTicket) {
+            $links[] = [
+                'label' => 'Support ticket',
+                'title' => $latestTicket->subject,
+                'preview' => Str::limit(strip_tags((string) ($lastTicketMessage?->body ?? $latestTicket->description ?? '')), 140),
+                'href' => route('operations.support.index', ['q' => $user->email]),
+            ];
+        }
+
+        if ((int) ($row['open_disputes_count'] ?? 0) > 0) {
+            $links[] = [
+                'label' => 'Open disputes',
+                'title' => (string) $row['open_disputes_count'].' open case(s)',
+                'preview' => 'Review in disputes queue',
+                'href' => route('operations.disputes.index', ['q' => $user->email]),
+            ];
+        }
+
+        if ((int) ($row['pending_verifications_count'] ?? 0) > 0) {
+            $links[] = [
+                'label' => 'Verifications',
+                'title' => (string) $row['pending_verifications_count'].' pending review',
+                'preview' => 'Open verification queue',
+                'href' => route('operations.verifications.index', ['q' => $user->email]),
+            ];
+        }
+
+        if ($lastNote) {
+            $links[] = [
+                'label' => 'Latest internal note',
+                'title' => 'Staff note #'.$lastNote->id,
+                'preview' => Str::limit(strip_tags((string) $lastNote->body), 140),
+                'href' => null,
+            ];
+        }
+
+        return [
+            'tenure' => $joined ? [
+                'joined_at' => $joined->toIso8601String(),
+                'label' => $joined->diffForHumans(now(), ['parts' => 2, 'syntax' => true]),
+                'years' => round($joined->diffInDays(now()) / 365, 1),
+            ] : null,
+            'role_slug' => $role,
+            'role_label' => $row['role_label'] ?? Str::headline((string) $role),
+            'quests_count' => (int) ($user->client_quests_count ?? 0),
+            'proposals_count' => (int) ($user->proposals_count ?? 0),
+            'activity_metric_label' => $isFreelancer ? 'Proposals' : 'Quests posted',
+            'activity_metric_count' => $isFreelancer
+                ? (int) ($user->proposals_count ?? 0)
+                : (int) ($user->client_quests_count ?? 0),
+            'account_status' => $row['account_status'] ?? 'unknown',
+            'trust_score' => $row['trust_score'] ?? null,
+            'location' => collect([$row['city'] ?? null, $row['state'] ?? null])->filter()->join(', ') ?: null,
+            'categories' => $row['categories'] ?? [],
+            'pending' => [
+                'open_disputes' => (int) ($row['open_disputes_count'] ?? 0),
+                'pending_verifications' => (int) ($row['pending_verifications_count'] ?? 0),
+                'open_support_tickets' => $openTickets,
+                'under_review' => $user->under_review_at !== null,
+                'is_flagged' => (bool) ($row['is_flagged'] ?? false),
+            ],
+            'history' => [
+                'ever_banned' => $user->banned_at !== null,
+                'ever_suspended' => $user->suspended_at !== null || $suspensionCount > 0,
+                'warnings_count' => $warningsCount,
+                'suspensions_count' => $suspensionCount,
+                'currently_suspended' => $user->suspended_at !== null,
+            ],
+            'notes_count' => (int) ($row['notes_count'] ?? 0),
+            'links' => $links,
+        ];
     }
 }

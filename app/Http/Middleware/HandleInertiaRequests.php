@@ -3,12 +3,14 @@
 namespace App\Http\Middleware;
 
 use App\Services\ClientOutstandingActionsService;
+use App\Services\Support\CustomerSupportService;
 use App\Services\Admin\ContentManagementService;
 use App\Support\Admin\AdminManagementRegistry;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\UserNotificationPresenter;
 use App\Models\User;
 use App\Support\InertiaAuthUser;
+use App\Support\BroadcastClientConfig;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -90,6 +92,7 @@ class HandleInertiaRequests extends Middleware
                 'token' => fn () => $request->session()->has('success') || $request->session()->has('status') || $request->session()->has('errors') ? uniqid('flash_', true) : null,
                 'proposal_next_steps' => fn () => $request->session()->get('proposal_next_steps'),
                 'quest_submitted_next_steps' => fn () => $request->session()->get('quest_submitted_next_steps'),
+                'show_escrow_funding_notice' => fn () => (bool) $request->session()->pull('show_escrow_funding_notice'),
             ],
             'client_outstanding' => static function () use ($request) {
                 $user = $request->user();
@@ -123,6 +126,9 @@ class HandleInertiaRequests extends Middleware
 
                 return AdminManagementRegistry::sidebarNavigation();
             },
+            'platform_fee_percent' => static function () {
+                return \App\Support\PlatformSettings::platformFeePercent();
+            },
             'announcement_banner' => static function () use ($request) {
                 if ($request->user()?->role?->slug === 'admin') {
                     return null;
@@ -131,6 +137,21 @@ class HandleInertiaRequests extends Middleware
                 return app(ContentManagementService::class)->activeBannerFor($request->user());
             },
             'impersonation' => fn () => $impersonation,
+            'broadcast' => static fn () => $request->user() ? BroadcastClientConfig::forRequest() : null,
+            'reverb' => static fn () => $request->user() ? BroadcastClientConfig::forRequest() : null,
+            'customer_support_widget' => static function () use ($request) {
+                $user = $request->user();
+                if ($user === null || ! in_array($user->role?->slug, ['client', 'freelancer'], true)) {
+                    return ['enabled' => false];
+                }
+
+                $service = app(CustomerSupportService::class);
+                if (! $service->tablesReady()) {
+                    return ['enabled' => false];
+                }
+
+                return $service->widgetBootstrap($user);
+            },
         ];
     }
 }

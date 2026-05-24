@@ -269,7 +269,8 @@ class QuestDisputeWorkflowService
             ]);
 
             $this->log($dispute, $actor, 'dispute.settlement_accepted', ['offer_id' => $offer->id]);
-            $this->notifyBoth($dispute, __('Dispute resolved by settlement'), __('Parties agreed to a split. Execution still depends on escrow rails being connected.'));
+            app(DisputeEscrowSettlementService::class)->executeAcceptedSettlement($offer->fresh());
+            $this->notifyBoth($dispute, __('Dispute resolved by settlement'), __('Parties agreed to a split. Escrow movement has been applied where funds were available.'));
         });
     }
 

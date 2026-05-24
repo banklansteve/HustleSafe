@@ -1,7 +1,7 @@
 <template>
     <Teleport to="body">
         <div v-if="open" class="fixed inset-0 z-50 flex justify-end bg-slate-900/30 p-2 backdrop-blur-sm sm:p-4" @click.self="emit('close')">
-            <aside class="flex h-full w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <aside class="flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
                 <header class="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
                     <div>
                         <p class="text-[10px] font-black uppercase tracking-[0.2em] text-primary-700">{{ eyebrow }}</p>

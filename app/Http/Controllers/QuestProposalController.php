@@ -10,6 +10,8 @@ use App\Models\QuestOffer;
 use App\Notifications\ProposalViewedMilestoneNotification;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\QuestProposalPricingHintService;
+use App\Services\UserNotificationInboxService;
+use App\Support\PlatformSettings;
 use App\Support\QuestCommerceUi;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -140,11 +142,12 @@ class QuestProposalController extends Controller
             ],
             'pricing_hints' => $pricingHints,
             'vat_preset_percent' => (float) config('quests.proposal_vat_percent', 7.5),
+            'platform_fee_percent' => PlatformSettings::platformFeePercent(),
             'proposal_edit' => $this->proposalEditPayload($quest, $offer),
         ]);
     }
 
-    public function show(Request $request, Quest $quest, QuestOffer $offer): Response
+    public function show(Request $request, Quest $quest, QuestOffer $offer, UserNotificationInboxService $inbox): Response
     {
         if ((int) $offer->quest_id !== (int) $quest->id) {
             abort(404);
@@ -170,12 +173,16 @@ class QuestProposalController extends Controller
             && ! $isFreelancerAuthor
             && ! in_array($user->role?->slug, ['admin', 'super_admin'], true);
 
-        if ($isClient && Schema::hasColumn('quest_offers', 'client_view_count')) {
-            $offer->increment('client_view_count');
-            $offer->forceFill(['last_client_view_at' => now()])->saveQuietly();
-            $count = (int) $offer->client_view_count;
-            if (in_array($count, [1, 2, 5, 10, 25, 50], true)) {
-                $offer->freelancer?->notify(new ProposalViewedMilestoneNotification($offer->fresh(), $count));
+        if ($isClient) {
+            $inbox->markQuestProposalForOffer($user, (int) $quest->id, (int) $offer->id);
+
+            if (Schema::hasColumn('quest_offers', 'client_view_count')) {
+                $offer->increment('client_view_count');
+                $offer->forceFill(['last_client_view_at' => now()])->saveQuietly();
+                $count = (int) $offer->client_view_count;
+                if (in_array($count, [1, 2, 5, 10, 25, 50], true)) {
+                    $offer->freelancer?->notify(new ProposalViewedMilestoneNotification($offer->fresh(), $count));
+                }
             }
         }
 
@@ -319,7 +326,7 @@ class QuestProposalController extends Controller
                     'avatar_url' => $offer->freelancer->avatar_url,
                     'headline' => $offer->freelancer->headline,
                 ] : null,
-                'platform_fee_percent_display' => (float) config('quests.platform_fee_percent_display', 5),
+                'platform_fee_percent_display' => PlatformSettings::platformFeePercent(),
             ];
         }
 

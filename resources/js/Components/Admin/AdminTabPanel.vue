@@ -1,6 +1,6 @@
 <template>
     <section
-        v-show="modelValue === value"
+        v-if="isVisible"
         :id="`${idPrefix}-${value}-panel`"
         role="tabpanel"
         :aria-labelledby="`${idPrefix}-${value}`"
@@ -10,12 +10,15 @@
 </template>
 
 <script setup>
-// All admin tab content must use AdminTabPanel so panels stay mounted and tab switches never remount or navigate.
-defineProps({
+import { computed, unref } from 'vue';
+
+const props = defineProps({
+    currentTab: { type: [String, Object], required: true },
     value: { type: String, required: true },
-    modelValue: { type: String, required: true },
     idPrefix: { type: String, default: 'admin-tab' },
 });
 
-defineEmits(['update:modelValue']);
+const tabKey = computed(() => String(unref(props.currentTab) ?? ''));
+
+const isVisible = computed(() => tabKey.value === props.value);
 </script>

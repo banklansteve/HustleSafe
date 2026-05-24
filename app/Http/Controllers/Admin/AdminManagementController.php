@@ -11,7 +11,9 @@ use App\Http\Requests\Admin\UpdateAdminRecordRequest;
 use App\Mail\AdminStaffInvitationMail;
 use App\Mail\AdminUserCreatedNotificationMail;
 use App\Models\QuestConversationThread;
+use App\Models\UserVerification;
 use App\Services\Admin\AdminManagementService;
+use App\Services\Verification\UserVerificationPresentationService;
 use App\Services\Admin\AdminActivityFeedService;
 use App\Services\AdminActivityLogger;
 use App\Support\Admin\AdminDateTimeFormatter;
@@ -256,7 +258,7 @@ class AdminManagementController extends Controller
 
         $model->loadMissing($this->fileRelationsFor($resource));
 
-        return Inertia::render('Admin/Management/Show', [
+        $payload = [
             'resource_key' => $resource,
             'definition' => [
                 'label' => $definition['label'],
@@ -270,7 +272,23 @@ class AdminManagementController extends Controller
             ],
             'record' => $this->management->serializeDetailRow($resource, $model),
             'files' => $this->filePayload($resource, $model),
-        ]);
+            'verification_review' => null,
+        ];
+
+        if ($resource === 'user_verifications' && $model instanceof UserVerification) {
+            $presentation = app(UserVerificationPresentationService::class)->forReview($model, 'admin.user-verifications.document');
+            $payload['verification_review'] = [
+                'presentation' => $presentation,
+                'decide_url' => route('admin.user-verifications.decide', $model),
+                'decision_reasons' => app(\App\Services\Verification\VerificationDecisionReasonService::class)->options(),
+            ];
+            $payload['definition']['detail_columns'] = array_values(array_diff(
+                $payload['definition']['detail_columns'],
+                ['document_paths', 'metadata', 'provider_response', 'encrypted_identifier'],
+            ));
+        }
+
+        return Inertia::render('Admin/Management/Show', $payload);
     }
 
     public function suspend(SuspendAdminUserRequest $request, int $user): RedirectResponse

@@ -312,7 +312,7 @@ class KycCentreService
             default => 'We could not approve your verification. Please review the guidance in your account and resubmit if appropriate.',
         };
 
-        $case->user?->notify(new KycDecisionNotification($title, $body));
+        $case->user?->notify(new KycDecisionNotification($title, $body, $data['note'] ?? $data['reason_code'] ?? null));
     }
 
     private function audit(?KycReviewCase $case, User $admin, string $event, array $metadata = []): void

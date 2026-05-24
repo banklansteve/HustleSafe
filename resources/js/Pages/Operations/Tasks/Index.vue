@@ -1,61 +1,121 @@
 <template>
-    <OperationsShell title="My Tasks" subtitle="Everything assigned to you: flags, referrals, disputes, KYC follow-ups, support items, and escalations.">
-        <div class="space-y-5">
-            <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <Link v-for="tile in summary" :key="tile.key" :href="tile.href" class="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm ring-1 ring-slate-100">
-                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">{{ tile.label }}</p>
-                    <p class="mt-2 text-3xl font-black text-slate-950">{{ tile.value }}</p>
-                    <p class="mt-1 text-xs font-semibold text-slate-600">{{ tile.hint }}</p>
-                </Link>
-            </section>
+    <OperationsShell title="My tasks" subtitle="Assigned work, overdue items, and deep links to source records.">
+        <section class="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <button
+                v-for="tile in summary"
+                :key="tile.key"
+                type="button"
+                class="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm ring-1 ring-slate-100 hover:bg-primary-50/40"
+                @click="setQuick(tile.key)"
+            >
+                <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">{{ tile.label }}</p>
+                <p class="mt-2 text-3xl font-black text-slate-950">{{ tile.value }}</p>
+                <p class="mt-1 text-xs font-semibold text-slate-600">{{ tile.hint }}</p>
+            </button>
+        </section>
 
-            <section class="rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm ring-1 ring-slate-100">
-                <div class="space-y-3">
-                    <article v-for="task in tasks.data" :key="task.id" class="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <span class="rounded-full bg-primary-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-primary-800">{{ task.priority }}</span>
-                                    <span class="text-xs font-bold text-slate-500">{{ task.source_type || 'General' }} {{ task.source_id ? `#${task.source_id}` : '' }}</span>
-                                </div>
-                                <h2 class="mt-2 font-display text-lg font-black text-slate-950">{{ task.title }}</h2>
-                                <p class="mt-1 text-sm font-semibold text-slate-600">{{ task.description || 'No description provided.' }}</p>
-                                <p class="mt-2 text-xs font-bold text-slate-500">Due {{ task.due_at || 'not set' }} · {{ task.status.replace('_', ' ') }}</p>
-                            </div>
-                            <div class="flex flex-wrap gap-2">
-                                <button type="button" class="action-button" @click="setStatus(task, 'in_progress')">Start</button>
-                                <button type="button" class="primary-button" @click="setStatus(task, 'done')">Complete</button>
-                            </div>
-                        </div>
-                    </article>
-                    <p v-if="!tasks.data?.length" class="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm font-bold text-slate-500">No tasks in this queue.</p>
+        <OperationsQueueTable
+            :columns="columns"
+            :rows="queue.pageItems.value"
+            :loading="loading"
+            v-model:search="queue.search.value"
+            v-model:per-page="queue.perPage.value"
+            :page="queue.page.value"
+            :total="queue.total.value"
+            :total-pages="queue.totalPages.value"
+            :sort-key="queue.sortKey.value"
+            :sort-dir="queue.sortDir.value"
+            empty-message="No tasks assigned to you."
+            @sort="queue.setSort"
+            @page="(p) => (queue.page.value = p)"
+            @open="openDetail"
+        >
+            <template #cell-title="{ row }">
+                <span class="font-semibold text-slate-950">{{ row.title }}</span>
+                <span v-if="row.overdue" class="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black uppercase text-rose-800">Overdue</span>
+            </template>
+            <template #actions="{ row }">
+                <button type="button" class="rounded-lg bg-primary-700 px-2 py-1 text-[10px] font-black uppercase text-white" @click.stop="openDetail(row)">Open</button>
+            </template>
+        </OperationsQueueTable>
+
+        <OperationsSlideOver :open="slideOpen" :title="slideTitle" subtitle="Task detail" eyebrow="Workload" @close="slideOpen = false">
+            <div v-if="detailLoading" class="py-10 text-center text-sm text-slate-500">Loading…</div>
+            <div v-else-if="taskDetail" class="space-y-4">
+                <p class="text-sm font-semibold text-slate-700">{{ taskDetail.task.description_full || taskDetail.task.description }}</p>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-black" :disabled="busy.status" @click="setStatus('in_progress')">Start</button>
+                    <button type="button" class="rounded-xl bg-primary-700 px-4 py-2 text-sm font-black text-white" :disabled="busy.status" @click="setStatus('done')">Complete</button>
+                    <a v-if="taskDetail.source_url" :href="taskDetail.source_url" class="rounded-xl border border-primary-200 bg-primary-50 px-4 py-2 text-sm font-black text-primary-900">Open source</a>
                 </div>
-            </section>
-        </div>
+            </div>
+        </OperationsSlideOver>
     </OperationsShell>
 </template>
 
 <script setup>
+import { computed, onMounted, ref } from 'vue';
+import OperationsQueueTable from '@/Pages/Operations/Components/OperationsQueueTable.vue';
+import OperationsSlideOver from '@/Pages/Operations/Components/OperationsSlideOver.vue';
 import OperationsShell from '@/Layouts/OperationsShell.vue';
-import { Link, router } from '@inertiajs/vue3';
+import { useClientQueue } from '@/composables/useClientQueue';
+import { useOperationsAction } from '@/composables/useOperationsAction';
 
-defineProps({
-    tasks: { type: Object, required: true },
-    summary: { type: Array, default: () => [] },
-    quick: { type: String, default: '' },
-});
+const props = defineProps({ summary: { type: Array, default: () => [] } });
 
-function setStatus(task, status) {
-    router.patch(route('operations.tasks.status', task.id), { status }, { preserveScroll: true });
+const columns = [
+    { key: 'title', label: 'Task' },
+    { key: 'priority', label: 'Priority' },
+    { key: 'status', label: 'Status' },
+    { key: 'due_at', label: 'Due' },
+];
+
+const rawItems = ref([]);
+const loading = ref(false);
+const quick = ref('');
+const slideOpen = ref(false);
+const detailLoading = ref(false);
+const taskDetail = ref(null);
+const selectedRow = ref(null);
+
+const queue = useClientQueue(() => rawItems.value, { searchFields: ['title', 'description', 'priority', 'status'] });
+const { busy, runAction } = useOperationsAction();
+const slideTitle = computed(() => taskDetail.value?.task?.title || selectedRow.value?.title || 'Task');
+
+onMounted(reload);
+
+function setQuick(key) {
+    quick.value = key === quick.value ? '' : key;
+    reload();
+}
+
+async function reload() {
+    loading.value = true;
+    try {
+        const { data } = await window.axios.get(route('operations.api.tasks.listing'), { params: { quick: quick.value } });
+        rawItems.value = data.items ?? [];
+    } finally {
+        loading.value = false;
+    }
+}
+
+async function openDetail(row) {
+    selectedRow.value = row;
+    slideOpen.value = true;
+    detailLoading.value = true;
+    try {
+        const { data } = await window.axios.get(route('operations.api.tasks.detail', row.id));
+        taskDetail.value = data;
+    } finally {
+        detailLoading.value = false;
+    }
+}
+
+async function setStatus(status) {
+    if (!selectedRow.value) return;
+    await runAction('status', () => window.axios.patch(route('operations.tasks.status', selectedRow.value.id), { status }), 'Task updated.', async () => {
+        slideOpen.value = false;
+        await reload();
+    });
 }
 </script>
-
-<style scoped>
-.action-button {
-    @apply inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-800 hover:bg-slate-50;
-}
-
-.primary-button {
-    @apply inline-flex items-center justify-center rounded-xl bg-primary-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-primary-800;
-}
-</style>

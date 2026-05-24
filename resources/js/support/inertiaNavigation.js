@@ -11,7 +11,7 @@ const originalVisit = router.visit.bind(router);
 router.visit = (url, options = {}) => {
     const token = ++latestVisitToken;
 
-    if (typeof router.cancel === 'function') {
+    if (typeof router.cancel === 'function' && options?.preserveState !== true) {
         router.cancel();
     }
 

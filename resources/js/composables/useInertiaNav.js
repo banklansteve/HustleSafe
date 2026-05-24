@@ -1,5 +1,6 @@
 import { router, usePage } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import { normalizeInertiaNavTarget } from '@/support/inertiaNavTarget';
 
 const navPending = ref(false);
 
@@ -10,19 +11,13 @@ const navPending = ref(false);
 export function useInertiaNav() {
     const page = usePage();
 
-    function normalizePath(href) {
-        try {
-            return new URL(href, window.location.origin).pathname;
-        } catch {
-            return String(href || '').split('?')[0];
-        }
-    }
-
     function visit(href, options = {}) {
-        const nextPath = normalizePath(href);
-        const currentPath = (page.url || '').split('?')[0] || '';
+        const nextTarget = normalizeInertiaNavTarget(href);
+        const currentTarget = typeof window !== 'undefined'
+            ? normalizeInertiaNavTarget(window.location.href)
+            : normalizeInertiaNavTarget(page.url || '/');
 
-        if (nextPath === currentPath) {
+        if (nextTarget === currentTarget) {
             return;
         }
 

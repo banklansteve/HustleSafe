@@ -1,5 +1,41 @@
 import { onBeforeUnmount, ref, watch } from 'vue';
 
+/**
+ * Client-side tab state for admin pages (no history API — safe with Inertia).
+ */
+export function useAdminPageTabs(defaultTab, options = {}) {
+    const valid = new Set(options.validTabs ?? []);
+    const aliases = options.aliases ?? {};
+
+    const resolve = (tab) => {
+        if (!tab) {
+            return null;
+        }
+
+        const mapped = aliases[tab] ?? tab;
+
+        if (valid.size && !valid.has(mapped)) {
+            return null;
+        }
+
+        return mapped;
+    };
+
+    const initial = resolve(defaultTab) ?? defaultTab;
+    const activeTab = ref(initial);
+
+    if (typeof options.syncProp === 'function') {
+        watch(options.syncProp, (value) => {
+            const resolved = resolve(value);
+            if (resolved) {
+                activeTab.value = resolved;
+            }
+        });
+    }
+
+    return { activeTab };
+}
+
 function readParam(name) {
     if (typeof window === 'undefined') {
         return null;
@@ -26,6 +62,9 @@ function writeParams(updates, mode = 'push') {
     window.history[method]({ ...window.history.state, adminTabState: true }, '', url.toString());
 }
 
+/**
+ * Tab state synced to ?tab= (and optional extra query params). Used by legacy admin pages.
+ */
 export function useTabState(validTabs, defaultTab, options = {}) {
     const param = options.param || 'tab';
     const extraParams = () => (typeof options.extraParams === 'function' ? options.extraParams() : (options.extraParams || {}));

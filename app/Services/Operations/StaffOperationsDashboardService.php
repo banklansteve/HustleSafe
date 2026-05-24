@@ -9,7 +9,6 @@ use App\Models\AdminActivityFeedEvent;
 use App\Models\AdminActivityLog;
 use App\Models\AdminTask;
 use App\Models\Quest;
-use App\Models\QuestConversationThread;
 use App\Models\QuestDispute;
 use App\Models\QuestOffer;
 use App\Models\Review;
@@ -54,7 +53,6 @@ class StaffOperationsDashboardService
         return [
             $this->tile('assigned', 'Assigned to me', (clone $assignedTasks)->count(), 'Flags, referrals, disputes, and KYC follow-up tasks.', route('operations.tasks.index')),
             $this->tile('overdue', 'Overdue', (clone $assignedTasks)->whereNotNull('due_at')->where('due_at', '<', now()->toDateString())->count(), 'Assigned tasks past their due date.', route('operations.tasks.index', ['quick' => 'overdue']), 'rose'),
-            $this->tile('messages', 'Unread CS chats', $this->unreadChats(), 'Unassigned or recently active conversations awaiting staff review.', route('operations.communications.index'), 'sky'),
             $this->tile('enquiries', 'User enquiries', $this->enquiriesCount(), 'Support and contact follow-ups from operational channels.', route('operations.communications.index', ['quick' => 'enquiries']), 'amber'),
         ];
     }
@@ -158,7 +156,8 @@ class StaffOperationsDashboardService
             ['label' => 'Triage Proposals', 'href' => route('operations.proposals.index'), 'description' => 'Review flagged proposals and operational proposal risk signals.'],
             ['label' => 'Claim a Dispute', 'href' => route('operations.disputes.index'), 'description' => 'Review open disputes and pick one up for mediation.'],
             ['label' => 'Review KYC Queue', 'href' => route('operations.verifications.index'), 'description' => 'Approve, reject, request correction, or escalate submissions.'],
-            ['label' => 'Open CS Inbox', 'href' => route('operations.communications.index'), 'description' => 'Respond to assigned or unassigned support conversations.'],
+            ['label' => 'Open Support hub', 'href' => route('operations.support.index'), 'description' => 'Tickets, quest-thread chats, disputes, and user context.'],
+            ['label' => 'Open CS Inbox', 'href' => route('operations.communications.index'), 'description' => 'Legacy communications and enquiry threads.'],
         ];
     }
 
@@ -198,18 +197,6 @@ class StaffOperationsDashboardService
             QuestDisputeStatus::Escalated->value,
             QuestDisputeStatus::AwaitingRuling->value,
         ];
-    }
-
-    private function unreadChats(): int
-    {
-        if (! Schema::hasTable('quest_conversation_threads')) {
-            return 0;
-        }
-
-        return QuestConversationThread::query()
-            ->whereNotNull('last_message_at')
-            ->where('last_message_at', '>=', now()->subDays(2))
-            ->count();
     }
 
     private function enquiriesCount(): int

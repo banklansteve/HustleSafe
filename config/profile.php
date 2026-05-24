@@ -11,8 +11,6 @@ return [
         'show_headline' => true,
         'show_location' => true,
         'show_rates' => true,
-        'show_phone' => false,
-        'show_email' => false,
         'show_credentials' => true,
         'show_cac' => true,
         'show_portfolio' => true,
@@ -28,8 +26,6 @@ return [
         'show_headline' => true,
         'show_location' => true,
         'show_company' => true,
-        'show_phone' => false,
-        'show_email' => false,
     ],
 
 ];

@@ -13,17 +13,10 @@
                         class="flex min-w-0 items-center gap-2.5 transition"
                         :title="sidebarCollapsed ? 'Super admin home' : undefined"
                     >
-                        <span
-                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-black shadow-md"
-                            :class="shell.brandMark"
-                        >
-                            HS
-                        </span>
+                        <HustleSafeLogo variant="icon" :theme="isDark ? 'dark' : 'light'" icon-class="h-9 w-9" />
                         <div v-show="!sidebarCollapsed" class="min-w-0 hidden lg:block">
-                            <p class="text-[10px] font-black uppercase tracking-[0.28em]" :class="shell.brandEyebrow">
-                                HustleSafe
-                            </p>
-                            <p class="font-display text-base font-black tracking-tight" :class="shell.brandTitle">Super admin</p>
+                            <HustleSafeLogo variant="lockup" :theme="isDark ? 'dark' : 'light'" lockup-class="h-7 w-auto max-w-[9rem]" />
+                            <p class="mt-0.5 text-[10px] font-black uppercase tracking-[0.28em]" :class="shell.brandEyebrow">Super admin</p>
                         </div>
                     </Link>
                     <Link
@@ -50,75 +43,114 @@
                 <nav class="mt-6 min-h-0 flex-1 space-y-5 lg:overflow-y-auto lg:pr-1" :class="sidebarCollapsed ? 'lg:space-y-3' : ''">
                     <div v-for="group in navGroups" :key="group.label">
                         <p
+                            v-if="!group.collapsible && !group.management"
                             v-show="!sidebarCollapsed"
                             class="hidden px-2 pb-2 text-[10px] font-black uppercase tracking-wider lg:block"
                             :class="shell.label"
                         >
                             {{ group.label }}
                         </p>
-                        <div
-                            v-if="group.management && managementNav.length"
-                            v-show="!sidebarCollapsed"
-                            class="hidden space-y-2 lg:block"
-                        >
-                            <div v-for="section in managementNav" :key="section.key" class="space-y-0.5">
-                                <button
-                                    type="button"
-                                    class="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[10px] font-black uppercase tracking-wider transition"
-                                    :class="shell.btnGhost"
-                                    @click="toggleManagementSection(section.key)"
-                                >
-                                    <span>{{ section.label }}</span>
-                                    <ChevronRightIcon
-                                        class="h-3.5 w-3.5 transition"
-                                        :class="expandedManagement[section.key] ? 'rotate-90' : ''"
-                                    />
-                                </button>
-                                <div v-show="expandedManagement[section.key]" class="space-y-0.5 border-l-2 pl-2" :class="shell.tableDivide">
-                                    <Link
-                                        v-for="item in section.items"
-                                        :key="item.key"
-                                        :href="item.href"
-                                        class="block rounded-lg px-2 py-1.5 text-xs font-bold transition"
-                                        :class="[
-                                            item.indent ? 'ml-1' : '',
-                                            isManagementItemActive(item) ? shell.navActive : shell.navIdle,
-                                        ]"
-                                        @click.prevent="visitNav(item.href)"
+                        <template v-if="group.management">
+                            <button
+                                v-show="!sidebarCollapsed"
+                                type="button"
+                                class="mb-1 flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[10px] font-black uppercase tracking-wider transition"
+                                :class="shell.btnGhost"
+                                @click="toggleNavGroup(group.label)"
+                            >
+                                <span>{{ group.label }}</span>
+                                <ChevronRightIcon class="h-3.5 w-3.5 shrink-0 transition" :class="expandedNavGroups[group.label] ? 'rotate-90' : ''" />
+                            </button>
+                            <div
+                                v-if="visibleManagementNav.length"
+                                v-show="!sidebarCollapsed && expandedNavGroups[group.label]"
+                                class="space-y-2"
+                            >
+                                <div v-for="section in visibleManagementNav" :key="section.key" class="space-y-0.5">
+                                    <button
+                                        type="button"
+                                        class="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[10px] font-black uppercase tracking-wider transition"
+                                        :class="managementSectionIsActive(section) ? shell.navActive : shell.navIdle"
+                                        @click="toggleManagementSection(section)"
                                     >
-                                        {{ item.label }}
-                                    </Link>
+                                        <span>{{ section.label }}</span>
+                                        <ChevronRightIcon
+                                            class="h-3.5 w-3.5 shrink-0 transition"
+                                            :class="expandedManagement[section.key] ? 'rotate-90' : ''"
+                                        />
+                                    </button>
+                                    <div v-show="expandedManagement[section.key]" class="space-y-0.5 border-l-2 pl-2" :class="shell.tableDivide">
+                                        <Link
+                                            v-for="item in section.items"
+                                            :key="item.key"
+                                            :href="managementResourceHref(item.key)"
+                                            prefetch="false"
+                                            class="block rounded-lg px-2 py-1.5 text-xs font-bold transition"
+                                            :class="[
+                                                item.indent ? 'ml-1' : '',
+                                                isManagementItemActive(item) ? shell.navActive : shell.navIdle,
+                                            ]"
+                                            @click="onChildNavClick('Data registry')"
+                                        >
+                                            {{ item.label }}
+                                        </Link>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                            <Link
+                                v-else-if="!sidebarCollapsed && expandedNavGroups[group.label]"
+                                :href="route('admin.management.index')"
+                                class="block rounded-lg px-2 py-1.5 text-xs font-bold"
+                                :class="shell.navIdle"
+                            >
+                                Open registry hub
+                            </Link>
+                        </template>
 
+                        <template v-else-if="!group.management">
+                        <button
+                            v-if="group.collapsible && !sidebarCollapsed"
+                            type="button"
+                            class="mb-1 hidden w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[10px] font-black uppercase tracking-wider transition lg:flex"
+                            :class="shell.btnGhost"
+                            @click="toggleNavGroup(group.label)"
+                        >
+                            <span>{{ group.label }}</span>
+                            <ChevronRightIcon class="h-3.5 w-3.5 transition" :class="expandedNavGroups[group.label] ? 'rotate-90' : ''" />
+                        </button>
                         <div
-                            v-else-if="!group.management"
+                            v-if="!group.collapsible || expandedNavGroups[group.label] || sidebarCollapsed"
                             class="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:pb-0"
                             :class="sidebarCollapsed ? 'lg:items-center' : ''"
                         >
-                            <Link
-                                v-for="item in group.items"
-                                :key="item.href"
-                                :href="item.href"
-                                :title="sidebarCollapsed ? item.label : undefined"
-                                class="group flex items-center gap-3 rounded-xl text-sm font-bold transition"
-                                :class="[
-                                    sidebarCollapsed ? 'lg:justify-center lg:px-2 lg:py-2.5' : 'whitespace-nowrap px-3 py-2 lg:px-3 lg:py-2.5',
-                                    isActive(item) ? shell.navActive : shell.navIdle,
-                                ]"
-                                @click.prevent="visitNav(item.href)"
-                            >
-                                <component
-                                    :is="item.icon"
-                                    class="h-5 w-5 shrink-0"
-                                    :class="isActive(item) ? shell.navIconActive : shell.navIconIdle"
-                                    aria-hidden="true"
-                                />
-                                <span class="lg:hidden">{{ item.label }}</span>
-                                <span v-show="!sidebarCollapsed" class="hidden lg:inline text-inherit">{{ item.label }}</span>
-                            </Link>
+                            <template v-for="item in group.items" :key="item.label">
+                                <Link
+                                    :href="item.href"
+                                    prefetch="false"
+                                    :title="sidebarCollapsed ? item.label : undefined"
+                                    class="group flex items-center gap-3 rounded-xl text-sm font-bold transition"
+                                    :class="[
+                                        sidebarCollapsed ? 'lg:justify-center lg:px-2 lg:py-2.5' : 'whitespace-nowrap px-3 py-2 lg:px-3 lg:py-2.5',
+                                        isActive(item) ? shell.navActive : shell.navIdle,
+                                    ]"
+                                    @click="onChildNavClick(group.label)"
+                                >
+                                    <component
+                                        :is="item.icon"
+                                        class="h-5 w-5 shrink-0"
+                                        :class="isActive(item) ? shell.navIconActive : shell.navIconIdle"
+                                        aria-hidden="true"
+                                    />
+                                    <span class="lg:hidden">{{ item.label }}</span>
+                                    <span v-show="!sidebarCollapsed" class="hidden lg:inline text-inherit">{{ item.label }}</span>
+                                    <span
+                                        v-if="item.badge?.() > 0"
+                                        class="ml-auto rounded-full bg-rose-600 px-1.5 py-0.5 text-[9px] font-black text-white"
+                                    >{{ item.badge() > 99 ? '99+' : item.badge() }}</span>
+                                </Link>
+                            </template>
                         </div>
+                        </template>
                     </div>
                 </nav>
 
@@ -171,12 +203,34 @@
                                 <span class="rounded-md bg-black/10 px-1.5 py-0.5 text-[10px] dark:bg-white/10">Ctrl K</span>
                             </button>
                             <Link
+                                :href="route('admin.messages.index')"
+                                prefetch="false"
+                                class="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border"
+                                :class="shell.btnGhost"
+                                title="Direct messages"
+                            >
+                                <ChatBubbleLeftRightIcon class="h-5 w-5" />
+                                <span
+                                    v-if="unreadMessenger > 0"
+                                    class="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-black text-white"
+                                >
+                                    {{ unreadMessenger > 99 ? '99+' : unreadMessenger }}
+                                </span>
+                            </Link>
+                            <Link
                                 :href="route('admin.alerts.index')"
+                                prefetch="false"
                                 class="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border"
                                 :class="shell.btnGhost"
                                 title="Notification centre"
                             >
                                 <BellIcon class="h-5 w-5" />
+                                <span
+                                    v-if="unreadAlerts > 0"
+                                    class="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white"
+                                >
+                                    {{ unreadAlerts > 99 ? '99+' : unreadAlerts }}
+                                </span>
                             </Link>
                             <AdminThemeToggle class="lg:hidden" />
                             <p v-if="subtitle" class="max-w-xl text-xs font-semibold leading-relaxed" :class="shell.canvasMuted">
@@ -277,26 +331,76 @@
                     </div>
                     <nav class="mt-6 flex-1 space-y-5 overflow-y-auto">
                         <div v-for="group in navGroups" :key="group.label">
-                            <p class="px-2 pb-2 text-[10px] font-black uppercase tracking-wider" :class="shell.label">
+                            <button
+                                v-if="group.management"
+                                type="button"
+                                class="flex w-full items-center justify-between px-2 pb-2 text-left text-[10px] font-black uppercase tracking-wider"
+                                :class="shell.label"
+                                @click="toggleNavGroup(group.label)"
+                            >
+                                <span>{{ group.label }}</span>
+                                <ChevronRightIcon class="h-3.5 w-3.5 transition" :class="expandedNavGroups[group.label] ? 'rotate-90' : ''" />
+                            </button>
+                            <button
+                                v-else-if="group.collapsible"
+                                type="button"
+                                class="flex w-full items-center justify-between px-2 pb-2 text-left text-[10px] font-black uppercase tracking-wider"
+                                :class="shell.label"
+                                @click="toggleNavGroup(group.label)"
+                            >
+                                <span>{{ group.label }}</span>
+                                <ChevronRightIcon class="h-3.5 w-3.5 transition" :class="expandedNavGroups[group.label] ? 'rotate-90' : ''" />
+                            </button>
+                            <p v-else class="px-2 pb-2 text-[10px] font-black uppercase tracking-wider" :class="shell.label">
                                 {{ group.label }}
                             </p>
-                            <div class="space-y-0.5">
-                                <Link
-                                    v-for="item in group.items"
-                                    :key="item.href"
-                                    :href="item.href"
-                                    class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition"
-                                    :class="isActive(item) ? shell.navActive : shell.navIdle"
-                                    @click.prevent="visitNav(item.href); mobileNavOpen = false"
-                                >
-                                    <component
-                                        :is="item.icon"
-                                        class="h-5 w-5 shrink-0"
-                                        :class="isActive(item) ? shell.navIconActive : shell.navIconIdle"
-                                        aria-hidden="true"
-                                    />
-                                    <span class="text-inherit">{{ item.label }}</span>
-                                </Link>
+                            <div v-if="group.management && visibleManagementNav.length && expandedNavGroups[group.label]" class="mb-3 space-y-2 pl-1">
+                                <div v-for="section in visibleManagementNav" :key="`m-${section.key}`" class="space-y-0.5">
+                                    <button
+                                        type="button"
+                                        class="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[9px] font-black uppercase tracking-wide"
+                                        :class="managementSectionIsActive(section) ? shell.navActive : shell.navIdle"
+                                        @click="toggleManagementSection(section)"
+                                    >
+                                        <span>{{ section.label }}</span>
+                                        <ChevronRightIcon class="h-3.5 w-3.5 shrink-0 transition" :class="expandedManagement[section.key] ? 'rotate-90' : ''" />
+                                    </button>
+                                    <div v-show="expandedManagement[section.key]" class="space-y-0.5 border-l-2 pl-2" :class="shell.tableDivide">
+                                        <Link
+                                            v-for="item in section.items"
+                                            :key="`m-${item.key}`"
+                                            :href="managementResourceHref(item.key)"
+                                            prefetch="false"
+                                            class="block rounded-lg px-3 py-2 text-sm font-bold transition"
+                                            :class="isManagementItemActive(item) ? shell.navActive : shell.navIdle"
+                                            @click="onChildNavClick('Data registry')"
+                                        >
+                                            {{ item.label }}
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                            <div
+                                v-else-if="!group.management && (!group.collapsible || expandedNavGroups[group.label])"
+                                class="space-y-0.5"
+                            >
+                                <template v-for="item in group.items" :key="item.label">
+                                    <Link
+                                        :href="item.href"
+                                        prefetch="false"
+                                        class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition"
+                                        :class="isActive(item) ? shell.navActive : shell.navIdle"
+                                        @click="onChildNavClick(group.label)"
+                                    >
+                                        <component
+                                            :is="item.icon"
+                                            class="h-5 w-5 shrink-0"
+                                            :class="isActive(item) ? shell.navIconActive : shell.navIconIdle"
+                                            aria-hidden="true"
+                                        />
+                                        <span class="text-inherit">{{ item.label }}</span>
+                                    </Link>
+                                </template>
                             </div>
                         </div>
                     </nav>
@@ -338,11 +442,13 @@
                 </div>
             </Transition>
         </Teleport>
+
     </div>
 </template>
 
 <script setup>
 import AdminThemeToggle from '@/Components/Admin/AdminThemeToggle.vue';
+import HustleSafeLogo from '@/Components/Brand/HustleSafeLogo.vue';
 import { provideAdminTheme } from '@/composables/useAdminTheme';
 import { useAdminSidebar } from '@/composables/useAdminSidebar';
 import { Link, router, usePage } from '@inertiajs/vue3';
@@ -374,7 +480,6 @@ import {
     Squares2X2Icon,
     UserGroupIcon,
     UsersIcon,
-    WrenchScrewdriverIcon,
     XMarkIcon,
 } from '@heroicons/vue/24/outline';
 import { computed, defineComponent, h, nextTick, reactive, ref, watch, onMounted, onBeforeUnmount } from 'vue';
@@ -394,7 +499,6 @@ const commandLoading = ref(false);
 const commandError = ref('');
 const commandInput = ref(null);
 const commandResults = reactive({ actions: [], results: [] });
-const optimisticNavPath = ref('');
 let commandTimer = null;
 
 const CommandSection = defineComponent({
@@ -438,6 +542,7 @@ let requestWorkingTimer = null;
 let removeStartListener = null;
 let removeFinishListener = null;
 let removeErrorListener = null;
+let supportPollTimer = null;
 
 const errorTone = computed(() => (
     isDark.value
@@ -525,7 +630,60 @@ function showToast(message, tone = 'success') {
     }, 4500);
 }
 
+const unreadAlerts = ref(0);
+const unreadMessenger = ref(0);
+const unreadSupportLive = ref(0);
+
+async function refreshMessengerUnread() {
+    try {
+        const { data } = await window.axios.get(route('admin.api.messenger.unread-count'));
+        unreadMessenger.value = data.count ?? 0;
+    } catch {
+        unreadMessenger.value = 0;
+    }
+}
+
+async function refreshUnreadAlerts() {
+    try {
+        const { data } = await window.axios.get(route('admin.api.alerts.unread-count'));
+        unreadAlerts.value = data.count ?? 0;
+    } catch {
+        unreadAlerts.value = 0;
+    }
+}
+
+async function refreshSupportUnread() {
+    try {
+        const { data } = await window.axios.get(route('admin.api.customer-support.unread-count'));
+        unreadSupportLive.value = data.count ?? 0;
+    } catch {
+        unreadSupportLive.value = 0;
+    }
+}
+
+function openMessengerFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('open_messenger') !== '1') {
+        return;
+    }
+    const conversationId = params.get('conversation');
+    const query = conversationId ? `?conversation=${encodeURIComponent(conversationId)}` : '';
+    router.visit(`${route('admin.messages.index')}${query}`);
+}
+
 onMounted(() => {
+    void refreshUnreadAlerts();
+    void refreshMessengerUnread();
+    void refreshSupportUnread();
+    openMessengerFromQuery();
+    window.addEventListener('admin:notifications-changed', refreshUnreadAlerts);
+    window.addEventListener('admin:messenger-changed', refreshMessengerUnread);
+    window.addEventListener('admin:support-changed', refreshSupportUnread);
+    supportPollTimer = window.setInterval(() => {
+        if (document.visibilityState === 'visible') {
+            void refreshSupportUnread();
+        }
+    }, 20000);
     window.addEventListener('keydown', onGlobalKeydown);
     removeStartListener = router.on('start', () => {
         window.clearTimeout(requestWorkingTimer);
@@ -542,15 +700,46 @@ onMounted(() => {
     });
 });
 onBeforeUnmount(() => {
+    window.removeEventListener('admin:notifications-changed', refreshUnreadAlerts);
+    window.removeEventListener('admin:messenger-changed', refreshMessengerUnread);
+    window.removeEventListener('admin:support-changed', refreshSupportUnread);
     window.removeEventListener('keydown', onGlobalKeydown);
     window.clearTimeout(requestWorkingTimer);
+    if (supportPollTimer) {
+        window.clearInterval(supportPollTimer);
+        supportPollTimer = null;
+    }
     removeStartListener?.();
     removeFinishListener?.();
     removeErrorListener?.();
 });
 
-const managementNav = computed(() => page.props.admin_management_nav ?? []);
+const managementNav = computed(() => {
+    const nav = page.props.admin_management_nav;
+    return Array.isArray(nav) ? nav : [];
+});
+
+const visibleManagementNav = computed(() =>
+    managementNav.value
+        .map((section) => ({
+            ...section,
+            items: (section.items ?? []).filter((item) => Boolean(item?.key)),
+        }))
+        .filter((section) => section.items.length > 0),
+);
+
 const expandedManagement = reactive({});
+
+const expandedNavGroups = reactive({
+    Home: false,
+    'Revenue & growth': false,
+    'Customer support': false,
+    Marketplace: false,
+    'Risk & compliance': false,
+    Communications: false,
+    'Data registry': false,
+    Platform: false,
+});
 
 function currentManagementResource() {
     const path = page.url.split('?')[0] || '';
@@ -563,29 +752,31 @@ function currentManagementResource() {
     return new URLSearchParams(query).get('resource');
 }
 
-function syncExpandedManagementSections() {
-    if (!managementNav.value.length) {
-        return;
+function managementResourceHref(resourceKey) {
+    if (!resourceKey) {
+        return route('admin.management.index');
     }
 
-    const activeResource = currentManagementResource();
-    managementNav.value.forEach((section) => {
-        const hasActive = section.items?.some((item) => item.key === activeResource);
-        if (hasActive) {
-            expandedManagement[section.key] = true;
-        } else if (expandedManagement[section.key] === undefined) {
-            expandedManagement[section.key] = false;
-        }
-    });
+    return route('admin.management.index', { resource: resourceKey });
 }
 
-watch(() => page.url, syncExpandedManagementSections, { immediate: true });
-watch(() => page.url, () => {
-    optimisticNavPath.value = '';
-});
+function isManagementAreaActive() {
+    return page.url.split('?')[0].startsWith('/admin/management');
+}
 
-function toggleManagementSection(key) {
-    expandedManagement[key] = !expandedManagement[key];
+function managementSectionIsActive(section) {
+    const activeResource = currentManagementResource();
+
+    return section.items?.some((item) => item.key === activeResource) ?? false;
+}
+
+function toggleManagementSection(section) {
+    const willOpen = !expandedManagement[section.key];
+    visibleManagementNav.value.forEach((entry) => {
+        expandedManagement[entry.key] = false;
+    });
+    expandedManagement[section.key] = willOpen;
+    openOnlyNavGroup('Data registry');
 }
 
 function isManagementItemActive(item) {
@@ -596,250 +787,162 @@ function isManagementItemActive(item) {
     return currentManagementResource() === item.key;
 }
 
-function isManagementAreaActive() {
-    return page.url.split('?')[0].startsWith('/admin/management');
-}
-
-function normalizeNavPath(href) {
-    try {
-        return new URL(href, window.location.origin).pathname;
-    } catch (error) {
-        return String(href || '').split('?')[0];
-    }
-}
-
-function markNavIntent(href) {
-    optimisticNavPath.value = normalizeNavPath(href);
-}
-
-function visitNav(href) {
-    const nextPath = normalizeNavPath(href);
-    const currentPath = page.url.split('?')[0] || '';
-
-    markNavIntent(href);
-
-    if (nextPath === currentPath) {
+function toggleNavGroup(label) {
+    if (expandedNavGroups[label]) {
+        expandedNavGroups[label] = false;
         return;
     }
 
-    if (typeof router.cancel === 'function') {
-        router.cancel();
-    }
-
-    router.visit(href, {
-        preserveScroll: false,
-        preserveState: false,
-        replace: false,
-        onFinish: () => {
-            optimisticNavPath.value = '';
-        },
-    });
+    openOnlyNavGroup(label);
 }
 
 const navGroups = [
     {
-        label: 'Overview',
+        label: 'Home',
+        collapsible: true,
         items: [
-            {
-                label: 'Dashboard',
-                href: route('admin.dashboard'),
-                icon: HomeIcon,
-                match: (p) => p === '/admin' || p === '/admin/',
-            },
-            {
-                label: 'Insights',
-                href: route('admin.insights.index'),
-                icon: ChartBarSquareIcon,
-                match: (p) => p.startsWith('/admin/insights'),
-            },
-            {
-                label: 'Reports & analytics',
-                href: route('admin.reports.index'),
-                icon: ChartBarSquareIcon,
-                match: (p) => p.startsWith('/admin/reports'),
-            },
-            {
-                label: 'Financial Control',
-                href: route('admin.financial.index'),
-                icon: CreditCardIcon,
-                match: (p) => p.startsWith('/admin/financial'),
-            },
-            {
-                label: 'Promotions & Growth',
-                href: route('admin.promotions.index'),
-                icon: RocketLaunchIcon,
-                match: (p) => p.startsWith('/admin/promotions'),
-            },
-            {
-                label: 'Email Broadcasts',
-                href: route('admin.communications.email-broadcasts.index'),
-                icon: EnvelopeIcon,
-                match: (p) => p.startsWith('/admin/communications'),
-            },
-            {
-                label: 'Support Tickets',
-                href: route('admin.support-tickets.index'),
-                icon: ChatBubbleLeftRightIcon,
-                match: (p) => p.startsWith('/admin/support-tickets'),
-            },
-            {
-                label: 'SEO & Content',
-                href: route('admin.content.index'),
-                icon: NewspaperIcon,
-                match: (p) => p === '/admin/content' || p.startsWith('/admin/content/'),
-            },
-            {
-                label: 'Live Activity',
-                href: route('admin.live-activity.index'),
-                icon: BoltIcon,
-                match: (p) => p.startsWith('/admin/live-activity'),
-            },
-            {
-                label: 'Staff Digest',
-                href: route('admin.activity.digest'),
-                icon: ClipboardDocumentListIcon,
-                match: (p) => p.startsWith('/admin/activity/digest'),
-            },
+            { label: 'Dashboard', href: route('admin.dashboard'), icon: HomeIcon, match: (p) => p === '/admin' || p === '/admin/' },
+            { label: 'Insights', href: route('admin.insights.index'), icon: ChartBarSquareIcon, match: (p) => p.startsWith('/admin/insights') },
+            { label: 'Live Activity', href: route('admin.live-activity.index'), icon: BoltIcon, match: (p) => p.startsWith('/admin/live-activity') },
+            { label: 'Alert Centre', href: route('admin.alerts.index'), icon: BellIcon, match: (p) => p.startsWith('/admin/alerts') },
+            { label: 'Tasks', href: route('admin.tasks.index'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/tasks') },
+            { label: 'Platform settings', href: route('admin.settings.index'), icon: Cog6ToothIcon, matchFull: (url) => url.startsWith('/admin/settings') && !url.includes('section=maintenance'), match: (p) => p.startsWith('/admin/settings') },
         ],
     },
     {
-        label: 'Operations',
+        label: 'Revenue & growth',
+        collapsible: true,
         items: [
-            {
-                label: 'Quests',
-                href: route('admin.quests.index'),
-                icon: BriefcaseIcon,
-                match: (p) => p.startsWith('/admin/quests'),
-            },
-            {
-                label: 'Proposals',
-                href: route('admin.proposals.index'),
-                icon: ClipboardDocumentCheckIcon,
-                match: (p) => p.startsWith('/admin/proposals'),
-            },
-            {
-                label: 'Categories',
-                href: route('admin.categories.index'),
-                icon: Squares2X2Icon,
-                match: (p) => p.startsWith('/admin/categories'),
-            },
-            {
-                label: 'Users',
-                href: route('admin.users.index'),
-                icon: UsersIcon,
-                match: (p) => p.startsWith('/admin/users'),
-            },
-            {
-                label: 'Verification Engine',
-                href: route('admin.verification-engine.index'),
-                icon: IdentificationIcon,
-                match: (p) => p.startsWith('/admin/verification-engine') || p.startsWith('/admin/kyc'),
-            },
-            {
-                label: 'Content Moderation',
-                href: route('admin.content-moderation.index'),
-                icon: ShieldCheckIcon,
-                match: (p) => p.startsWith('/admin/content-moderation'),
-            },
-            {
-                label: 'Disputes',
-                href: route('admin.disputes.index'),
-                icon: ExclamationTriangleIcon,
-                match: (p) => p.startsWith('/admin/disputes'),
-            },
+            { label: 'Payments & Escrow', href: route('admin.payments-escrow.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/payments-escrow') },
+            { label: 'Financial Control', href: route('admin.financial.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial') },
+            { label: 'Treasury', href: route('admin.treasury.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/treasury') },
+            { label: 'Reports & analytics', href: route('admin.reports.index'), icon: ChartBarSquareIcon, match: (p) => p.startsWith('/admin/reports') },
+            { label: 'Promotions & Growth', href: route('admin.promotions.index'), icon: RocketLaunchIcon, match: (p) => p.startsWith('/admin/promotions') },
+            { label: 'Email Broadcasts', href: route('admin.communications.email-broadcasts.index'), icon: EnvelopeIcon, match: (p) => p.startsWith('/admin/communications/email-broadcasts') },
         ],
     },
     {
-        label: 'Command & Risk',
+        label: 'Customer support',
+        collapsible: true,
         items: [
-            {
-                label: 'Alert Centre',
-                href: route('admin.alerts.index'),
-                icon: BellIcon,
-                match: (p) => p.startsWith('/admin/alerts'),
-            },
-            {
-                label: 'Tasks',
-                href: route('admin.tasks.index'),
-                icon: ClipboardDocumentListIcon,
-                match: (p) => p.startsWith('/admin/tasks'),
-            },
-            {
-                label: 'User Intelligence',
-                href: route('admin.intelligence.index'),
-                icon: UserGroupIcon,
-                match: (p) => p.startsWith('/admin/intelligence'),
-            },
-            {
-                label: 'Treasury',
-                href: route('admin.treasury.index'),
-                icon: CreditCardIcon,
-                match: (p) => p.startsWith('/admin/treasury'),
-            },
-            {
-                label: 'Fraud & Risk',
-                href: route('admin.fraud.index'),
-                icon: ShieldCheckIcon,
-                match: (p) => p.startsWith('/admin/fraud-risk'),
-            },
-            {
-                label: 'Compliance',
-                href: route('admin.compliance.index'),
-                icon: DocumentTextIcon,
-                match: (p) => p.startsWith('/admin/compliance'),
-            },
+            { label: 'Live support', href: route('admin.customer-support.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/customer-support') && !p.includes('/performance'), badge: () => unreadSupportLive.value },
+            { label: 'Support performance', href: route('admin.customer-support.performance'), icon: ChartBarSquareIcon, match: (p) => p.startsWith('/admin/customer-support/performance') },
+            { label: 'Support Tickets', href: route('admin.support-tickets.index'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/support-tickets') },
+            { label: 'Knowledge base', href: route('admin.knowledge-base.index'), icon: BookOpenIcon, match: (p) => p.startsWith('/admin/knowledge-base') },
         ],
     },
     {
-        label: 'Data registry',
-        management: true,
-        items: [],
-    },
-    {
-        label: 'Documentation',
+        label: 'Marketplace',
+        collapsible: true,
         items: [
-            {
-                label: 'Dashboard Guide',
-                href: route('admin.documentation.guide'),
-                icon: BookOpenIcon,
-                match: (p) => p.startsWith('/admin/documentation'),
-            },
+            { label: 'Quests', href: route('admin.quests.index'), icon: BriefcaseIcon, match: (p) => p.startsWith('/admin/quests') },
+            { label: 'Proposals', href: route('admin.proposals.index'), icon: ClipboardDocumentCheckIcon, match: (p) => p.startsWith('/admin/proposals') },
+            { label: 'Categories', href: route('admin.categories.index'), icon: Squares2X2Icon, match: (p) => p.startsWith('/admin/categories') },
+            { label: 'Users', href: route('admin.users.index'), icon: UsersIcon, match: (p) => p.startsWith('/admin/users') },
+            { label: 'Verification Engine', href: route('admin.verification-engine.index'), icon: IdentificationIcon, match: (p) => p.startsWith('/admin/verification-engine') || p.startsWith('/admin/kyc') },
+            { label: 'Content Moderation', href: route('admin.content-moderation.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/content-moderation') },
+            { label: 'Disputes', href: route('admin.disputes.index'), icon: ExclamationTriangleIcon, match: (p) => p.startsWith('/admin/disputes') },
         ],
     },
     {
-        label: 'Governance',
+        label: 'Risk & compliance',
+        collapsible: true,
         items: [
-            {
-                label: 'Staff & roles',
-                href: route('admin.staff.index'),
-                icon: UserGroupIcon,
-                match: (p) => p.startsWith('/admin/staff'),
-            },
-            {
-                label: 'Audit log',
-                href: route('admin.activity.index'),
-                icon: ClipboardDocumentListIcon,
-                match: (p) => p.startsWith('/admin/activity'),
-            },
-            {
-                label: 'Engagement policy',
-                href: route('admin.engagement-policy'),
-                icon: DocumentTextIcon,
-                match: (p) => p.startsWith('/admin/engagement-policy'),
-            },
-            {
-                label: 'Settings',
-                href: route('admin.settings.index'),
-                icon: Cog6ToothIcon,
-                match: (p) => p.startsWith('/admin/settings'),
-            },
+            { label: 'User Intelligence', href: route('admin.intelligence.index'), icon: UserGroupIcon, match: (p) => p.startsWith('/admin/intelligence') },
+            { label: 'Fraud & Risk', href: route('admin.fraud.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/fraud-risk') },
+            { label: 'Compliance', href: route('admin.compliance.index'), icon: DocumentTextIcon, match: (p) => p.startsWith('/admin/compliance') },
+        ],
+    },
+    {
+        label: 'Communications',
+        collapsible: true,
+        items: [
+            { label: 'Team chat', href: route('admin.team-chat.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/team-chat') },
+            { label: 'Direct messages', href: route('admin.messages.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/messages') },
+            { label: 'SEO & Content', href: route('admin.content.index'), icon: NewspaperIcon, match: (p) => p === '/admin/content' || (p.startsWith('/admin/content/') && !p.startsWith('/admin/content-moderation')) },
+            { label: 'Staff Digest', href: route('admin.activity.digest'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/activity/digest') },
+        ],
+    },
+    { label: 'Data registry', management: true, collapsible: true, items: [] },
+    {
+        label: 'Platform',
+        collapsible: true,
+        items: [
+            { label: 'Dashboard Guide', href: route('admin.documentation.guide'), icon: BookOpenIcon, match: (p) => p.startsWith('/admin/documentation') },
+            { label: 'Staff & roles', href: route('admin.staff.index'), icon: UserGroupIcon, match: (p) => p.startsWith('/admin/staff') },
+            { label: 'Audit log', href: route('admin.activity.index'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/activity') && !p.includes('/digest') },
+            { label: 'Completion events', href: route('admin.quest-completion-events.index'), icon: ClipboardDocumentCheckIcon, match: (p) => p.startsWith('/admin/quest-completion-events') },
+            { label: 'Completion events', href: route('admin.quest-completion-events.index'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/quest-completion-events') },
+            { label: 'Engagement policy', href: route('admin.engagement-policy'), icon: DocumentTextIcon, match: (p) => p.startsWith('/admin/engagement-policy') },
+            { label: 'Settings', href: route('admin.settings.index'), icon: Cog6ToothIcon, matchFull: (url) => url.startsWith('/admin/settings') && !url.includes('section=maintenance'), match: (p) => p.startsWith('/admin/settings') },
         ],
     },
 ];
 
 function isActive(item) {
-    const p = optimisticNavPath.value || page.url.split('?')[0] || '';
+    const p = page.url.split('?')[0] || '';
+    if (typeof item.matchFull === 'function') {
+        return item.matchFull(page.url);
+    }
 
     return item.match(p);
 }
+
+function findActiveNavGroupLabel() {
+    if (isManagementAreaActive()) {
+        return 'Data registry';
+    }
+
+    for (const group of navGroups) {
+        if (group.management || !group.items?.length) {
+            continue;
+        }
+
+        if (group.items.some((item) => item.href && isActive(item))) {
+            return group.label;
+        }
+    }
+
+    return null;
+}
+
+function openOnlyNavGroup(label) {
+    for (const key of Object.keys(expandedNavGroups)) {
+        expandedNavGroups[key] = label !== null && key === label;
+    }
+}
+
+function syncNavGroupsFromRoute() {
+    const activeGroup = findActiveNavGroupLabel();
+    openOnlyNavGroup(activeGroup);
+}
+
+function syncExpandedManagementSections() {
+    if (!visibleManagementNav.value.length) {
+        return;
+    }
+
+    const activeResource = currentManagementResource();
+    const onManagement = isManagementAreaActive();
+
+    visibleManagementNav.value.forEach((section) => {
+        const hasActive = section.items?.some((item) => item.key === activeResource);
+        expandedManagement[section.key] = onManagement && hasActive;
+    });
+}
+
+function onChildNavClick(groupLabel) {
+    openOnlyNavGroup(groupLabel);
+    mobileNavOpen.value = false;
+}
+
+watch(
+    () => page.url,
+    () => {
+        syncNavGroupsFromRoute();
+        syncExpandedManagementSections();
+    },
+    { immediate: true },
+);
+
 </script>

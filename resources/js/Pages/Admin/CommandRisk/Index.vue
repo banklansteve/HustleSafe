@@ -2,7 +2,7 @@
     <AdminShell :title="pageTitle" :subtitle="pageSubtitle">
         <div class="space-y-5">
             <section v-if="mode === 'notifications'" class="space-y-5">
-                <CriticalBanner v-for="alert in payload.critical_alerts" :key="alert.id" :alert="alert" />
+                <CriticalBanner v-for="alert in payload.critical_alerts" :key="alert.id" :alert="alert" @open="openAlert" />
                 <div class="grid gap-3 md:grid-cols-3">
                     <MetricCard label="Unread alerts" :value="payload.summary.unread" empty="0 / You currently have no unread admin alerts." />
                     <MetricCard label="Critical alerts" :value="payload.summary.critical" empty="0 / No critical alerts require action." tone="rose" />
@@ -25,8 +25,14 @@
                                     <p class="mt-1 text-sm font-semibold" :class="mutedClass">{{ item.body || 'No extra context provided.' }}</p>
                                 </div>
                                 <div class="flex gap-2">
-                                    <button v-if="!item.read" type="button" class="btn-secondary" @click="router.post(route('admin.alerts.read', item.id))">Read</button>
-                                    <button type="button" class="btn-primary" @click="router.post(route('admin.alerts.action', item.id))">{{ item.action_label || 'Action' }}</button>
+                                    <button
+                                        type="button"
+                                        class="btn-primary inline-flex items-center justify-center disabled:opacity-60"
+                                        :disabled="alertBusyId === item.id"
+                                        @click="openAlert(item.id)"
+                                    >
+                                        {{ item.read ? (item.action_label || 'Open') : 'Open' }}
+                                    </button>
                                 </div>
                             </div>
                         </article>
@@ -201,8 +207,11 @@
 
 <script setup>
 import AdminShell from '@/Layouts/AdminShell.vue';
+import { useStaffNotificationVisit } from '@/composables/useStaffNotificationVisit';
 import { router, useForm } from '@inertiajs/vue3';
 import { computed, defineComponent, h } from 'vue';
+
+const { busyId: alertBusyId, visit: openAlert } = useStaffNotificationVisit('admin.alerts.open');
 
 const props = defineProps({
     mode: { type: String, required: true },
@@ -311,12 +320,17 @@ const Badge = defineComponent({
 
 const CriticalBanner = defineComponent({
     props: { alert: Object },
-    setup(bannerProps) {
+    emits: ['open'],
+    setup(bannerProps, { emit }) {
         return () => h('div', { class: 'rounded-3xl border border-rose-300 bg-rose-50 p-4 text-rose-900 shadow-lg shadow-rose-200/50 dark:border-rose-500/40 dark:bg-rose-950/40 dark:text-rose-100' }, [
             h('p', { class: 'text-xs font-black uppercase tracking-[0.22em]' }, 'Critical alert - action required'),
             h('div', { class: 'mt-2 flex flex-col gap-3 md:flex-row md:items-center md:justify-between' }, [
                 h('div', [h('h3', { class: 'font-display text-lg font-black' }, bannerProps.alert.title), h('p', { class: 'text-sm font-semibold' }, bannerProps.alert.body)]),
-                h('button', { type: 'button', class: 'btn-danger', onClick: () => router.post(route('admin.alerts.action', bannerProps.alert.id)) }, bannerProps.alert.action_label || 'Action now'),
+                h('button', {
+                    type: 'button',
+                    class: 'btn-danger',
+                    onClick: () => emit('open', bannerProps.alert.id),
+                }, bannerProps.alert.action_label || 'Open'),
             ]),
         ]);
     },

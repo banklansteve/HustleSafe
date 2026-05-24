@@ -7,9 +7,9 @@ return [
     | Default Broadcaster
     |--------------------------------------------------------------------------
     |
-    | This option controls the default broadcaster that will be used by the
-    | framework when an event needs to be broadcast. You may set this to
-    | any of the connections defined in the "connections" array below.
+    | Live chat, admin DM, and team chat use this connection for WebSockets.
+    | Set BROADCAST_CONNECTION=reverb (self-hosted) or pusher (hosted / Soketi).
+    | Chat also polls over HTTP every ~500ms when WebSockets are unavailable.
     |
     | Supported: "reverb", "pusher", "ably", "redis", "log", "null"
     |

@@ -329,7 +329,10 @@ class User extends Authenticatable implements MustVerifyEmail
             default => config('profile.client_public_defaults', config('profile.public_defaults', [])),
         };
 
-        return array_merge($defaults, $this->public_profile_settings ?? []);
+        $merged = array_merge($defaults, $this->public_profile_settings ?? []);
+        unset($merged['show_phone'], $merged['show_email']);
+
+        return $merged;
     }
 
     public function isDeactivated(): bool
@@ -534,5 +537,20 @@ class User extends Authenticatable implements MustVerifyEmail
     protected function ratingsCountAsClient(): Attribute
     {
         return Attribute::get(fn () => (int) ($this->trustMetrics?->ratings_count_as_client ?? 0));
+    }
+
+    public function wallet(): HasOne
+    {
+        return $this->hasOne(Wallet::class);
+    }
+
+    public function walletBankAccounts(): HasMany
+    {
+        return $this->hasMany(WalletBankAccount::class);
+    }
+
+    public function walletTransactions(): HasMany
+    {
+        return $this->hasMany(WalletTransaction::class);
     }
 }

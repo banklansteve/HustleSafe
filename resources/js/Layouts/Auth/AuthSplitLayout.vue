@@ -15,12 +15,8 @@
                         href="/"
                         class="mb-10 inline-flex w-fit items-center gap-2 rounded-xl text-slate-900 transition hover:bg-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                     >
-                        <span
-                            class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600 text-sm font-black text-white shadow-sm ring-1 ring-primary-500/30"
-                        >
-                            HS
-                        </span>
-                        <span class="font-display text-lg font-bold tracking-tight">HustleSafe</span>
+                        <HustleSafeLogo variant="icon" theme="light" icon-class="h-10 w-10" />
+                        <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-8 w-auto max-w-[9.5rem]" />
                     </Link>
 
                     <div class="animate-fade-in-up">
@@ -72,12 +68,8 @@
                             href="/"
                             class="inline-flex items-center gap-2 rounded-lg text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                         >
-                            <span
-                                class="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-600 text-xs font-black text-white shadow-sm"
-                            >
-                                HS
-                            </span>
-                            <span class="font-display text-lg font-bold">HustleSafe</span>
+                            <HustleSafeLogo variant="icon" theme="light" icon-class="h-9 w-9" />
+                            <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-7 w-auto max-w-[8.5rem]" />
                         </Link>
                     </div>
 
@@ -104,6 +96,7 @@
 </template>
 
 <script setup>
+import HustleSafeLogo from '@/Components/Brand/HustleSafeLogo.vue';
 import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 

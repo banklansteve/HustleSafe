@@ -3,41 +3,81 @@
 namespace App\Http\Controllers\Operations;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Shared\UserVerificationDocumentController;
+use App\Models\User;
 use App\Models\UserVerification;
+use App\Services\Operations\StaffVerificationService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class OperationsVerificationsController extends Controller
 {
+    public function __construct(private readonly StaffVerificationService $service) {}
+
     public function index(Request $request): Response
     {
-        $q = trim((string) $request->query('q', ''));
-
-        $verifications = UserVerification::query()
-            ->with(['user:id,name,email,avatar_url,current_verification_level,verification_tier'])
-            ->whereIn('status', ['pending', 'in_review', 'flagged', 'unverified'])
-            ->when($q !== '', fn ($query) => $query->whereHas('user', fn ($user) => $user->where('name', 'like', "%{$q}%")->orWhere('email', 'like', "%{$q}%")))
-            ->oldest('submitted_at')
-            ->paginate(20)
-            ->through(fn (UserVerification $verification) => [
-                'id' => $verification->id,
-                'type' => $verification->verification_type ?: $verification->category?->value ?: (string) $verification->category,
-                'status' => $verification->status?->value ?? (string) $verification->status,
-                'submitted_at' => $verification->submitted_at?->toIso8601String(),
-                'reason' => $verification->rejection_reason,
-                'concern' => $verification->admin_concern,
-                'user' => $verification->user ? [
-                    'name' => $verification->user->name,
-                    'email' => $verification->user->email,
-                    'level' => $verification->user->current_verification_level ?? $verification->user->verification_tier ?? 0,
-                ] : null,
-            ])
-            ->withQueryString();
-
         return Inertia::render('Operations/Verifications/Index', [
-            'verifications' => $verifications,
-            'filters' => ['q' => $q],
+            'decision_reasons' => app(\App\Services\Verification\VerificationDecisionReasonService::class)->options(),
+            'queue_defaults' => [
+                'tab' => 'my_assignments',
+                'range' => '30d',
+                'per_page' => (int) config('operations.verification_queue.per_page', 25),
+            ],
         ]);
+    }
+
+    public function listing(Request $request): JsonResponse
+    {
+        /** @var User $staff */
+        $staff = $request->user();
+        $paginator = $this->service->paginatedListing($request, $staff);
+
+        return response()->json([
+            'items' => $paginator->items(),
+            'meta' => [
+                'total' => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+            ],
+        ]);
+    }
+
+    public function detail(Request $request, UserVerification $verification): JsonResponse
+    {
+        return response()->json($this->service->detail($verification, $request->user()));
+    }
+
+    public function decide(Request $request, UserVerification $verification): JsonResponse
+    {
+        $data = $request->validate([
+            'action' => ['required', 'in:approve,reject,request_corrections'],
+            'reason_code' => ['required_unless:action,approve', 'nullable', 'string', 'max:40'],
+            'reason_note' => ['nullable', 'string', 'max:2000'],
+            'reason' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $result = $this->service->decide($verification, $request->user(), $data, $request);
+
+        return response()->json($result);
+    }
+
+    public function document(Request $request, UserVerification $verification): StreamedResponse
+    {
+        return app(UserVerificationDocumentController::class)($request, $verification);
+    }
+
+    public function escalate(Request $request, UserVerification $verification): JsonResponse
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:8', 'max:2000'],
+        ]);
+
+        $result = $this->service->escalate($verification, $request->user(), $data, $request);
+
+        return response()->json($result);
     }
 }

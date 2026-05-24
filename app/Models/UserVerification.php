@@ -33,6 +33,8 @@ class UserVerification extends Model
         'referred_at',
         'reviewed_at',
         'rejection_reason',
+        'decision_reason_code',
+        'decision_reason_note',
         'admin_concern',
         'expires_at',
     ];
@@ -46,6 +48,7 @@ class UserVerification extends Model
             'metadata' => 'array',
             'provider_response' => 'array',
             'submitted_at' => 'datetime',
+            'staff_assigned_at' => 'datetime',
             'reviewed_at' => 'datetime',
             'referred_at' => 'datetime',
             'expires_at' => 'datetime',
@@ -74,6 +77,11 @@ class UserVerification extends Model
     public function reviewer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function assignedStaff(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_staff_id');
     }
 
     public function referredToAdmin(): BelongsTo

@@ -21,9 +21,8 @@
                 </div>
             </section>
 
-            <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="content-tab" aria-label="Content management sections" />
-
-            <AdminTabPanel v-model="activeTab" value="email" id-prefix="content-tab" class="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
+            <AdminTabbedPage v-model="activeTab" :tabs="tabs" id-prefix="content-tab" aria-label="Content management sections">
+            <AdminTabPanel :current-tab="activeTab" value="email" id-prefix="content-tab" class="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
                 <AdminPanel title="System email templates" description="Every transactional email, its trigger, subject line, and last editor. Amber rows need subject-line attention because open rate is below 20%.">
                     <div class="space-y-3">
                         <button
@@ -149,7 +148,7 @@
                 </div>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="announcements" id-prefix="content-tab" class="grid gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+            <AdminTabPanel :current-tab="activeTab" value="announcements" id-prefix="content-tab" class="grid gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
                 <AdminPanel title="Create announcement" description="Only one active banner can overlap for the same user segment. Critical notices can be non-dismissible.">
                     <form class="space-y-4" @submit.prevent="saveAnnouncement">
                         <textarea v-model="announcementForm.message" required rows="4" placeholder="🎉 We’re now accepting Quests in the Legal category!" class="w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
@@ -195,7 +194,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="help" id-prefix="content-tab" class="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.7fr)]">
+            <AdminTabPanel :current-tab="activeTab" value="help" id-prefix="content-tab" class="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.7fr)]">
                 <AdminPanel title="FAQ & help content" description="Organise sections, edit rich answers, add search keywords, and archive stale answers without deleting history.">
                     <form class="mb-5 grid gap-3 rounded-3xl border border-amber-100 bg-amber-50/60 p-4 dark:border-amber-300/20 dark:bg-amber-400/10" @submit.prevent="saveFaq">
                         <div class="grid gap-3 md:grid-cols-2">
@@ -265,6 +264,7 @@
                     </div>
                 </AdminPanel>
             </AdminTabPanel>
+            </AdminTabbedPage>
         </div>
     </AdminShell>
 </template>
@@ -272,12 +272,12 @@
 <script setup>
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
-import AdminTabs from '@/Components/Admin/AdminTabs.vue';
+import AdminTabbedPage from '@/Components/Admin/AdminTabbedPage.vue';
 import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { router, useForm } from '@inertiajs/vue3';
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
     section: { type: String, required: true },
@@ -293,6 +293,14 @@ const tabs = [
     { key: 'help', label: 'FAQ & Help Content' },
 ];
 const { activeTab } = useTabState(tabs.map((tab) => tab.key), props.section || 'email');
+watch(
+    () => props.section,
+    (section) => {
+        if (section && tabs.some((tab) => tab.key === section)) {
+            activeTab.value = section;
+        }
+    },
+);
 const blockTypes = ['text', 'button', 'image', 'divider'];
 const seoChecklist = [
     { label: 'Clear title', done: true, note: 'Helps people know what the page is about.' },

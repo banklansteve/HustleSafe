@@ -12,9 +12,8 @@
                 </div>
             </div>
 
-            <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="moderation-tab" aria-label="Content moderation sections" />
-
-            <AdminTabPanel v-for="queueTab in queueTabs" :key="queueTab.key" v-model="activeTab" :value="queueTab.key" id-prefix="moderation-tab" class="space-y-5">
+            <AdminTabbedPage v-model="activeTab" :tabs="tabs" id-prefix="moderation-tab" aria-label="Content moderation sections">
+            <AdminTabPanel v-for="queueTab in queueTabs" :key="queueTab.key" :current-tab="activeTab" :value="queueTab.key" id-prefix="moderation-tab" class="space-y-5">
                 <AdminPanel :title="activeTabLabel" description="Oldest flagged content appears first by default. Use severity sorting for triage.">
                     <div class="mb-4 grid gap-3 md:grid-cols-[1fr_12rem_12rem_auto]">
                         <input v-model="filtersState.q" type="search" placeholder="Search title, excerpt, or trigger…" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @input="debouncedApply" />
@@ -90,7 +89,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="history" id-prefix="moderation-tab">
+            <AdminTabPanel :current-tab="activeTab" value="history" id-prefix="moderation-tab">
                 <AdminPanel title="Moderation history & audit" description="Immutable log of every approval, removal, warning, edit, and escalation.">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-white/10">
@@ -119,7 +118,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="settings" id-prefix="moderation-tab" class="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+            <AdminTabPanel :current-tab="activeTab" value="settings" id-prefix="moderation-tab" class="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
                 <AdminPanel title="Keyword management" description="Add, pause, and tune automated text flags.">
                     <form class="grid gap-3 md:grid-cols-[1fr_10rem_12rem_auto]" @submit.prevent="storeKeyword">
                         <input v-model="keywordForm.phrase" required placeholder="Phrase" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
@@ -159,6 +158,7 @@
                     </form>
                 </AdminPanel>
             </AdminTabPanel>
+            </AdminTabbedPage>
         </div>
 
         <AdminSlideOver :open="caseOpen" :title="selectedCase?.title || 'Review content'" eyebrow="Moderation review" @close="caseOpen = false">
@@ -214,7 +214,7 @@
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
-import AdminTabs from '@/Components/Admin/AdminTabs.vue';
+import AdminTabbedPage from '@/Components/Admin/AdminTabbedPage.vue';
 import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';

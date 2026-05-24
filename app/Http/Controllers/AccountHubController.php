@@ -9,11 +9,12 @@ use App\Models\Portfolio;
 use App\Models\Quest;
 use App\Models\QuestCategory;
 use App\Models\QuestDispute;
+use App\Models\QuestOffer;
 use App\Models\Review;
 use App\Models\State;
+use App\Models\User;
 use App\Models\UserFollow;
 use App\Services\PowerHoursService;
-use App\Services\Verification\VerificationEngineService;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -36,7 +37,7 @@ class AccountHubController extends Controller
 
         $role = $user->role?->slug ?? 'client';
         $isFreelancer = $role === 'freelancer';
-        $verificationEngine = app(VerificationEngineService::class);
+        $verificationCatalog = app(\App\Services\Verification\UserVerificationCatalogService::class)->forUser($user);
         $powerHours = app(PowerHoursService::class);
 
         $tab = (string) $request->query('tab', 'overview');
@@ -135,15 +136,11 @@ class AccountHubController extends Controller
                 'rating_count_client' => $user->ratings_count_as_client,
                 'profile_percent' => $user->profile_completion_percent,
             ],
-            'verificationEngine' => [
-                'earned_level' => $verificationEngine->storedLevel($user),
-                'effective_level' => $verificationEngine->effectiveLevel($user),
-                'cooldown' => $verificationEngine->cooldown($user),
-                'client_posting_limit_minor' => $verificationEngine->clientPostingLimitMinor($user),
-                'freelancer_proposal_limit_minor' => $verificationEngine->freelancerProposalLimitMinor($user),
+            'verificationEngine' => array_merge($verificationCatalog['trust'], [
                 'restricted' => $user->verification_restricted_at !== null,
                 'restriction_reason' => $user->verification_restriction_reason,
-            ],
+                'is_freelancer' => $isFreelancer,
+            ]),
             'reviewStats' => [
                 'total' => (clone $reviewBase)->count(),
                 'with_stars' => (clone $reviewBase)->whereNotNull('rating')->count(),
@@ -188,9 +185,12 @@ class AccountHubController extends Controller
                 'verified_at' => $user->freelancerBusinessProfile->cac_verified_at?->toIso8601String(),
             ] : null,
             'visibility' => $user->effectivePublicProfileSettings(),
-            'visibilityKeys' => $isFreelancer
-                ? array_keys(config('profile.public_defaults', []))
-                : array_keys(config('profile.client_public_defaults', [])),
+            'visibilityKeys' => array_values(array_filter(
+                $isFreelancer
+                    ? array_keys(config('profile.public_defaults', []))
+                    : array_keys(config('profile.client_public_defaults', [])),
+                fn (string $key): bool => ! in_array($key, ['show_phone', 'show_email'], true),
+            )),
             'publicReviewsUrl' => $isFreelancer ? route('freelancers.public.reviews', $user->slug) : null,
             'publicPortfoliosUrl' => $isFreelancer ? route('freelancers.public.portfolios', $user->slug) : null,
             'follower_count' => Schema::hasTable('user_follows')
@@ -239,22 +239,59 @@ class AccountHubController extends Controller
                 ])
                 ->values()
                 ->all(),
-            'commerce_hub' => [
-                'disputes_index_url' => route('disputes.index'),
-                'open_disputes_count' => Schema::hasTable('quest_disputes')
-                    ? QuestDispute::query()
-                        ->whereHas('quest', function ($q) use ($user): void {
-                            $q->where('client_id', $user->id)->orWhere('freelancer_id', $user->id);
-                        })
-                        ->whereNotIn('status', [QuestDisputeStatus::Resolved, QuestDisputeStatus::ClosedWithdrawn])
-                        ->count()
-                    : 0,
-                'pending_funding_quests_count' => Quest::query()
+            'commerce_hub' => $this->commerceHubFor($user, $isFreelancer),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function commerceHubFor(User $user, bool $isFreelancer): ?array
+    {
+        if ($isFreelancer && ! $this->freelancerHasAcceptedProposal($user)) {
+            return null;
+        }
+
+        return [
+            'disputes_index_url' => route('disputes.index'),
+            'open_disputes_count' => $this->openDisputesCountFor($user, $isFreelancer),
+            'pending_funding_quests_count' => $isFreelancer
+                ? 0
+                : Quest::query()
                     ->where('client_id', $user->id)
                     ->where('escrow_status', 'awaiting_funding')
                     ->whereNotNull('accepted_quest_offer_id')
                     ->count(),
-            ],
-        ]);
+        ];
+    }
+
+    private function freelancerHasAcceptedProposal(User $user): bool
+    {
+        return QuestOffer::query()
+            ->where('freelancer_id', $user->id)
+            ->where('status', 'accepted')
+            ->exists();
+    }
+
+    private function openDisputesCountFor(User $user, bool $isFreelancer): int
+    {
+        if (! Schema::hasTable('quest_disputes')) {
+            return 0;
+        }
+
+        return QuestDispute::query()
+            ->whereHas('quest', function ($q) use ($user, $isFreelancer): void {
+                if ($isFreelancer) {
+                    $q->where('freelancer_id', $user->id)
+                        ->whereNotNull('accepted_quest_offer_id');
+                } else {
+                    $q->where('client_id', $user->id)
+                        ->orWhere(fn ($scope) => $scope
+                            ->where('freelancer_id', $user->id)
+                            ->whereNotNull('accepted_quest_offer_id'));
+                }
+            })
+            ->whereNotIn('status', [QuestDisputeStatus::Resolved, QuestDisputeStatus::ClosedWithdrawn])
+            ->count();
     }
 }

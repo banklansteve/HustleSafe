@@ -11,9 +11,8 @@
                 </div>
             </div>
 
-            <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="promotions-tab" aria-label="Promotions sections" />
-
-            <AdminTabPanel v-model="activeTab" value="featured" id-prefix="promotions-tab" class="space-y-5">
+            <AdminTabbedPage v-model="activeTab" :tabs="tabs" id-prefix="promotions-tab" aria-label="Promotions sections">
+            <AdminTabPanel :current-tab="activeTab" value="featured" id-prefix="promotions-tab" class="space-y-5">
                 <div class="grid gap-3 md:grid-cols-3">
                     <div v-for="tile in featured.tiles" :key="tile.label" class="rounded-3xl border p-4" :class="shell.card">
                         <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ tile.label }}</p>
@@ -108,7 +107,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="coupons" id-prefix="promotions-tab" class="space-y-5">
+            <AdminTabPanel :current-tab="activeTab" value="coupons" id-prefix="promotions-tab" class="space-y-5">
                 <AdminPanel title="Coupon & discount engine" description="Create, pause, and review coupons for service fees, featured listings, or all payments.">
                     <template #actions>
                         <button type="button" class="rounded-2xl px-4 py-2 text-xs font-black uppercase text-white disabled:cursor-not-allowed disabled:opacity-50" :class="warmBtn" @click="showCouponForm = !showCouponForm">Create coupon</button>
@@ -165,7 +164,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="referrals" id-prefix="promotions-tab" class="space-y-5">
+            <AdminTabPanel :current-tab="activeTab" value="referrals" id-prefix="promotions-tab" class="space-y-5">
                 <AdminPanel title="Referral programme analytics" description="Referral tree, conversion, rewards, and weekly volume.">
                     <div class="grid gap-3 md:grid-cols-4">
                         <div v-for="(value, label) in referrals.metrics" :key="label" class="rounded-3xl border p-4" :class="shell.card">
@@ -198,7 +197,7 @@
                 </div>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="badges" id-prefix="promotions-tab" class="space-y-5">
+            <AdminTabPanel :current-tab="activeTab" value="badges" id-prefix="promotions-tab" class="space-y-5">
                 <AdminPanel title="Badge management" description="Recognition badges, criteria, holder counts, and manual awards.">
                     <template #actions>
                         <button type="button" class="rounded-2xl px-4 py-2 text-xs font-black uppercase text-white disabled:cursor-not-allowed disabled:opacity-50" :class="warmBtn" @click="showBadgeForm = !showBadgeForm">Create badge</button>
@@ -240,7 +239,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="settings" id-prefix="promotions-tab">
+            <AdminTabPanel :current-tab="activeTab" value="settings" id-prefix="promotions-tab">
                 <AdminPanel title="Promotion settings" description="Pricing, placements, referral reward structure, expiry, and qualifying event controls.">
                     <form class="space-y-5" @submit.prevent="saveSettings">
                         <div class="grid gap-3 xl:grid-cols-3">
@@ -264,6 +263,7 @@
                     </form>
                 </AdminPanel>
             </AdminTabPanel>
+            </AdminTabbedPage>
         </div>
     </AdminShell>
 </template>
@@ -271,12 +271,12 @@
 <script setup>
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
-import AdminTabs from '@/Components/Admin/AdminTabs.vue';
+import AdminTabbedPage from '@/Components/Admin/AdminTabbedPage.vue';
 import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { router, useForm } from '@inertiajs/vue3';
-import { computed, defineComponent, h, reactive, ref } from 'vue';
+import { computed, defineComponent, h, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
     section: { type: String, required: true },
@@ -330,6 +330,14 @@ const tabs = [
     { key: 'settings', label: 'Settings' },
 ];
 const { activeTab } = useTabState(tabs.map((tab) => tab.key), props.section || 'featured');
+watch(
+    () => props.section,
+    (section) => {
+        if (section && tabs.some((tab) => tab.key === section)) {
+            activeTab.value = section;
+        }
+    },
+);
 const showFeaturedForm = ref(false);
 const showCouponForm = ref(false);
 const showBadgeForm = ref(false);

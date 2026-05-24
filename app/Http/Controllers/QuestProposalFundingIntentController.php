@@ -3,53 +3,37 @@
 namespace App\Http\Controllers;
 
 use App\Models\Quest;
-use App\Models\QuestFundingIntent;
 use App\Models\QuestOffer;
+use App\Services\Payments\EscrowPaymentService;
+use App\Services\Payments\PaystackClient;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 class QuestProposalFundingIntentController extends Controller
 {
+    public function __construct(
+        private readonly EscrowPaymentService $escrowPayments,
+        private readonly PaystackClient $paystack,
+    ) {}
+
     public function store(Request $request, Quest $quest, QuestOffer $offer): RedirectResponse
     {
         $this->authorize('respondAsClient', $offer);
 
-        if ((int) $offer->quest_id !== (int) $quest->id) {
-            abort(404);
+        $checkout = $this->escrowPayments->beginQuestFunding($quest, $offer, $request->user());
+
+        if (! empty($checkout['authorization_url'])) {
+            return redirect()->away($checkout['authorization_url']);
         }
 
-        if ((int) $quest->client_id !== (int) $request->user()?->id) {
-            abort(403);
+        if (! empty($checkout['stub_mode'])) {
+            return back()->with(
+                'info',
+                __('Paystack is not configured. Enable PAYSTACK_ENABLED and add sandbox keys, or use manual escrow confirmation for local testing.'),
+            );
         }
 
-        if ((int) ($quest->accepted_quest_offer_id ?? 0) !== (int) $offer->id || $offer->status !== 'accepted') {
-            throw ValidationException::withMessages(['offer' => [__('Funding intents only apply to the accepted proposal.')]]);
-        }
-
-        if ($quest->escrow_status !== 'awaiting_funding') {
-            throw ValidationException::withMessages(['offer' => [__('Escrow is not awaiting funding right now.')]]);
-        }
-
-        $p = $offer->pricing_snapshot ?? [];
-        $quoted = (int) ($p['grand_total_minor'] ?? $offer->quoted_amount_minor ?? 0);
-
-        QuestFundingIntent::query()->create([
-            'quest_id' => $quest->id,
-            'quest_offer_id' => $offer->id,
-            'initiated_by_user_id' => $request->user()->id,
-            'quoted_total_minor' => $quoted,
-            'status' => 'initiated',
-            'gateway_key' => (string) config('escrow.driver', 'stub'),
-            'meta' => [
-                'user_agent' => substr((string) $request->userAgent(), 0, 512),
-                'ip' => $request->ip(),
-            ],
-        ]);
-
-        return back()->with(
-            'success',
-            __('Payment checkout is not wired yet — we logged your funding intent. You will return here after the gateway is connected.')
-        );
+        return back()->with('error', __('Could not start Paystack checkout.'));
     }
 }

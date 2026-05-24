@@ -16,6 +16,8 @@ class QuestFundingIntent extends Model
         'quoted_total_minor',
         'status',
         'gateway_key',
+        'payment_escrow_id',
+        'paystack_reference',
         'meta',
     ];
 

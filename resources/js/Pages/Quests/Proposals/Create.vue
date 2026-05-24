@@ -300,8 +300,11 @@
                             <TextInput v-model.number="form.pricing.stamp_duty_ngn" type="number" min="0" step="1" class="w-full" />
                         </div>
                         <div class="space-y-2">
-                            <InputLabel value="Platform / processing" />
-                            <TextInput v-model.number="form.pricing.platform_fee_ngn" type="number" min="0" step="1" class="w-full" />
+                            <InputLabel :value="`Platform fee (${platformFeePercent}% of subtotal)`" />
+                            <TextInput v-model.number="form.pricing.platform_fee_ngn" type="number" min="0" step="1" class="w-full bg-slate-50" readonly />
+                            <p class="text-xs font-semibold text-slate-600">
+                                Auto-calculated from professional fee + materials + travel. Rate is set in Super Admin → Platform settings → Financial & Escrow.
+                            </p>
                         </div>
                         <div class="space-y-2">
                             <InputLabel value="Discount" />
@@ -439,6 +442,7 @@ const props = defineProps({
         }),
     },
     vat_preset_percent: { type: Number, default: 7.5 },
+    platform_fee_percent: { type: Number, default: 12 },
     proposal_edit: { type: Object, default: null },
 });
 
@@ -612,6 +616,16 @@ const materialsSubtotalNgn = computed(() =>
     form.materials.reduce((sum, row) => sum + materialLineNgn(row), 0),
 );
 
+const platformFeePercent = computed(() => Math.max(0, Math.min(100, Number(props.platform_fee_percent) || 12)));
+
+const pricingSubtotalNgn = computed(() => {
+    const prof = Math.max(0, Math.round(Number(form.pricing.professional_fee_ngn) || 0));
+    const mat = materialsSubtotalNgn.value;
+    const travel = Math.max(0, Math.round(Number(form.pricing.travel_cost_ngn) || 0));
+
+    return prof + mat + travel;
+});
+
 const breakdown = computed(() => {
     const prof = Math.max(0, Math.round(Number(form.pricing.professional_fee_ngn) || 0)) * 100;
     const mat = materialsSubtotalNgn.value * 100;
@@ -630,6 +644,17 @@ const breakdown = computed(() => {
 });
 
 const computedGrandNgn = computed(() => Math.round(breakdown.value.grandMinor / 100));
+
+watch(
+    [pricingSubtotalNgn, platformFeePercent],
+    () => {
+        const fee = Math.round(pricingSubtotalNgn.value * (platformFeePercent.value / 100));
+        if (form.pricing.platform_fee_ngn !== fee) {
+            form.pricing.platform_fee_ngn = fee;
+        }
+    },
+    { immediate: true },
+);
 
 watch(
     computedGrandNgn,

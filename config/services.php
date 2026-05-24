@@ -53,4 +53,12 @@ return [
         'token' => env('CAC_VERIFY_TOKEN'),
     ],
 
+    'tenor' => [
+        'api_key' => env('TENOR_API_KEY'),
+    ],
+
+    'giphy' => [
+        'api_key' => env('GIPHY_API_KEY'),
+    ],
+
 ];

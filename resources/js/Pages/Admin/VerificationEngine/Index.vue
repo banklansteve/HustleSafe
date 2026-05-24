@@ -24,9 +24,8 @@
                 </div>
             </div>
 
-            <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="verification-engine" aria-label="Verification engine sections" />
-
-            <AdminTabPanel v-model="activeTab" value="settings" id-prefix="verification-engine">
+            <AdminTabbedPage v-model="activeTab" :tabs="tabs" id-prefix="verification-engine" aria-label="Verification engine sections">
+            <AdminTabPanel :current-tab="activeTab" value="settings" id-prefix="verification-engine">
                 <AdminPanel title="Verification Settings" description="Control verification types and the requirements that unlock L0-L5. Changes take effect immediately after save.">
                     <form class="space-y-6" @submit.prevent="saveTypes">
                         <div class="grid gap-3 lg:grid-cols-2">
@@ -58,54 +57,114 @@
                             </div>
                         </div>
 
-                        <div class="grid gap-3 xl:grid-cols-3">
-                            <div v-for="level in [0, 1, 2, 3, 4, 5]" :key="level" class="rounded-3xl border p-4" :class="shell.card">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p class="font-black">L{{ level }} requirements</p>
-                                        <p class="mt-1 text-xs font-bold" :class="shell.cardMuted">{{ levels[level]?.label || `Level ${level}` }}</p>
+                        <div class="space-y-8">
+                            <div>
+                                <h3 class="text-sm font-black uppercase tracking-wide text-primary-800">Client levels (L0–L5)</h3>
+                                <p class="mt-1 text-xs font-bold" :class="shell.cardMuted">Email → identity &amp; address → NIN → BVN → 180-day account age.</p>
+                                <div class="mt-4 grid gap-3 xl:grid-cols-3">
+                                    <div v-for="level in [0, 1, 2, 3, 4, 5]" :key="`client-${level}`" class="rounded-3xl border p-4" :class="shell.card">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p class="font-black">L{{ level }} requirements</p>
+                                                <p class="mt-1 text-xs font-bold" :class="shell.cardMuted">{{ client_levels[level]?.label || `Level ${level}` }}</p>
+                                            </div>
+                                            <button type="button" class="rounded-xl px-3 py-1.5 text-[11px] font-black uppercase tracking-wide" :class="shell.btnGhost" @click="toggleSettingEditor(`client:level:${level}`)">
+                                                {{ editingSetting === `client:level:${level}` ? 'Close' : 'Edit' }}
+                                            </button>
+                                        </div>
+                                        <div v-if="editingSetting === `client:level:${level}`" class="mt-4 space-y-2">
+                                            <label v-for="option in requirementOptions" :key="`client-${level}-${option.key}`" class="flex items-start gap-2 rounded-2xl border p-3 text-sm font-bold" :class="shell.card">
+                                                <input v-model="clientRequirementState[level].checks" :value="option.key" type="checkbox" class="mt-1 rounded border-slate-300 text-primary-600" />
+                                                <span>
+                                                    <span class="block">{{ option.label }}</span>
+                                                    <span class="block text-[11px] font-semibold" :class="shell.cardMuted">{{ option.hint }}</span>
+                                                </span>
+                                            </label>
+                                            <label class="block rounded-2xl border p-3 text-sm font-bold" :class="shell.card">
+                                                <span>Minimum account age in days</span>
+                                                <input v-model.number="clientRequirementState[level].accountAgeDays" type="number" min="0" class="mt-2 w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
+                                            </label>
+                                        </div>
+                                        <div v-else class="mt-4 flex flex-wrap gap-2">
+                                            <span v-for="item in requirementSummary(clientRequirementState[level], requirementOptions)" :key="item" class="rounded-full bg-primary-50 px-3 py-1 text-xs font-black text-primary-800 dark:bg-primary-400/15 dark:text-primary-100">
+                                                {{ item }}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <button type="button" class="rounded-xl px-3 py-1.5 text-[11px] font-black uppercase tracking-wide" :class="shell.btnGhost" @click="toggleSettingEditor(`level:${level}`)">
-                                        {{ editingSetting === `level:${level}` ? 'Close' : 'Edit' }}
-                                    </button>
                                 </div>
-                                <div v-if="editingSetting === `level:${level}`" class="mt-4 space-y-2">
-                                    <label v-for="option in requirementOptions" :key="`${level}-${option.key}`" class="flex items-start gap-2 rounded-2xl border p-3 text-sm font-bold" :class="shell.card">
-                                        <input v-model="requirementState[level].checks" :value="option.key" type="checkbox" class="mt-1 rounded border-slate-300 text-primary-600" />
-                                        <span>
-                                            <span class="block">{{ option.label }}</span>
-                                            <span class="block text-[11px] font-semibold" :class="shell.cardMuted">{{ option.hint }}</span>
-                                        </span>
-                                    </label>
-                                    <label class="flex items-start gap-2 rounded-2xl border p-3 text-sm font-bold" :class="shell.card">
-                                        <input v-model="requirementState[level].businessEither" type="checkbox" class="mt-1 rounded border-slate-300 text-primary-600" />
-                                        <span>
-                                            <span class="block">CAC or TIN accepted</span>
-                                            <span class="block text-[11px] font-semibold" :class="shell.cardMuted">Either business document can satisfy this level.</span>
-                                        </span>
-                                    </label>
-                                    <label class="block rounded-2xl border p-3 text-sm font-bold" :class="shell.card">
-                                        <span>Minimum account age in days</span>
-                                        <input v-model.number="requirementState[level].accountAgeDays" type="number" min="0" class="mt-2 w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
-                                        <span class="mt-1 block text-[11px] font-semibold" :class="shell.cardMuted">Use 0 when account age is not required.</span>
-                                    </label>
-                                    <button type="submit" class="rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="typesForm.processing">
-                                        Save Level
-                                    </button>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-black uppercase tracking-wide text-primary-800">Freelancer levels (L0–L5)</h3>
+                                <p class="mt-1 text-xs font-bold" :class="shell.cardMuted">Email → identity &amp; address → NIN &amp; BVN → CAC/TIN → 90 days + selfie + ID.</p>
+                                <div class="mt-4 grid gap-3 xl:grid-cols-3">
+                                    <div v-for="level in [0, 1, 2, 3, 4, 5]" :key="`freelancer-${level}`" class="rounded-3xl border p-4" :class="shell.card">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p class="font-black">L{{ level }} requirements</p>
+                                                <p class="mt-1 text-xs font-bold" :class="shell.cardMuted">{{ freelancer_levels[level]?.label || `Level ${level}` }}</p>
+                                            </div>
+                                            <button type="button" class="rounded-xl px-3 py-1.5 text-[11px] font-black uppercase tracking-wide" :class="shell.btnGhost" @click="toggleSettingEditor(`freelancer:level:${level}`)">
+                                                {{ editingSetting === `freelancer:level:${level}` ? 'Close' : 'Edit' }}
+                                            </button>
+                                        </div>
+                                        <div v-if="editingSetting === `freelancer:level:${level}`" class="mt-4 space-y-2">
+                                            <label v-for="option in freelancerRequirementOptions" :key="`freelancer-${level}-${option.key}`" class="flex items-start gap-2 rounded-2xl border p-3 text-sm font-bold" :class="shell.card">
+                                                <input v-model="freelancerRequirementState[level].checks" :value="option.key" type="checkbox" class="mt-1 rounded border-slate-300 text-primary-600" />
+                                                <span>
+                                                    <span class="block">{{ option.label }}</span>
+                                                    <span class="block text-[11px] font-semibold" :class="shell.cardMuted">{{ option.hint }}</span>
+                                                </span>
+                                            </label>
+                                            <label class="flex items-start gap-2 rounded-2xl border p-3 text-sm font-bold" :class="shell.card">
+                                                <input v-model="freelancerRequirementState[level].businessEither" type="checkbox" class="mt-1 rounded border-slate-300 text-primary-600" />
+                                                <span>
+                                                    <span class="block">CAC or TIN accepted</span>
+                                                    <span class="block text-[11px] font-semibold" :class="shell.cardMuted">Either business document can satisfy this level.</span>
+                                                </span>
+                                            </label>
+                                            <label class="block rounded-2xl border p-3 text-sm font-bold" :class="shell.card">
+                                                <span>Minimum account age in days</span>
+                                                <input v-model.number="freelancerRequirementState[level].accountAgeDays" type="number" min="0" class="mt-2 w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
+                                            </label>
+                                        </div>
+                                        <div v-else class="mt-4 flex flex-wrap gap-2">
+                                            <span v-for="item in requirementSummary(freelancerRequirementState[level], freelancerRequirementOptions)" :key="item" class="rounded-full bg-primary-50 px-3 py-1 text-xs font-black text-primary-800 dark:bg-primary-400/15 dark:text-primary-100">
+                                                {{ item }}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div v-else class="mt-4 flex flex-wrap gap-2">
-                                    <span v-for="item in requirementSummary(level)" :key="item" class="rounded-full bg-primary-50 px-3 py-1 text-xs font-black text-primary-800 dark:bg-primary-400/15 dark:text-primary-100">
-                                        {{ item }}
-                                    </span>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-black uppercase tracking-wide text-primary-800">Stage copy (user-facing)</h3>
+                                <p class="mt-1 text-xs font-bold" :class="shell.cardMuted">Editable titles, messages, and info bars shown on the verification page.</p>
+                                <div class="mt-4 grid gap-3 lg:grid-cols-2">
+                                    <div v-for="role in ['client', 'freelancer']" :key="role" class="rounded-3xl border p-4" :class="shell.card">
+                                        <p class="font-black capitalize">{{ role }} stages</p>
+                                        <div v-for="level in [1, 2, 3, 4, 5]" :key="`${role}-${level}`" class="mt-4 rounded-2xl border p-3" :class="shell.card">
+                                            <button type="button" class="text-xs font-black uppercase tracking-wide text-primary-700" @click="toggleSettingEditor(`stage:${role}:${level}`)">
+                                                L{{ level }} · {{ editingSetting === `stage:${role}:${level}` ? 'Close' : 'Edit copy' }}
+                                            </button>
+                                            <div v-if="editingSetting === `stage:${role}:${level}`" class="mt-3 space-y-2">
+                                                <input v-model="typesForm.stage_content[role][level].title" placeholder="Title" class="w-full rounded-2xl border px-3 py-2 text-sm font-semibold" :class="shell.input" />
+                                                <textarea v-model="typesForm.stage_content[role][level].message" rows="2" placeholder="Message" class="w-full rounded-2xl border px-3 py-2 text-sm font-semibold" :class="shell.input" />
+                                                <textarea v-model="typesForm.stage_content[role][level].info_bar" rows="2" placeholder="Info bar" class="w-full rounded-2xl border px-3 py-2 text-sm font-semibold" :class="shell.input" />
+                                            </div>
+                                            <p v-else class="mt-2 text-xs font-semibold" :class="shell.cardMuted">{{ typesForm.stage_content[role]?.[level]?.title || '—' }}</p>
+                                        </div>
+                                    </div>
                                 </div>
+                                <button type="submit" class="mt-4 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="typesForm.processing">
+                                    Save all settings
+                                </button>
                             </div>
                         </div>
                     </form>
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="limits" id-prefix="verification-engine">
-                <AdminPanel title="Limit Configuration" description="NGN posting and proposal ceilings by effective verification level. Stored in the database and read at runtime.">
+            <AdminTabPanel :current-tab="activeTab" value="limits" id-prefix="verification-engine">
+                <AdminPanel title="Limit Configuration" description="Client limits cap maximum quest budget per post. Freelancer limits cap the quest value they can propose on. Stored in the database and enforced at runtime.">
                     <form class="grid gap-4 xl:grid-cols-2" @submit.prevent="saveLimits">
                         <div class="rounded-3xl border p-4" :class="shell.card">
                             <div class="flex items-center justify-between gap-3">
@@ -133,7 +192,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="safeguards" id-prefix="verification-engine">
+            <AdminTabPanel :current-tab="activeTab" value="safeguards" id-prefix="verification-engine">
                 <AdminPanel title="Safeguard Configuration" description="Escrow, milestones, cooldowns, reposting, arbitration, and anomaly detection thresholds.">
                     <form class="grid gap-3 md:grid-cols-2 xl:grid-cols-3" @submit.prevent="saveSafeguards">
                         <div v-for="field in safeguardFields" :key="field.key" class="rounded-3xl border p-4" :class="shell.card">
@@ -170,7 +229,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="queue" id-prefix="verification-engine">
+            <AdminTabPanel :current-tab="activeTab" value="queue" id-prefix="verification-engine">
                 <AdminPanel title="Document Review Desk" description="Review BVN, NIN, utility, identity, and credential submissions with reasons, concerns, referrals, and audit trails.">
                     <div class="grid gap-3">
                         <div v-for="item in pending.data" :key="item.id" class="rounded-3xl border p-4" :class="shell.card">
@@ -182,7 +241,21 @@
                                             {{ labelize(item.status) }}
                                         </span>
                                     </div>
-                                    <p class="mt-1 text-xs font-bold text-slate-500">{{ item.user.email }} · {{ labelize(item.type) }} · submitted {{ dateLabel(item.submitted_at) }}</p>
+                                    <p class="mt-1 text-xs font-bold text-slate-500">
+                                        {{ item.user.email }} · {{ item.type_label || labelize(item.type) }} · submitted {{ item.submitted_at_label || dateLabel(item.submitted_at) }}
+                                    </p>
+                                    <div v-if="item.document_previews?.length" class="mt-3 flex flex-wrap gap-2">
+                                        <button
+                                            v-for="doc in item.document_previews"
+                                            :key="doc.path"
+                                            type="button"
+                                            class="h-16 w-16 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-sm ring-1 ring-slate-100"
+                                            @click="openVerification(item)"
+                                        >
+                                            <img v-if="doc.is_image" :src="doc.url" :alt="doc.label" class="h-full w-full object-cover" />
+                                            <span v-else class="flex h-full items-center justify-center text-lg">{{ doc.is_pdf ? '📄' : '📎' }}</span>
+                                        </button>
+                                    </div>
                                     <p v-if="item.concern || item.reason" class="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm font-bold text-amber-950">
                                         {{ item.concern || item.reason }}
                                     </p>
@@ -198,7 +271,7 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="anomalies" id-prefix="verification-engine">
+            <AdminTabPanel :current-tab="activeTab" value="anomalies" id-prefix="verification-engine">
                 <AdminPanel title="Anomaly Flags Queue" description="Risk signals for super-admin review. Flags do not restrict users until an admin acts.">
                     <div class="grid gap-3">
                         <div v-for="flag in anomalies.data" :key="flag.id" class="rounded-3xl border p-4" :class="shell.card">
@@ -220,7 +293,109 @@
                 </AdminPanel>
             </AdminTabPanel>
 
-            <AdminTabPanel v-model="activeTab" value="audit" id-prefix="verification-engine">
+            <AdminTabPanel :current-tab="activeTab" value="overrides" id-prefix="verification-engine">
+                <AdminPanel title="Per-user level override" description="Search by full name or email, review their current level, set a target level (upgrade or downgrade), and document why. Every change is written to the audit log.">
+                    <form class="max-w-2xl space-y-6" @submit.prevent="submitLevelOverride">
+                        <div class="relative">
+                            <label class="block text-sm font-bold">
+                                User
+                                <input
+                                    v-model="overrideForm.query"
+                                    type="search"
+                                    autocomplete="off"
+                                    class="mt-2 w-full rounded-2xl border px-4 py-3 text-sm font-semibold"
+                                    :class="shell.input"
+                                    placeholder="Search by full name or email"
+                                    @input="onOverrideSearchInput"
+                                />
+                            </label>
+                            <p v-if="overrideForm.searchLoading" class="mt-2 text-xs font-semibold text-slate-500">Searching…</p>
+                            <ul
+                                v-else-if="overrideForm.searchResults.length"
+                                class="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-2xl border border-slate-200 bg-white py-1 shadow-xl"
+                            >
+                                <li v-for="user in overrideForm.searchResults" :key="user.id">
+                                    <button
+                                        type="button"
+                                        class="flex w-full flex-col items-start px-4 py-3 text-left hover:bg-primary-50"
+                                        @click="selectOverrideUser(user)"
+                                    >
+                                        <span class="text-sm font-black text-slate-900">{{ user.name }}</span>
+                                        <span class="text-xs font-semibold text-slate-500">{{ user.email }} · {{ user.current_label }}</span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div v-if="overrideForm.selectedUser" class="rounded-3xl border p-5" :class="shell.card">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p class="text-xs font-black uppercase tracking-wide text-slate-500">Selected user</p>
+                                    <p class="mt-1 text-lg font-black text-slate-900">{{ overrideForm.selectedUser.name }}</p>
+                                    <p class="text-sm font-semibold text-slate-600">{{ overrideForm.selectedUser.email }}</p>
+                                </div>
+                                <button type="button" class="text-xs font-black uppercase text-slate-500 hover:text-rose-600" @click="clearOverrideUser">
+                                    Change user
+                                </button>
+                            </div>
+
+                            <div class="mt-5 grid gap-3 sm:grid-cols-2">
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Current level</p>
+                                    <p class="mt-1 text-xl font-black text-slate-900">{{ overrideForm.selectedUser.current_label }}</p>
+                                </div>
+                                <div class="rounded-2xl border border-primary-200 bg-primary-50/80 px-4 py-3">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-primary-800">Target level</p>
+                                    <select
+                                        v-model.number="overrideForm.level"
+                                        class="mt-2 w-full rounded-xl border border-primary-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-900"
+                                    >
+                                        <option v-for="opt in overrideLevelOptions" :key="opt.value" :value="opt.value">
+                                            {{ opt.label }}
+                                        </option>
+                                    </select>
+                                    <p
+                                        v-if="overrideDirection"
+                                        class="mt-2 text-xs font-black uppercase tracking-wide"
+                                        :class="overrideDirection === 'upgrade' ? 'text-emerald-700' : overrideDirection === 'downgrade' ? 'text-amber-800' : 'text-slate-600'"
+                                    >
+                                        {{ overrideDirectionLabel }}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <label class="mt-5 block text-sm font-bold">
+                                Reason (required for audit trail)
+                                <textarea
+                                    v-model="overrideForm.reason"
+                                    rows="4"
+                                    required
+                                    minlength="8"
+                                    class="mt-2 w-full rounded-2xl border px-4 py-3 text-sm font-semibold"
+                                    :class="shell.input"
+                                    placeholder="Explain why this user is being moved to the target level (compliance note, support resolution, etc.)."
+                                />
+                            </label>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-3">
+                            <button
+                                type="submit"
+                                class="rounded-xl px-5 py-2.5 text-xs font-black uppercase"
+                                :class="shell.btnPrimary"
+                                :disabled="overrideForm.busy || !canSubmitOverride"
+                            >
+                                Apply override
+                            </button>
+                            <p v-if="overrideForm.message" class="text-sm font-bold" :class="overrideForm.messageType === 'error' ? 'text-rose-700' : 'text-emerald-700'">
+                                {{ overrideForm.message }}
+                            </p>
+                        </div>
+                    </form>
+                </AdminPanel>
+            </AdminTabPanel>
+
+            <AdminTabPanel :current-tab="activeTab" value="audit" id-prefix="verification-engine">
                 <AdminPanel title="Verification Engine Audit Log" description="Every limit change, threshold change, verification decision, override, and anomaly action.">
                     <div class="space-y-3">
                         <div v-for="log in audit.data" :key="log.id" class="rounded-3xl border p-4" :class="shell.card">
@@ -240,6 +415,7 @@
                     </div>
                 </AdminPanel>
             </AdminTabPanel>
+            </AdminTabbedPage>
 
             <AdminSlideOver
                 :open="!!selectedVerification"
@@ -249,80 +425,14 @@
                 panel-class="bg-white text-slate-950"
                 @close="closeVerification"
             >
-                <div v-if="selectedVerification" class="space-y-5">
-                    <section class="rounded-3xl border border-primary-100 bg-primary-50/70 p-5">
-                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                                <p class="text-sm font-black text-slate-950">{{ selectedVerification.user.email }}</p>
-                                <p class="mt-1 text-xs font-bold text-slate-600">
-                                    Submitted {{ dateLabel(selectedVerification.submitted_at) }} · Account age {{ selectedVerification.user.account_age_days }} days
-                                </p>
-                            </div>
-                            <span class="self-start rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide" :class="statusPill(selectedVerification.status)">
-                                {{ labelize(selectedVerification.status) }}
-                            </span>
-                        </div>
-                    </section>
-
-                    <section class="grid gap-3 md:grid-cols-2">
-                        <div class="rounded-3xl border border-slate-100 bg-slate-50 p-4">
-                            <p class="text-[10px] font-black uppercase tracking-wider text-slate-500">Submitted data</p>
-                            <dl class="mt-3 space-y-2 text-sm">
-                                <div v-for="(value, key) in selectedVerification.metadata" :key="key" class="rounded-2xl bg-white p-3">
-                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">{{ labelize(key) }}</dt>
-                                    <dd class="mt-1 break-words font-bold text-slate-900">{{ value || '—' }}</dd>
-                                </div>
-                            </dl>
-                        </div>
-                        <div class="rounded-3xl border border-slate-100 bg-slate-50 p-4">
-                            <p class="text-[10px] font-black uppercase tracking-wider text-slate-500">Documents</p>
-                            <div v-if="documentList(selectedVerification).length" class="mt-3 space-y-2">
-                                <a
-                                    v-for="(doc, index) in documentList(selectedVerification)"
-                                    :key="`${doc}-${index}`"
-                                    :href="doc"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-primary-800 hover:bg-primary-50"
-                                >
-                                    Open document {{ index + 1 }}
-                                </a>
-                            </div>
-                            <p v-else class="mt-3 rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm font-bold text-slate-500">No document file was attached.</p>
-                        </div>
-                    </section>
-
-                    <form class="space-y-4 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm" @submit.prevent="submitVerificationDecision">
-                        <div class="grid gap-3 sm:grid-cols-3">
-                            <label v-for="option in reviewStatusOptions" :key="option.value" class="cursor-pointer rounded-2xl border p-4" :class="reviewForm.status === option.value ? 'border-primary-300 bg-primary-50 ring-2 ring-primary-100' : 'border-slate-200 bg-white'">
-                                <input v-model="reviewForm.status" :value="option.value" type="radio" class="sr-only" />
-                                <span class="block text-sm font-black text-slate-950">{{ option.label }}</span>
-                                <span class="mt-1 block text-xs font-semibold text-slate-600">{{ option.hint }}</span>
-                            </label>
-                        </div>
-                        <label class="block">
-                            <span class="text-xs font-black uppercase tracking-wide text-slate-500">Decision reason</span>
-                            <textarea v-model="reviewForm.reason" rows="3" class="mt-1 w-full rounded-2xl border-slate-200 text-sm font-semibold shadow-sm focus:border-primary-500 focus:ring-primary-500" placeholder="Required when marking unverified or flagged." />
-                        </label>
-                        <label class="block">
-                            <span class="text-xs font-black uppercase tracking-wide text-slate-500">Concern to raise</span>
-                            <textarea v-model="reviewForm.concern" rows="3" class="mt-1 w-full rounded-2xl border-slate-200 text-sm font-semibold shadow-sm focus:border-primary-500 focus:ring-primary-500" placeholder="Explain what staff should regularise with the user." />
-                        </label>
-                        <label class="block">
-                            <span class="text-xs font-black uppercase tracking-wide text-slate-500">Refer to staff admin</span>
-                            <select v-model="reviewForm.referred_to_admin_id" class="mt-1 w-full rounded-2xl border-slate-200 text-sm font-bold shadow-sm focus:border-primary-500 focus:ring-primary-500">
-                                <option value="">No referral</option>
-                                <option v-for="admin in staffAdmins" :key="admin.id" :value="admin.id">{{ admin.name }} · {{ admin.email }}</option>
-                            </select>
-                        </label>
-                        <div class="flex flex-wrap justify-end gap-2">
-                            <button type="button" class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-black text-slate-800 hover:bg-slate-50" @click="closeVerification">Cancel</button>
-                            <button type="submit" class="rounded-xl bg-primary-700 px-5 py-2.5 text-sm font-black text-white shadow-md hover:bg-primary-800 disabled:opacity-50" :disabled="reviewBusy">
-                                {{ reviewBusy ? 'Saving review...' : 'Save document review' }}
-                            </button>
-                        </div>
-                    </form>
-                </div>
+                <VerificationReviewPanel
+                    v-if="selectedVerification?.presentation"
+                    :presentation="selectedVerification.presentation"
+                    :can-decide="true"
+                    :decide-url="verificationDecideUrl"
+                    :decision-reasons="decision_reasons"
+                    @decided="onVerificationDecided"
+                />
             </AdminSlideOver>
 
             <div class="fixed bottom-5 right-5 z-[100] space-y-2">
@@ -335,20 +445,25 @@
 </template>
 
 <script setup>
+import VerificationReviewPanel from '@/Components/Verification/VerificationReviewPanel.vue';
+import { formatFormalDateTime } from '@/utils/formatFormalDateTime';
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
-import AdminTabs from '@/Components/Admin/AdminTabs.vue';
+import AdminTabbedPage from '@/Components/Admin/AdminTabbedPage.vue';
+import { useAdminPageTabs } from '@/composables/useAdminPageTabs';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
-import { useTabState } from '@/composables/useTabState';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { Link, router, useForm } from '@inertiajs/vue3';
-import { defineComponent, h, reactive, ref } from 'vue';
+import { computed, defineComponent, h, reactive, ref } from 'vue';
 
 const props = defineProps({
     section: { type: String, default: 'settings' },
     types: { type: Object, default: () => ({}) },
     levels: { type: Object, default: () => ({}) },
+    client_levels: { type: Object, default: () => ({}) },
+    freelancer_levels: { type: Object, default: () => ({}) },
+    stage_content: { type: Object, default: () => ({}) },
     limits: { type: Object, default: () => ({}) },
     safeguards: { type: Object, default: () => ({}) },
     levelCounts: { type: Object, default: () => ({}) },
@@ -356,6 +471,7 @@ const props = defineProps({
     pending: { type: Object, default: () => ({ data: [] }) },
     anomalies: { type: Object, default: () => ({ data: [] }) },
     audit: { type: Object, default: () => ({ data: [] }) },
+    decision_reasons: { type: Array, default: () => [] },
 });
 
 const { shell } = useInjectedAdminTheme();
@@ -365,9 +481,14 @@ const tabs = [
     { key: 'safeguards', label: 'Safeguards' },
     { key: 'queue', label: 'Review Queue' },
     { key: 'anomalies', label: 'Anomaly Flags' },
+    { key: 'overrides', label: 'User overrides' },
     { key: 'audit', label: 'Audit Log' },
 ];
-const { activeTab } = useTabState(tabs.map((tab) => tab.key), props.section || 'settings');
+const { activeTab } = useAdminPageTabs(props.section || 'settings', {
+    validTabs: tabs.map((tab) => tab.key),
+    aliases: { pending: 'queue' },
+    syncProp: () => (props.section === 'pending' ? 'queue' : props.section),
+});
 const editingSetting = ref('');
 const editingLimits = ref('');
 const editingSafeguard = ref('');
@@ -380,23 +501,145 @@ const reviewForm = reactive({
     concern: '',
     referred_to_admin_id: '',
 });
-const typesForm = useForm({ types: JSON.parse(JSON.stringify(props.types)), levels: JSON.parse(JSON.stringify(props.levels)) });
+function normalizeStageContent(source = {}) {
+    const roles = ['client', 'freelancer'];
+    const normalized = {};
+    for (const role of roles) {
+        normalized[role] = {};
+        for (const level of [1, 2, 3, 4, 5]) {
+            normalized[role][level] = {
+                title: source[role]?.[level]?.title || '',
+                message: source[role]?.[level]?.message || '',
+                info_bar: source[role]?.[level]?.info_bar || '',
+            };
+        }
+    }
+
+    return normalized;
+}
+
+const typesForm = useForm({
+    types: JSON.parse(JSON.stringify(props.types)),
+    client_levels: JSON.parse(JSON.stringify(Object.keys(props.client_levels || {}).length ? props.client_levels : props.levels)),
+    freelancer_levels: JSON.parse(JSON.stringify(props.freelancer_levels)),
+    stage_content: normalizeStageContent(props.stage_content),
+});
 const limitsForm = useForm({
     client_posting_minor: normalizeLevelMap(props.limits.client_posting_minor),
     freelancer_proposal_minor: normalizeLevelMap(props.limits.freelancer_proposal_minor),
 });
 const safeguardForm = useForm({ ...props.safeguards });
 const requirementOptions = [
-    { key: 'email', label: 'Email verified', hint: 'User clicked the email confirmation link.' },
-    { key: 'nin', label: 'NIN approved', hint: 'Admin has approved the submitted NIN.' },
-    { key: 'identity_address', label: 'Identity and address approved', hint: 'Government photo ID plus proof of address.' },
-    { key: 'bvn', label: 'BVN approved', hint: 'Bank verification number has been reviewed.' },
-    { key: 'cac', label: 'CAC approved', hint: 'Registered company documentation.' },
-    { key: 'tin', label: 'TIN approved', hint: 'Tax identification number documentation.' },
-    { key: 'professional_certificate', label: 'Professional certificate approved', hint: 'Freelancer professional body or membership proof.' },
-    { key: 'portfolio_review', label: 'Portfolio reviewed', hint: 'Soft verification for freelancer portfolio authenticity.' },
+    { key: 'email', label: 'Email verified (L1)', hint: 'User confirmed their email address.' },
+    { key: 'identity_address', label: 'Identity & address (L2)', hint: 'Photo ID and proof of address approved.' },
+    { key: 'nin', label: 'NIN approved (L3)', hint: 'National Identification Number verified.' },
+    { key: 'bvn', label: 'BVN approved (L4)', hint: 'Bank Verification Number verified.' },
 ];
-const requirementState = reactive(Object.fromEntries([0, 1, 2, 3, 4, 5].map((level) => [level, requirementsToState(props.levels[level]?.requirements || [])])));
+const clientRequirementState = reactive(Object.fromEntries([0, 1, 2, 3, 4, 5].map((level) => [level, requirementsToState((props.client_levels[level] || props.levels[level])?.requirements || [])])));
+const freelancerRequirementState = reactive(Object.fromEntries([0, 1, 2, 3, 4, 5].map((level) => [level, requirementsToState(props.freelancer_levels[level]?.requirements || [])])));
+const freelancerRequirementOptions = [
+    ...requirementOptions,
+    { key: 'live_presence', label: 'Selfie + ID approved', hint: 'Live presence check for L5 high-value unlock.' },
+];
+const overrideForm = reactive({
+    query: '',
+    selectedUser: null,
+    level: 0,
+    reason: '',
+    busy: false,
+    message: '',
+    messageType: 'success',
+    searchResults: [],
+    searchLoading: false,
+});
+let overrideSearchTimer = null;
+
+const overrideLevelOptions = computed(() => {
+    const user = overrideForm.selectedUser;
+    if (!user) {
+        return [0, 1, 2, 3, 4, 5].map((level) => ({ value: level, label: `L${level}` }));
+    }
+    const isFreelancer = ['freelancer', 'seller', 'provider'].includes(user.role);
+    const levels = isFreelancer ? props.freelancer_levels : props.client_levels;
+
+    return [0, 1, 2, 3, 4, 5].map((level) => ({
+        value: level,
+        label: levels[level]?.label || `L${level}`,
+    }));
+});
+
+const overrideDirection = computed(() => {
+    if (!overrideForm.selectedUser || overrideForm.level === null) {
+        return null;
+    }
+    const current = overrideForm.selectedUser.current_level;
+    if (overrideForm.level > current) {
+        return 'upgrade';
+    }
+    if (overrideForm.level < current) {
+        return 'downgrade';
+    }
+
+    return 'same';
+});
+
+const overrideDirectionLabel = computed(() => {
+    if (overrideDirection.value === 'upgrade') {
+        return 'Upgrade';
+    }
+    if (overrideDirection.value === 'downgrade') {
+        return 'Downgrade';
+    }
+    if (overrideDirection.value === 'same') {
+        return 'No level change';
+    }
+
+    return '';
+});
+
+const canSubmitOverride = computed(() => Boolean(
+    overrideForm.selectedUser
+    && overrideForm.reason.trim().length >= 8
+    && overrideForm.level !== null
+    && overrideDirection.value !== 'same',
+));
+
+function onOverrideSearchInput() {
+    overrideForm.selectedUser = null;
+    window.clearTimeout(overrideSearchTimer);
+    const q = overrideForm.query.trim();
+    if (q.length < 2) {
+        overrideForm.searchResults = [];
+        return;
+    }
+    overrideSearchTimer = window.setTimeout(async () => {
+        overrideForm.searchLoading = true;
+        try {
+            const { data } = await window.axios.get(route('admin.verification-engine.users.search'), { params: { q } });
+            overrideForm.searchResults = data.users || [];
+        } catch {
+            overrideForm.searchResults = [];
+        } finally {
+            overrideForm.searchLoading = false;
+        }
+    }, 280);
+}
+
+function selectOverrideUser(user) {
+    overrideForm.selectedUser = user;
+    overrideForm.level = user.current_level;
+    overrideForm.query = user.name;
+    overrideForm.searchResults = [];
+}
+
+function clearOverrideUser() {
+    overrideForm.selectedUser = null;
+    overrideForm.query = '';
+    overrideForm.level = 0;
+    overrideForm.reason = '';
+    overrideForm.searchResults = [];
+}
+
 const moneySafeguardKeys = new Set([
     'escrow_enforcement_threshold_minor',
     'milestone_enforcement_threshold_minor',
@@ -458,7 +701,8 @@ function normalizeLevelMap(value = {}) {
 
 function saveTypes() {
     for (const level of [0, 1, 2, 3, 4, 5]) {
-        typesForm.levels[level] = { ...(typesForm.levels[level] || {}), requirements: stateToRequirements(requirementState[level]) };
+        typesForm.client_levels[level] = { ...(typesForm.client_levels[level] || {}), requirements: stateToRequirements(clientRequirementState[level]) };
+        typesForm.freelancer_levels[level] = { ...(typesForm.freelancer_levels[level] || {}), requirements: stateToRequirements(freelancerRequirementState[level]) };
     }
     typesForm.patch(route('admin.verification-engine.types.update'), {
         preserveScroll: true,
@@ -518,11 +762,10 @@ function stateToRequirements(state) {
     return filtered;
 }
 
-function requirementSummary(level) {
-    const state = requirementState[level] || { checks: [], businessEither: false, accountAgeDays: 0 };
+function requirementSummary(state = { checks: [], businessEither: false, accountAgeDays: 0 }, options = requirementOptions) {
     const labels = (state.checks || [])
         .filter((item) => !(state.businessEither && ['cac', 'tin'].includes(item)))
-        .map((item) => requirementOptions.find((option) => option.key === item)?.label || item.replace(/_/g, ' '));
+        .map((item) => options.find((option) => option.key === item)?.label || item.replace(/_/g, ' '));
     if (state.businessEither) {
         labels.push('CAC or TIN accepted');
     }
@@ -555,29 +798,23 @@ function openVerification(item, status = null) {
     reviewForm.referred_to_admin_id = item.referred_to_admin?.id || '';
 }
 
+const verificationDecideUrl = computed(() => {
+    if (!selectedVerification.value?.id) {
+        return '';
+    }
+
+    return route('admin.verification-engine.verifications.decision', selectedVerification.value.id);
+});
+
 function closeVerification() {
     selectedVerification.value = null;
     reviewBusy.value = false;
 }
 
-async function submitVerificationDecision() {
-    if (!selectedVerification.value) return;
-    reviewBusy.value = true;
-    try {
-        const { data } = await window.axios.post(route('admin.verification-engine.verifications.decision', selectedVerification.value.id), {
-            status: reviewForm.status,
-            reason: reviewForm.reason,
-            concern: reviewForm.concern,
-            referred_to_admin_id: reviewForm.referred_to_admin_id || null,
-        });
-        toast(data.message || 'Verification document review saved.');
-        selectedVerification.value = null;
-        router.reload({ only: ['pending', 'levelCounts', 'audit'], preserveScroll: true });
-    } catch (error) {
-        toast(error.response?.data?.message || Object.values(error.response?.data?.errors || {})?.flat?.()?.[0] || 'Could not save verification review.', 'error');
-    } finally {
-        reviewBusy.value = false;
-    }
+function onVerificationDecided(data) {
+    toast(data?.message || 'Verification decision saved.');
+    selectedVerification.value = null;
+    router.reload({ only: ['pending', 'levelCounts', 'audit'], preserveScroll: true });
 }
 
 async function flagAction(flag, action) {
@@ -585,6 +822,37 @@ async function flagAction(flag, action) {
     if (!reason) return;
     await window.axios.post(route('admin.verification-engine.anomalies.action', flag.id), { action, reason });
     router.reload({ only: ['anomalies', 'audit'] });
+}
+
+async function submitLevelOverride() {
+    if (!canSubmitOverride.value || !overrideForm.selectedUser) {
+        return;
+    }
+    overrideForm.busy = true;
+    overrideForm.message = '';
+    try {
+        const { data } = await window.axios.post(
+            route('admin.verification-engine.users.level-override', overrideForm.selectedUser.id),
+            {
+                level: overrideForm.level,
+                reason: overrideForm.reason,
+            },
+        );
+        overrideForm.message = data.message || 'Verification level override applied and logged.';
+        overrideForm.messageType = 'success';
+        if (data.user) {
+            overrideForm.selectedUser.current_level = data.user.current_level;
+            overrideForm.selectedUser.current_label = data.user.current_label;
+            overrideForm.level = data.user.current_level;
+        }
+        overrideForm.reason = '';
+        router.reload({ only: ['audit', 'levelCounts'], preserveScroll: true });
+    } catch (error) {
+        overrideForm.message = error?.response?.data?.message || 'Could not apply override. Please try again.';
+        overrideForm.messageType = 'error';
+    } finally {
+        overrideForm.busy = false;
+    }
 }
 
 function documentList(item) {
@@ -619,7 +887,6 @@ function toast(message, type = 'success') {
 }
 
 function dateLabel(value) {
-    if (!value) return '—';
-    return new Intl.DateTimeFormat('en-NG', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+    return formatFormalDateTime(value);
 }
 </script>

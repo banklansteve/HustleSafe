@@ -27,6 +27,7 @@ final class QuestCommerceUi
             'funding_post_url' => ($isClient && $isAccepted && $awaiting)
                 ? route('quests.proposals.funding-intent.store', [$quest->getRouteKey(), $offer->id])
                 : null,
+            'completion' => EscrowReleasePolicy::uiPayload($quest, $viewer),
         ];
     }
 

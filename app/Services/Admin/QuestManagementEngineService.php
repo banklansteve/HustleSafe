@@ -177,6 +177,8 @@ class QuestManagementEngineService
             'escrow' => $this->escrowPayload($quest),
             'media' => $this->mediaPayload($quest),
             'activity' => $this->activityPayload($quest),
+            'completion_timeline' => app(AdminQuestCompletionEventsService::class)->questTimeline($quest->id),
+            'release_controls' => $this->releaseControlsPayload($quest),
             'communications' => $this->communicationsPayload($quest),
             'notices' => $quest->adminQuestNotices->sortByDesc('created_at')->map(fn (AdminQuestNotice $notice) => $this->noticeRow($notice))->values(),
             'notes' => $quest->adminQuestNotes->sortByDesc('is_pinned')->sortByDesc('created_at')->map(fn (AdminQuestNote $note) => $this->noteRow($note))->values(),
@@ -669,10 +671,29 @@ class QuestManagementEngineService
                 'accepted_offer_id' => $quest->accepted_quest_offer_id,
                 'escrow_status' => $quest->escrow_status,
                 'funded_at' => $quest->escrow_funded_at?->toIso8601String(),
+                'delivery_acknowledged_at' => $quest->delivery_acknowledged_at?->toIso8601String(),
+                'release_authorized_at' => $quest->release_authorized_at?->toIso8601String(),
+                'release_hold_until' => $quest->release_hold_until?->toIso8601String(),
+                'release_hold_reason' => $quest->release_hold_reason,
                 'paid_out' => $this->money((int) $quest->paid_out_minor),
                 'refunded' => $this->money((int) $quest->refunded_minor),
+                'receipt_url' => route('admin.contracts.receipt', $quest),
             ],
             'ledger' => app(FinancialControlCentreService::class)->escrowLedger($quest),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function releaseControlsPayload(Quest $quest): array
+    {
+        return [
+            'requires_authorization' => \App\Support\EscrowReleasePolicy::requiresSuperAdminAuthorization($quest),
+            'has_authorization' => \App\Support\EscrowReleasePolicy::hasSuperAdminAuthorization($quest),
+            'release_held' => \App\Support\EscrowReleasePolicy::isReleaseHeld($quest),
+            'high_value_threshold' => \App\Support\NgnMoney::format(\App\Support\EscrowReleasePolicy::highValueAuthorizationMinor()),
+            'amount' => \App\Support\NgnMoney::format(\App\Support\EscrowReleasePolicy::escrowAmountMinor($quest)),
         ];
     }
 

@@ -616,16 +616,20 @@
                         Payments and rulings activate once the gateway is connected — timers and evidence still run today.
                     </p>
                     <div class="mt-4 flex flex-wrap gap-2">
-                        <button
+                        <form
                             v-if="quest.commerce.show_fund_button && quest.commerce.funding_post_url"
-                            type="button"
-                            class="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-800 disabled:opacity-50"
-                            :disabled="fundingIntentForm.processing"
-                            @click="submitFundingIntent"
+                            :action="quest.commerce.funding_post_url"
+                            method="POST"
+                            class="inline-block"
                         >
-                            <ReLoader4Line v-if="fundingIntentForm.processing" class="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
-                            Fund via gateway
-                        </button>
+                            <input type="hidden" name="_token" :value="csrfToken" />
+                            <button
+                                type="submit"
+                                class="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-800"
+                            >
+                                Pay with Paystack
+                            </button>
+                        </form>
                         <Link
                             v-if="quest.commerce.active_dispute"
                             :href="quest.commerce.active_dispute.url"
@@ -975,14 +979,13 @@ const viewerInsightLines = computed(() => {
 });
 
 const uploadForm = useForm({ file: null });
-const fundingIntentForm = useForm({});
-function submitFundingIntent() {
-    const url = props.quest?.commerce?.funding_post_url;
-    if (!url) {
-        return;
+const csrfToken = computed(() => {
+    const fromPage = page.props?.csrf_token;
+    if (fromPage) {
+        return fromPage;
     }
-    fundingIntentForm.post(url, { preserveScroll: true });
-}
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+});
 const showEditQuestForm = ref(false);
 const inviteQuery = ref('');
 const inviteHits = ref([]);

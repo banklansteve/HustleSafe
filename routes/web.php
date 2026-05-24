@@ -26,6 +26,7 @@ use App\Http\Controllers\QuestClientProposalsController;
 use App\Http\Controllers\QuestBookmarkController;
 use App\Http\Controllers\QuestContentReportController;
 use App\Http\Controllers\QuestController;
+use App\Http\Controllers\Support\CustomerSupportChatController;
 use App\Http\Controllers\QuestConversationController;
 use App\Http\Controllers\QuestDisputeController;
 use App\Http\Controllers\QuestDisputeMessageController;
@@ -39,8 +40,12 @@ use App\Http\Controllers\QuestOfferController;
 use App\Http\Controllers\QuestProposalController;
 use App\Http\Controllers\QuestProposalLifecycleController;
 use App\Http\Controllers\QuestProposalPdfController;
+use App\Http\Controllers\QuestCompletionController;
 use App\Http\Controllers\QuestProposalFundingIntentController;
 use App\Http\Controllers\QuestWizardController;
+use App\Http\Controllers\Payments\PaystackCallbackController;
+use App\Http\Controllers\Payments\PaystackWebhookController;
+use App\Http\Controllers\Wallet\WalletController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\UserFollowController;
@@ -55,6 +60,11 @@ Route::get('/privacy-policy', [LegalPageController::class, 'privacy'])->name('le
 
 Route::get('/', LandingController::class)->name('home');
 Route::get('/help', HelpContentController::class)->name('help.index');
+
+Route::middleware('signed')->group(function (): void {
+    Route::get('/support/rate/{ticket:uuid}', [CustomerSupportChatController::class, 'rateShow'])->name('support.rate.show');
+    Route::post('/support/rate/{ticket:uuid}', [CustomerSupportChatController::class, 'rateSubmit'])->name('support.rate.submit');
+});
 
 Route::post('/newsletter', [NewsletterController::class, 'store'])
     ->middleware('throttle:10,1')
@@ -77,6 +87,13 @@ Route::middleware(['signed', 'throttle:12,1'])->group(function (): void {
 
 Route::get('/dashboard', DashboardController::class)->middleware(['auth', 'verified'])->name('dashboard');
 
+Route::post('/webhooks/paystack', PaystackWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('webhooks.paystack');
+Route::get('/payments/paystack/callback', PaystackCallbackController::class)
+    ->middleware(['auth', 'verified'])
+    ->name('payments.paystack.callback');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/impersonation/stop', [AdminUsersController::class, 'stopImpersonating'])
         ->middleware('throttle:20,1')
@@ -89,6 +106,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('notifications.read');
 
     Route::get('/account', [AccountHubController::class, 'show'])->name('account.show');
+    Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
+    Route::post('/wallet/bank-accounts', [WalletController::class, 'storeBankAccount'])->middleware('throttle:20,1')->name('wallet.bank-accounts.store');
+    Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])->middleware('throttle:10,1')->name('wallet.withdraw');
+    Route::post('/wallet/resolve-account', [WalletController::class, 'resolveAccount'])->middleware('throttle:30,1')->name('wallet.resolve-account');
     Route::patch('/account/details', [AccountUpdateController::class, 'details'])->name('account.details');
     Route::patch('/account/power-hours', [AccountUpdateController::class, 'powerHours'])
         ->middleware('freelancer')
@@ -105,6 +126,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('users.follow.toggle');
 
     Route::patch('/account/presence', AccountPresenceController::class)->name('account.presence');
+
+    Route::get('/api/support/widget/bootstrap', [CustomerSupportChatController::class, 'bootstrap'])->name('api.support.widget.bootstrap');
+    Route::post('/api/support/chat/start', [CustomerSupportChatController::class, 'startJson'])->middleware('throttle:10,1')->name('api.support.chat.start');
+    Route::get('/api/support/chat/{ticket}/open', [CustomerSupportChatController::class, 'openJson'])->name('api.support.chat.open');
+    Route::post('/api/support/chat/{ticket}/rate', [CustomerSupportChatController::class, 'rateJson'])->middleware('throttle:20,1')->name('api.support.chat.rate');
+    Route::post('/api/support/chat/{ticket}/feedback', [CustomerSupportChatController::class, 'feedbackJson'])->middleware('throttle:20,1')->name('api.support.chat.feedback');
+    Route::get('/support/chat', [CustomerSupportChatController::class, 'index'])->name('support.chat.index');
+    Route::post('/support/chat', [CustomerSupportChatController::class, 'start'])->middleware('throttle:10,1')->name('support.chat.start');
+    Route::get('/support/chat/{ticket}', [CustomerSupportChatController::class, 'show'])->name('support.chat.show');
+    Route::get('/api/support/chat/{ticket}/messages', [CustomerSupportChatController::class, 'messages'])->name('api.support.chat.messages');
+    Route::post('/api/support/chat/{ticket}/messages', [CustomerSupportChatController::class, 'send'])->middleware('throttle:120,1')->name('api.support.chat.send');
+    Route::post('/api/support/chat/{ticket}/typing', [CustomerSupportChatController::class, 'typing'])->middleware('throttle:180,1')->name('api.support.chat.typing');
+    Route::get('/api/support/chat/{ticket}/typing-state', [CustomerSupportChatController::class, 'typingState'])->name('api.support.chat.typing-state');
+    Route::post('/api/support/chat/{ticket}/read', [CustomerSupportChatController::class, 'read'])->middleware('throttle:120,1')->name('api.support.chat.read');
+    Route::post('/api/support/chat/{ticket}/messages/{message}/react', [CustomerSupportChatController::class, 'react'])->middleware('throttle:120,1')->name('api.support.chat.react');
+    Route::get('/api/support/gifs', [CustomerSupportChatController::class, 'gifSearch'])->name('api.support.gifs');
 
     Route::get('/account/security', [AccountSecurityController::class, 'edit'])->name('account.security.edit');
     Route::post('/account/security/avatar', [AccountSecurityController::class, 'updateAvatar'])
@@ -204,6 +241,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('throttle:20,1')
         ->whereNumber('offer')
         ->name('quests.proposals.funding-intent.store');
+    Route::post('/quests/{quest}/acknowledge-delivery', [QuestCompletionController::class, 'acknowledgeDelivery'])
+        ->middleware('throttle:10,1')
+        ->name('quests.acknowledge-delivery');
+    Route::post('/quests/{quest}/release-funds', [QuestCompletionController::class, 'releaseFunds'])
+        ->middleware('throttle:10,1')
+        ->name('quests.release-funds');
+    Route::post('/quests/{quest}/complete', [QuestCompletionController::class, 'markComplete'])
+        ->middleware('throttle:10,1')
+        ->name('quests.complete');
     Route::post('/quests/{quest}/proposals/{offer}/withdraw', [QuestProposalLifecycleController::class, 'withdraw'])
         ->middleware(['freelancer', 'throttle:10,1'])
         ->whereNumber('offer')
@@ -223,6 +269,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/quests/{quest}/messages/{contact?}', [QuestConversationController::class, 'store'])
         ->middleware('throttle:35,1')
         ->name('quests.messages.store');
+    Route::post('/quests/{quest}/messages/{contact?}/read', [QuestConversationController::class, 'read'])
+        ->middleware('throttle:120,1')
+        ->name('quests.messages.read');
+    Route::post('/quests/{quest}/messages/{contact?}/typing', [QuestConversationController::class, 'typing'])
+        ->middleware('throttle:180,1')
+        ->name('quests.messages.typing');
     Route::post('/quests/{quest}/reports', [QuestContentReportController::class, 'storeQuest'])
         ->middleware('throttle:20,1')
         ->name('quests.reports.store');
@@ -286,12 +338,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/portfolio/{portfolio}', [FreelancerPortfolioController::class, 'destroy'])->name('portfolio.destroy');
     });
 
-    Route::middleware(['redirect_operations_staff_from_admin', 'super_admin', 'throttle:240,1'])
+    Route::middleware(['redirect_operations_staff_from_admin', 'super_admin', 'throttle:480,1'])
         ->prefix('admin')
         ->name('admin.')
         ->group(base_path('routes/admin.php'));
 
-    Route::middleware(['operations_staff', 'throttle:240,1'])
+    Route::middleware(['operations_staff', 'throttle:480,1'])
         ->prefix('operations')
         ->name('operations.')
         ->group(base_path('routes/operations.php'));
@@ -304,5 +356,19 @@ Route::get('/hq/{path}', function (string $path) {
 })->where('path', '.*');
 
 Route::get('/portfolio/{portfolio}', [FreelancerPortfolioController::class, 'show'])->name('portfolio.show');
+
+if (app()->environment('local')) {
+    Route::get('/preview/errors/{page}', function (string $page) {
+        return match ($page) {
+            '403' => \Inertia\Inertia::render('Errors/Forbidden'),
+            '404' => \Inertia\Inertia::render('Errors/NotFound'),
+            'maintenance' => \Inertia\Inertia::render('Errors/Maintenance', [
+                'message' => 'Our crew is upgrading escrow rails, polishing quests, and tightening safety belts.',
+                'returnTime' => now()->addHours(2)->addMinutes(30)->format('Y-m-d\TH:i'),
+            ]),
+            default => abort(404),
+        };
+    })->whereIn('page', ['403', '404', 'maintenance']);
+}
 
 require __DIR__.'/auth.php';

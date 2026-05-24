@@ -13,6 +13,7 @@ class KycDecisionNotification extends Notification
     public function __construct(
         private readonly string $title,
         private readonly string $body,
+        private readonly ?string $reason = null,
     ) {}
 
     public function via(object $notifiable): array
@@ -22,10 +23,20 @@ class KycDecisionNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
+        $firstName = explode(' ', (string) $notifiable->name)[0] ?: $notifiable->name;
+
         return (new MailMessage)
             ->subject($this->title)
-            ->line($this->body)
-            ->action('View verification status', route('verifications.index'));
+            ->markdown('mail.verification.decision', [
+                'firstName' => $firstName,
+                'headline' => $this->title,
+                'body' => $this->body,
+                'reason' => $this->reason,
+                'verificationLabel' => __('Account verification'),
+                'statusLabel' => $this->title,
+                'ctaUrl' => route('verifications.index'),
+                'ctaLabel' => __('View verification status'),
+            ]);
     }
 
     public function toArray(object $notifiable): array
@@ -34,6 +45,8 @@ class KycDecisionNotification extends Notification
             'title' => $this->title,
             'body' => $this->body,
             'source' => 'kyc_team',
+            'category' => 'kyc',
+            'action_url' => route('verifications.index'),
         ];
     }
 }

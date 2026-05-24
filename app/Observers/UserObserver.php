@@ -10,6 +10,7 @@ class UserObserver
     public function created(User $user): void
     {
         app(GeocodeUserAddress::class)($user);
+        app(\App\Services\Payments\WalletService::class)->ensureWallet($user);
     }
 
     public function updated(User $user): void

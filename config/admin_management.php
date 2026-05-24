@@ -175,8 +175,9 @@ return [
             'description' => 'ID, insurance, and credential verification queue.',
             'model' => UserVerification::class,
             'creatable' => true,
-            'list_columns' => ['id', 'user_id', 'category', 'status', 'submitted_at'],
-            'search_columns' => ['category', 'status'],
+            'list_columns' => ['id', 'user', 'category', 'status', 'submitted_at'],
+            'search_columns' => ['category', 'status', 'verification_type'],
+            'search_user_columns' => ['name', 'email', 'first_name', 'last_name'],
             'with' => ['user:id,name,email'],
             'fields' => [
                 'user_id' => [...$relation('users'), 'rules' => 'required|integer|exists:users,id'],
@@ -474,6 +475,10 @@ return [
 
         'quest_invites' => [
             'group' => 'Quests & commerce',
+            'sidebar_section' => 'Quests',
+            'sidebar_order' => 20,
+            'sidebar_sort' => 6,
+            'sidebar_indent' => true,
             'label' => 'Quest invites',
             'description' => 'Client invites to freelancers on a quest.',
             'model' => QuestFreelancerInvite::class,

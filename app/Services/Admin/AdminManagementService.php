@@ -28,10 +28,20 @@ final class AdminManagementService
             $query->with($with);
         }
 
-        if ($search && ! empty($definition['search_columns'])) {
-            $query->where(function (Builder $q) use ($definition, $search): void {
-                foreach ($definition['search_columns'] as $column) {
+        if ($search !== null && $search !== '') {
+            $query->where(function (Builder $q) use ($definition, $search, $resourceKey): void {
+                foreach ($definition['search_columns'] ?? [] as $column) {
                     $q->orWhere($column, 'like', '%'.$search.'%');
+                }
+
+                if ($resourceKey === 'user_verifications') {
+                    $q->orWhereHas('user', function (Builder $user) use ($search, $definition): void {
+                        $user->where(function (Builder $inner) use ($search, $definition): void {
+                            foreach ($definition['search_user_columns'] ?? ['name', 'email'] as $column) {
+                                $inner->orWhere($column, 'like', '%'.$search.'%');
+                            }
+                        });
+                    });
                 }
             });
         }
@@ -161,6 +171,10 @@ final class AdminManagementService
             $row['role_slug'] = $model->relationLoaded('role')
                 ? ($model->getRelation('role')?->slug ?? '—')
                 : '—';
+        }
+
+        if ($resourceKey === 'user_verifications' && $model->relationLoaded('user') && $model->user) {
+            $row['user'] = $this->relatedLabel($model->user);
         }
 
         return $row;

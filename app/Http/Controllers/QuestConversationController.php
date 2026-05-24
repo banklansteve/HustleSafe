@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\QuestConversationMessageSent;
+use App\Events\QuestConversationTyping;
 use App\Http\Requests\Quests\StoreQuestConversationMessageRequest;
 use App\Jobs\ScanContentForModerationJob;
 use App\Models\Quest;
@@ -12,6 +13,8 @@ use App\Models\QuestOffer;
 use App\Models\User;
 use App\Notifications\QuestThreadMessageNotification;
 use App\Services\FreelancerWorkspaceReadinessService;
+use App\Services\UserNotificationInboxService;
+use App\Support\MessagingViewPresence;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -176,7 +179,13 @@ class QuestConversationController extends Controller
                 }
             });
 
-        $recipient->notify(new QuestThreadMessageNotification($quest, $user, $message));
+        if (! MessagingViewPresence::isViewing(
+            MessagingViewPresence::SCOPE_QUEST_THREAD,
+            (int) $thread->id,
+            (int) $recipient->id,
+        )) {
+            $recipient->notify(new QuestThreadMessageNotification($quest, $user, $message));
+        }
 
         $message->load(['user:id,first_name,name,slug,avatar_url,role_id', 'user.role:id,slug']);
 
@@ -194,6 +203,44 @@ class QuestConversationController extends Controller
         return back()->with('success', __('Message sent.'));
     }
 
+    public function read(Request $request, Quest $quest, ?User $contact = null): JsonResponse
+    {
+        $this->authorize('view', $quest);
+
+        [$thread, $user] = $this->resolveThreadContext($request, $quest, $contact);
+
+        $this->markThreadReadFor($thread, $user);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function typing(Request $request, Quest $quest, ?User $contact = null): JsonResponse
+    {
+        $this->authorize('view', $quest);
+
+        [$thread, $user] = $this->resolveThreadContext($request, $quest, $contact);
+
+        $data = $request->validate(['typing' => ['required', 'boolean']]);
+        $typing = (bool) $data['typing'];
+
+        if ($typing) {
+            MessagingViewPresence::touch(
+                MessagingViewPresence::SCOPE_QUEST_THREAD,
+                (int) $thread->id,
+                (int) $user->id,
+            );
+        }
+
+        broadcast(new QuestConversationTyping(
+            (int) $thread->id,
+            (int) $user->id,
+            (string) $user->name,
+            $typing,
+        ));
+
+        return response()->json(['ok' => true]);
+    }
+
     protected function markThreadReadFor(QuestConversationThread $thread, User $viewer): void
     {
         if ((int) $viewer->id === (int) $thread->freelancer_id) {
@@ -201,6 +248,64 @@ class QuestConversationController extends Controller
         } elseif ((int) $viewer->id === (int) $thread->client_id) {
             $thread->forceFill(['client_last_read_at' => now()])->save();
         }
+
+        MessagingViewPresence::touch(
+            MessagingViewPresence::SCOPE_QUEST_THREAD,
+            (int) $thread->id,
+            (int) $viewer->id,
+        );
+
+        $questId = (int) $thread->quest_id;
+        if ($questId > 0) {
+            app(UserNotificationInboxService::class)->markQuestThreadForQuest($viewer, $questId);
+        }
+    }
+
+    /**
+     * @return array{0: QuestConversationThread, 1: User}
+     */
+    protected function resolveThreadContext(Request $request, Quest $quest, ?User $contact): array
+    {
+        $user = $request->user();
+        if ($user === null) {
+            abort(403);
+        }
+
+        $readiness = app(FreelancerWorkspaceReadinessService::class);
+        $freelancerParty = null;
+
+        if ($this->userActsAsFreelancerAccount($user) && (int) $quest->client_id !== (int) $user->id) {
+            if ($contact !== null && (int) $contact->id !== (int) $user->id) {
+                abort(403);
+            }
+            if (! $readiness->freelancerMayUseQuestMessaging($user, $quest)) {
+                abort(403);
+            }
+            $freelancerParty = $user;
+        } elseif ((int) $quest->client_id === (int) $user->id) {
+            if ($contact === null || ! $this->userActsAsFreelancerAccount($contact)) {
+                abort(404);
+            }
+            $freelancerParty = $contact;
+        } else {
+            abort(403);
+        }
+
+        $thread = QuestConversationThread::query()->firstOrCreate(
+            [
+                'quest_id' => $quest->id,
+                'freelancer_id' => $freelancerParty->id,
+            ],
+            [
+                'client_id' => $quest->client_id,
+            ],
+        );
+
+        if ($thread->isBlockedByAdmin()) {
+            abort(403, __('This conversation thread is no longer available.'));
+        }
+
+        return [$thread, $user];
     }
 
     /**

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Notifications\QuestThreadMessageNotification;
+use App\Services\UserNotificationInboxService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -33,25 +33,29 @@ class NotificationReadController extends Controller
             }
         }
 
-        $data = $notification->data;
-        if (is_array($data) && ($data['kind'] ?? '') === 'quest_thread_message') {
+        $inbox = app(UserNotificationInboxService::class);
+        $data = is_array($notification->data) ? $notification->data : [];
+
+        if (($data['kind'] ?? '') === 'quest_thread_message') {
             $qid = (int) ($data['quest_id'] ?? 0);
             $sid = (int) ($data['sender_id'] ?? 0);
-            if ($qid > 0 && $sid > 0) {
-                $user->unreadNotifications()
-                    ->where('type', QuestThreadMessageNotification::class)
-                    ->get()
-                    ->each(function ($n) use ($qid, $sid, $notification): void {
-                        if ((string) $n->getKey() === (string) $notification->getKey()) {
-                            return;
-                        }
-                        $d = is_array($n->data) ? $n->data : [];
-                        if (($d['kind'] ?? '') === 'quest_thread_message'
-                            && (int) ($d['quest_id'] ?? 0) === $qid
-                            && (int) ($d['sender_id'] ?? 0) === $sid) {
-                            $n->markAsRead();
-                        }
-                    });
+            if ($qid > 0) {
+                $inbox->markQuestThreadForQuest($user, $qid, $sid > 0 ? $sid : null);
+            }
+        }
+
+        if (($data['kind'] ?? '') === 'support_chat') {
+            $ticketId = (int) ($data['ticket_id'] ?? 0);
+            if ($ticketId > 0) {
+                $inbox->markSupportChatForTicket($user, $ticketId);
+            }
+        }
+
+        if (($data['kind'] ?? '') === 'quest_proposal_received') {
+            $qid = (int) ($data['quest_id'] ?? 0);
+            $oid = (int) ($data['offer_id'] ?? 0);
+            if ($qid > 0 && $oid > 0) {
+                $inbox->markQuestProposalForOffer($user, $qid, $oid);
             }
         }
 

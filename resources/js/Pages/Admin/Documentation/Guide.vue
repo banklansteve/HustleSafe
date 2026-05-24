@@ -95,7 +95,7 @@
                     </div>
 
                     <AdminTabs v-model="activeDocTab" :tabs="docTabs" id-prefix="documentation-guide" aria-label="Documentation sections" class="mt-6" />
-                    <AdminTabPanel v-model="activeDocTab" value="guide" id-prefix="documentation-guide">
+                    <AdminTabPanel :current-tab="activeDocTab" value="guide" id-prefix="documentation-guide">
                         <div class="mt-6 space-y-4">
                             <details
                                 v-for="section in activeTopic.sections"
@@ -156,7 +156,7 @@
                         </div>
                     </AdminTabPanel>
 
-                    <AdminTabPanel v-model="activeDocTab" value="definitions" id-prefix="documentation-guide">
+                    <AdminTabPanel :current-tab="activeDocTab" value="definitions" id-prefix="documentation-guide">
                         <div class="mt-6 grid gap-4 lg:grid-cols-2">
                             <article v-for="group in definitionGroups" :key="group.title" class="rounded-3xl border border-slate-100 bg-slate-50 p-5">
                                 <h3 class="font-display text-lg font-black text-slate-950">{{ group.title }}</h3>
@@ -167,7 +167,7 @@
                         </div>
                     </AdminTabPanel>
 
-                    <AdminTabPanel v-model="activeDocTab" value="all" id-prefix="documentation-guide">
+                    <AdminTabPanel :current-tab="activeDocTab" value="all" id-prefix="documentation-guide">
                         <div class="mt-6 space-y-3">
                             <Link
                                 v-for="topic in topics"

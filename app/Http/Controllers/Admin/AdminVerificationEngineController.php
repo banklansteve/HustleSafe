@@ -10,6 +10,8 @@ use App\Models\User;
 use App\Models\UserVerification;
 use App\Models\VerificationAnomalyFlag;
 use App\Models\VerificationEngineAuditLog;
+use App\Services\Verification\UserVerificationDecisionService;
+use App\Services\Verification\UserVerificationPresentationService;
 use App\Services\Verification\VerificationEngineService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -22,14 +24,20 @@ use Inertia\Response;
 
 class AdminVerificationEngineController extends Controller
 {
-    public function __construct(private readonly VerificationEngineService $engine) {}
+    public function __construct(
+        private readonly VerificationEngineService $engine,
+        private readonly UserVerificationPresentationService $presentation,
+    ) {}
 
     public function index(Request $request): Response
     {
         return Inertia::render('Admin/VerificationEngine/Index', [
             'section' => (string) $request->query('tab', 'settings'),
             'types' => $this->engine->types(),
-            'levels' => $this->engine->levelRequirements(),
+            'levels' => $this->engine->clientLevelRequirements(),
+            'client_levels' => $this->engine->clientLevelRequirements(),
+            'freelancer_levels' => $this->engine->freelancerLevelRequirements(),
+            'stage_content' => $this->engine->stageContent(),
             'limits' => $this->engine->limits(),
             'safeguards' => $this->engine->safeguards(),
             'levelCounts' => User::query()
@@ -48,6 +56,7 @@ class AdminVerificationEngineController extends Controller
             'pending' => fn () => $this->pending($request),
             'anomalies' => fn () => $this->anomalies($request),
             'audit' => fn () => $this->audit($request),
+            'decision_reasons' => app(\App\Services\Verification\VerificationDecisionReasonService::class)->options(),
         ]);
     }
 
@@ -58,14 +67,29 @@ class AdminVerificationEngineController extends Controller
             'types.*.enabled' => ['required', 'boolean'],
             'types.*.label' => ['required', 'string', 'max:120'],
             'types.*.manual_review' => ['sometimes', 'boolean'],
-            'levels' => ['required', 'array'],
-            'levels.*.requirements' => ['present', 'array'],
+            'client_levels' => ['required', 'array'],
+            'client_levels.*.requirements' => ['present', 'array'],
+            'client_levels.*.label' => ['sometimes', 'string', 'max:160'],
+            'freelancer_levels' => ['required', 'array'],
+            'freelancer_levels.*.requirements' => ['present', 'array'],
+            'freelancer_levels.*.label' => ['sometimes', 'string', 'max:160'],
+            'stage_content' => ['nullable', 'array'],
         ]);
 
-        $old = ['types' => $this->engine->types(), 'levels' => $this->engine->levelRequirements()];
+        $old = [
+            'types' => $this->engine->types(),
+            'client_levels' => $this->engine->clientLevelRequirements(),
+            'freelancer_levels' => $this->engine->freelancerLevelRequirements(),
+            'stage_content' => $this->engine->stageContent(),
+        ];
         $this->setting('verification_types', $data['types']);
-        $this->setting('verification_level_requirements', $data['levels']);
-        $this->engine->audit($request->user(), null, 'verification_settings.updated', $old, $data, 'Updated verification type or level requirements.');
+        $this->setting('verification_client_level_requirements', $data['client_levels']);
+        $this->setting('verification_freelancer_level_requirements', $data['freelancer_levels']);
+        $this->setting('verification_level_requirements', $data['client_levels']);
+        if (isset($data['stage_content'])) {
+            $this->setting('verification_stage_content', $data['stage_content']);
+        }
+        $this->engine->audit($request->user(), null, 'verification_settings.updated', $old, $data, 'Updated verification types, level requirements, or stage content.');
 
         return back()->with('success', 'Verification settings updated.');
     }
@@ -113,6 +137,19 @@ class AdminVerificationEngineController extends Controller
 
     public function decide(Request $request, UserVerification $verification): JsonResponse
     {
+        if ($request->filled('action')) {
+            $data = $request->validate([
+                'action' => ['required', Rule::in(['approve', 'reject', 'request_corrections'])],
+                'reason_code' => ['required_unless:action,approve', 'nullable', 'string', 'max:40'],
+                'reason_note' => ['nullable', 'string', 'max:2000'],
+                'reason' => ['nullable', 'string', 'max:2000'],
+            ]);
+
+            $result = $this->decisions->decide($verification, $request->user(), $data, $request, 'admin.verification-engine');
+
+            return response()->json(array_merge(['ok' => true], $result));
+        }
+
         $data = $request->validate([
             'status' => ['required', Rule::in(['verified', 'unverified', 'flagged'])],
             'reason' => [Rule::requiredIf($request->input('status') !== 'verified'), 'nullable', 'string', 'min:8', 'max:1000'],
@@ -136,6 +173,8 @@ class AdminVerificationEngineController extends Controller
             'referred_to_admin_id' => $data['referred_to_admin_id'] ?? null,
             'referred_at' => filled($data['referred_to_admin_id'] ?? null) ? now() : null,
         ]))->save();
+
+        $this->completeEscalationTasks($verification);
 
         $verification->loadMissing('user');
         if ($verification->user) {
@@ -176,6 +215,7 @@ class AdminVerificationEngineController extends Controller
                     'referred_to_admin_id' => $data['referred_to_admin_id'] ?? null,
                     'referred_at' => filled($data['referred_to_admin_id'] ?? null) ? now() : null,
                 ]))->save();
+                $this->completeEscalationTasks($verification);
                 if ($verification->user) {
                     $this->engine->recalculate($verification->user, $request->user(), 'Bulk verification review decision.');
                 }
@@ -211,6 +251,48 @@ class AdminVerificationEngineController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function searchUsers(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->query('q', ''));
+        if (mb_strlen($q) < 2) {
+            return response()->json(['users' => []]);
+        }
+
+        $search = '%'.str_replace(['%', '_'], '', $q).'%';
+        $users = User::query()
+            ->with('role:id,slug')
+            ->where(fn ($scope) => $scope
+                ->where('name', 'like', $search)
+                ->orWhere('email', 'like', $search))
+            ->orderBy('name')
+            ->limit(15)
+            ->get([
+                'id',
+                'name',
+                'email',
+                'account_type',
+                'current_verification_level',
+                'kyc_tier',
+                'verification_tier',
+                'verification_level_override',
+            ]);
+
+        return response()->json([
+            'users' => $users->map(function (User $user) {
+                $level = $this->engine->storedLevel($user);
+
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role?->slug ?? $user->account_type,
+                    'current_level' => $level,
+                    'current_label' => $this->engine->levelLabel($level, $user),
+                ];
+            })->values(),
+        ]);
+    }
+
     public function overrideLevel(Request $request, User $user): JsonResponse
     {
         $data = $request->validate([
@@ -220,7 +302,15 @@ class AdminVerificationEngineController extends Controller
 
         $this->engine->overrideLevel($user, $request->user(), (int) $data['level'], $data['reason']);
 
-        return response()->json(['ok' => true]);
+        return response()->json([
+            'ok' => true,
+            'message' => __('Verification level updated for :name.', ['name' => $user->name]),
+            'user' => [
+                'id' => $user->id,
+                'current_level' => $this->engine->storedLevel($user->fresh()),
+                'current_label' => $this->engine->levelLabel($this->engine->storedLevel($user->fresh()), $user->fresh()),
+            ],
+        ]);
     }
 
     public function overrideLimits(Request $request, User $user): JsonResponse
@@ -244,36 +334,42 @@ class AdminVerificationEngineController extends Controller
             ->when($request->filled('type'), fn ($q) => $q->where(fn ($scope) => $scope->where('verification_type', $request->input('type'))->orWhere('category', $request->input('type'))))
             ->oldest('submitted_at')
             ->paginate(20, ['*'], 'pending_page')
-            ->through(fn (UserVerification $verification) => [
-                'id' => $verification->id,
-                'type' => $verification->verification_type ?: $verification->category?->value ?: $verification->category,
-                'status' => $verification->status?->value ?? $verification->status,
-                'submitted_at' => $verification->submitted_at?->toIso8601String(),
-                'reviewed_at' => $verification->reviewed_at?->toIso8601String(),
-                'reason' => $verification->rejection_reason,
-                'concern' => $verification->admin_concern,
-                'metadata' => $verification->metadata ?? [],
-                'documents' => $verification->document_paths ?? [],
-                'reviewer' => $verification->reviewer ? [
-                    'id' => $verification->reviewer->id,
-                    'name' => $verification->reviewer->name,
-                    'email' => $verification->reviewer->email,
-                ] : null,
-                'referred_to_admin' => $verification->referredToAdmin ? [
-                    'id' => $verification->referredToAdmin->id,
-                    'name' => $verification->referredToAdmin->name,
-                    'email' => $verification->referredToAdmin->email,
-                ] : null,
-                'referred_at' => $verification->referred_at?->toIso8601String(),
-                'user' => [
-                    'id' => $verification->user?->id,
-                    'name' => $verification->user?->name,
-                    'email' => $verification->user?->email,
-                    'level' => $verification->user ? $this->engine->storedLevel($verification->user) : 0,
-                    'account_age_days' => $verification->user?->created_at?->diffInDays(now()),
-                    'avatar_url' => $verification->user?->avatar_url,
-                ],
-            ]);
+            ->through(function (UserVerification $verification) {
+                $presentation = $this->presentation->forReview($verification, 'admin.user-verifications.document');
+
+                return [
+                    'id' => $verification->id,
+                    'type' => $verification->verification_type ?: $verification->category?->value ?: $verification->category,
+                    'type_label' => $presentation['category_label'],
+                    'status' => $verification->status?->value ?? $verification->status,
+                    'submitted_at' => $verification->submitted_at?->toIso8601String(),
+                    'submitted_at_label' => \App\Support\FormatsHumanDateTime::format($verification->submitted_at, config('app.timezone')),
+                    'document_previews' => collect($presentation['documents'] ?? [])->take(4)->values()->all(),
+                    'reviewed_at' => $verification->reviewed_at?->toIso8601String(),
+                    'reason' => $verification->rejection_reason,
+                    'concern' => $verification->admin_concern,
+                    'presentation' => $presentation,
+                    'reviewer' => $verification->reviewer ? [
+                        'id' => $verification->reviewer->id,
+                        'name' => $verification->reviewer->name,
+                        'email' => $verification->reviewer->email,
+                    ] : null,
+                    'referred_to_admin' => $verification->referredToAdmin ? [
+                        'id' => $verification->referredToAdmin->id,
+                        'name' => $verification->referredToAdmin->name,
+                        'email' => $verification->referredToAdmin->email,
+                    ] : null,
+                    'referred_at' => $verification->referred_at?->toIso8601String(),
+                    'user' => [
+                        'id' => $verification->user?->id,
+                        'name' => $verification->user?->name,
+                        'email' => $verification->user?->email,
+                        'level' => $verification->user ? $this->engine->storedLevel($verification->user) : 0,
+                        'account_age_days' => $verification->user?->created_at?->diffInDays(now()),
+                        'avatar_url' => $verification->user?->avatar_url,
+                    ],
+                ];
+            });
     }
 
     private function anomalies(Request $request)
@@ -318,6 +414,7 @@ class AdminVerificationEngineController extends Controller
                 'new_value' => $log->new_value,
                 'reason' => $log->reason,
                 'created_at' => $log->created_at?->toIso8601String(),
+                'created_at_label' => \App\Support\FormatsHumanDateTime::format($log->created_at, config('app.timezone')),
             ]);
     }
 
@@ -339,6 +436,22 @@ class AdminVerificationEngineController extends Controller
         }
 
         return $patch;
+    }
+
+    private function completeEscalationTasks(UserVerification $verification): void
+    {
+        if (! Schema::hasTable('admin_tasks')) {
+            return;
+        }
+
+        AdminTask::query()
+            ->where('source_type', UserVerification::class)
+            ->where('source_id', $verification->id)
+            ->whereIn('status', ['todo', 'in_progress'])
+            ->update([
+                'status' => 'done',
+                'completed_at' => now(),
+            ]);
     }
 
     /**

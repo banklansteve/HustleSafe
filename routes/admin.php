@@ -8,16 +8,26 @@ use App\Http\Controllers\Admin\AdminContentManagementController;
 use App\Http\Controllers\Admin\AdminContentModerationController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\AdminDocumentationController;
+use App\Http\Controllers\Admin\AdminDirectMessageController;
 use App\Http\Controllers\Admin\AdminDisputesController;
 use App\Http\Controllers\Admin\AdminEngagementPolicyController;
 use App\Http\Controllers\Admin\AdminEmailBroadcastController;
 use App\Http\Controllers\Admin\AdminFinancialControlController;
+use App\Http\Controllers\Admin\AdminPlatformFeeLedgerController;
+use App\Http\Controllers\Admin\AdminQuestCompletionEventsController;
+use App\Http\Controllers\Admin\AdminQuestReleaseController;
+use App\Http\Controllers\Admin\AdminUserVerificationReviewController;
+use App\Http\Controllers\Shared\UserVerificationDocumentController;
+use App\Http\Controllers\Admin\AdminContractReceiptController;
+use App\Http\Controllers\Admin\AdminPaymentsEscrowController;
 use App\Http\Controllers\Admin\AdminFraudRiskController;
 use App\Http\Controllers\Admin\AdminInsightsController;
 use App\Http\Controllers\Admin\AdminIntelligenceController;
 use App\Http\Controllers\Admin\AdminKycCentreController;
 use App\Http\Controllers\Admin\AdminLiveActivityController;
 use App\Http\Controllers\Admin\AdminManagementController;
+use App\Http\Controllers\Admin\AdminMessagesController;
+use App\Http\Controllers\Admin\AdminStaffActivitySummaryController;
 use App\Http\Controllers\Admin\AdminNotificationCentreController;
 use App\Http\Controllers\Admin\AdminPromotionsGrowthController;
 use App\Http\Controllers\Admin\AdminProposalsController;
@@ -27,6 +37,7 @@ use App\Http\Controllers\Admin\AdminQuestsController;
 use App\Http\Controllers\Admin\AdminSettingsController;
 use App\Http\Controllers\Admin\AdminStaffController;
 use App\Http\Controllers\Admin\AdminStaffActivityDigestController;
+use App\Http\Controllers\Admin\AdminCustomerSupportController;
 use App\Http\Controllers\Admin\AdminSupportTicketController;
 use App\Http\Controllers\Admin\AdminTaskController;
 use App\Http\Controllers\Admin\AdminTreasuryController;
@@ -42,9 +53,43 @@ Route::get('/documentation/dashboard-guide/{topic?}', AdminDocumentationControll
 Route::get('/insights', AdminInsightsController::class)->name('insights.index');
 Route::get('/command/search', [AdminCommandController::class, 'search'])->name('command.search');
 Route::get('/alerts', [AdminNotificationCentreController::class, 'index'])->name('alerts.index');
+Route::get('/alerts/{notification}/open', [AdminNotificationCentreController::class, 'open'])->name('alerts.open');
+Route::get('/api/alerts/unread-count', [AdminNotificationCentreController::class, 'unreadCount'])->name('api.alerts.unread-count');
+
+Route::get('/messages', [AdminMessagesController::class, 'index'])->name('messages.index');
+Route::get('/api/staff/{user}/activity-summary', AdminStaffActivitySummaryController::class)->name('api.staff-activity.summary');
+Route::get('/api/messenger/bootstrap', [AdminDirectMessageController::class, 'bootstrap'])->name('api.messenger.bootstrap');
+Route::get('/api/messenger/unread-count', [AdminDirectMessageController::class, 'unreadCount'])->name('api.messenger.unread-count');
+Route::get('/api/messenger/conversations', [AdminDirectMessageController::class, 'conversations'])->name('api.messenger.conversations');
+Route::post('/api/messenger/open/{recipient}', [AdminDirectMessageController::class, 'open'])->name('api.messenger.open');
+Route::get('/api/messenger/conversations/{conversation}/messages', [AdminDirectMessageController::class, 'messages'])->name('api.messenger.messages');
+Route::post('/api/messenger/conversations/{conversation}/messages', [AdminDirectMessageController::class, 'send'])->middleware('throttle:120,1')->name('api.messenger.send');
+Route::post('/api/messenger/messages/{message}/delivered', [AdminDirectMessageController::class, 'delivered'])->middleware('throttle:180,1')->name('api.messenger.delivered');
+Route::post('/api/messenger/conversations/{conversation}/read', [AdminDirectMessageController::class, 'read'])->middleware('throttle:120,1')->name('api.messenger.read');
+Route::post('/api/messenger/conversations/{conversation}/typing', [AdminDirectMessageController::class, 'typing'])->middleware('throttle:180,1')->name('api.messenger.typing');
+Route::get('/api/messenger/gifs', [AdminDirectMessageController::class, 'gifSearch'])->name('api.messenger.gifs');
 Route::post('/alerts/{notification}/read', [AdminNotificationCentreController::class, 'markRead'])->name('alerts.read');
 Route::post('/alerts/{notification}/action', [AdminNotificationCentreController::class, 'action'])->name('alerts.action');
 Route::post('/alerts/read-all', [AdminNotificationCentreController::class, 'markAllRead'])->name('alerts.read-all');
+Route::get('/customer-support', [AdminCustomerSupportController::class, 'index'])->name('customer-support.index');
+Route::get('/customer-support/performance', [AdminCustomerSupportController::class, 'performance'])->name('customer-support.performance');
+Route::get('/api/customer-support/performance/{admin}/feedback', [AdminCustomerSupportController::class, 'performanceFeedback'])->name('api.customer-support.performance-feedback');
+Route::get('/api/customer-support/queue', [AdminCustomerSupportController::class, 'queue'])->name('api.customer-support.queue');
+Route::get('/api/customer-support/history', [AdminCustomerSupportController::class, 'history'])->name('api.customer-support.history');
+Route::get('/api/customer-support/unread-count', [AdminCustomerSupportController::class, 'unreadCount'])->name('api.customer-support.unread-count');
+Route::get('/api/customer-support/tickets/{ticket}', [AdminCustomerSupportController::class, 'open'])->name('api.customer-support.open');
+Route::get('/api/customer-support/tickets/{ticket}/messages', [AdminCustomerSupportController::class, 'messages'])->name('api.customer-support.messages');
+Route::post('/api/customer-support/tickets/{ticket}/messages', [AdminCustomerSupportController::class, 'send'])->middleware('throttle:120,1')->name('api.customer-support.send');
+Route::get('/api/customer-support/tickets/{ticket}/typing', [AdminCustomerSupportController::class, 'typingState'])->name('api.customer-support.typing-state');
+Route::post('/api/customer-support/tickets/{ticket}/typing', [AdminCustomerSupportController::class, 'typing'])->middleware('throttle:180,1')->name('api.customer-support.typing');
+Route::post('/api/customer-support/tickets/{ticket}/read', [AdminCustomerSupportController::class, 'read'])->middleware('throttle:120,1')->name('api.customer-support.read');
+Route::post('/api/customer-support/reconcile-notifications', [AdminCustomerSupportController::class, 'reconcileNotifications'])->middleware('throttle:30,1')->name('api.customer-support.reconcile-notifications');
+Route::post('/api/customer-support/tickets/{ticket}/end', [AdminCustomerSupportController::class, 'end'])->middleware('throttle:60,1')->name('api.customer-support.end');
+Route::post('/api/customer-support/tickets/{ticket}/reassign', [AdminCustomerSupportController::class, 'reassign'])->middleware('throttle:30,1')->name('api.customer-support.reassign');
+Route::post('/api/customer-support/tickets/{ticket}/messages/{message}/react', [AdminCustomerSupportController::class, 'react'])->middleware('throttle:120,1')->name('api.customer-support.react');
+Route::get('/api/customer-support/search', [AdminCustomerSupportController::class, 'search'])->name('api.customer-support.search');
+Route::get('/api/customer-support/users/{user}/context', [AdminCustomerSupportController::class, 'userContext'])->name('api.customer-support.user-context');
+Route::get('/api/customer-support/gifs', [AdminCustomerSupportController::class, 'gifSearch'])->name('api.customer-support.gifs');
 Route::get('/support-tickets', [AdminSupportTicketController::class, 'index'])->name('support-tickets.index');
 Route::patch('/support-tickets/{ticket}/status', [AdminSupportTicketController::class, 'updateTicketStatus'])->middleware('throttle:60,1')->name('support-tickets.status');
 Route::post('/support-tickets/bulk-messages/{bulkMessage}/approve', [AdminSupportTicketController::class, 'approveBulkMessage'])->middleware('throttle:20,1')->name('support-tickets.bulk-messages.approve');
@@ -64,12 +109,51 @@ Route::post('/reports/saved/{report}/run', [AdminReportsController::class, 'runS
 Route::post('/reports/saved/{report}/email-now', [AdminReportsController::class, 'runNowAndEmail'])->name('reports.saved.email-now');
 Route::post('/reports/exports', [AdminReportsController::class, 'exportReport'])->name('reports.exports.store');
 
+Route::get('/payments-escrow', [AdminPaymentsEscrowController::class, 'index'])->name('payments-escrow.index');
+Route::post('/payments-escrow/escrows/{escrow}/release', [AdminPaymentsEscrowController::class, 'forceRelease'])
+    ->middleware('throttle:20,1')
+    ->name('payments-escrow.escrows.release');
+Route::post('/payments-escrow/escrows/{escrow}/refund', [AdminPaymentsEscrowController::class, 'forceRefund'])
+    ->middleware('throttle:20,1')
+    ->name('payments-escrow.escrows.refund');
+Route::post('/payments-escrow/users/{user}/wallet/lock', [AdminPaymentsEscrowController::class, 'lockWallet'])
+    ->middleware('throttle:20,1')
+    ->name('payments-escrow.wallet.lock');
+Route::post('/payments-escrow/users/{user}/wallet/unlock', [AdminPaymentsEscrowController::class, 'unlockWallet'])
+    ->middleware('throttle:20,1')
+    ->name('payments-escrow.wallet.unlock');
+
 Route::get('/financial', [AdminFinancialControlController::class, 'index'])->name('financial.index');
 Route::get('/financial/summary', [AdminFinancialControlController::class, 'summary'])->name('financial.summary');
 Route::get('/financial/escrows/{quest:id}/ledger', [AdminFinancialControlController::class, 'escrowLedger'])->name('financial.escrows.ledger');
 Route::post('/financial/escrows/{quest:id}/action', [AdminFinancialControlController::class, 'escrowAction'])
     ->middleware('throttle:20,1')
     ->name('financial.escrows.action');
+Route::get('/api/platform-fees', [AdminPlatformFeeLedgerController::class, 'index'])
+    ->middleware('throttle:60,1')
+    ->name('api.platform-fees.index');
+Route::get('/api/platform-fees/export', [AdminPlatformFeeLedgerController::class, 'export'])
+    ->middleware('throttle:20,1')
+    ->name('api.platform-fees.export');
+Route::get('/quest-completion-events', [AdminQuestCompletionEventsController::class, 'index'])
+    ->name('quest-completion-events.index');
+Route::get('/user-verifications/{verification}/document', [UserVerificationDocumentController::class, '__invoke'])
+    ->middleware('throttle:120,1')
+    ->name('user-verifications.document');
+Route::post('/user-verifications/{verification}/decide', [AdminUserVerificationReviewController::class, 'decide'])
+    ->middleware('throttle:60,1')
+    ->name('user-verifications.decide');
+Route::post('/quests/{quest:id}/release/authorize', [AdminQuestReleaseController::class, 'authorizeRelease'])
+    ->middleware('throttle:30,1')
+    ->name('quests.release.authorize');
+Route::post('/quests/{quest:id}/release/hold', [AdminQuestReleaseController::class, 'holdRelease'])
+    ->middleware('throttle:30,1')
+    ->name('quests.release.hold');
+Route::post('/quests/{quest:id}/release/lift-hold', [AdminQuestReleaseController::class, 'liftHold'])
+    ->middleware('throttle:30,1')
+    ->name('quests.release.lift-hold');
+Route::get('/contracts/{quest:id}/receipt', [AdminContractReceiptController::class, 'show'])
+    ->name('contracts.receipt');
 
 Route::get('/kyc', [AdminKycCentreController::class, 'index'])->name('kyc.index');
 Route::get('/kyc/cases/{case}', [AdminKycCentreController::class, 'show'])->name('kyc.cases.show');
@@ -105,6 +189,9 @@ Route::post('/verification-engine/verifications/bulk-decision', [AdminVerificati
 Route::post('/verification-engine/anomalies/{flag}/action', [AdminVerificationEngineController::class, 'anomalyAction'])
     ->middleware('throttle:40,1')
     ->name('verification-engine.anomalies.action');
+Route::get('/verification-engine/users/search', [AdminVerificationEngineController::class, 'searchUsers'])
+    ->middleware('throttle:60,1')
+    ->name('verification-engine.users.search');
 Route::post('/verification-engine/users/{user}/level-override', [AdminVerificationEngineController::class, 'overrideLevel'])
     ->middleware('throttle:20,1')
     ->name('verification-engine.users.level-override');
@@ -399,8 +486,29 @@ Route::post('/staff/import', [AdminStaffController::class, 'import'])
     ->middleware('throttle:6,1')
     ->name('staff.import');
 
+Route::get('/api/maintenance/status', [\App\Http\Controllers\Admin\AdminMaintenanceController::class, 'status'])->name('api.maintenance.status');
+Route::post('/api/maintenance/on', [\App\Http\Controllers\Admin\AdminMaintenanceController::class, 'on'])->middleware('throttle:20,1')->name('api.maintenance.on');
+Route::match(['get', 'post'], '/api/maintenance/off', [\App\Http\Controllers\Admin\AdminMaintenanceController::class, 'off'])->middleware('throttle:20,1')->name('api.maintenance.off');
+Route::patch('/api/maintenance', [\App\Http\Controllers\Admin\AdminMaintenanceController::class, 'update'])->middleware('throttle:20,1')->name('api.maintenance.update');
 Route::get('/settings', [AdminSettingsController::class, 'show'])->name('settings.index');
 Route::patch('/settings/{section}', [AdminSettingsController::class, 'update'])
     ->middleware('throttle:20,1')
     ->name('settings.update');
 Route::get('/settings/export', [AdminSettingsController::class, 'export'])->name('settings.export');
+
+Route::get('/team-chat', [\App\Http\Controllers\Operations\OperationsTeamChatController::class, 'index'])->name('team-chat.index');
+Route::get('/api/team-chat/bootstrap', [\App\Http\Controllers\Operations\OperationsTeamChatController::class, 'bootstrap'])->name('api.team-chat.bootstrap');
+Route::get('/api/team-chat/rooms/{room}/messages', [\App\Http\Controllers\Operations\OperationsTeamChatController::class, 'messages'])->name('api.team-chat.messages');
+Route::post('/api/team-chat/rooms/{room}/messages', [\App\Http\Controllers\Operations\OperationsTeamChatController::class, 'send'])->middleware('throttle:120,1')->name('api.team-chat.send');
+Route::post('/api/team-chat/messages/{message}/react', [\App\Http\Controllers\Operations\OperationsTeamChatController::class, 'react'])->middleware('throttle:120,1')->name('api.team-chat.react');
+Route::post('/api/team-chat/rooms/{room}/messages/{message}/pin', [\App\Http\Controllers\Operations\OperationsTeamChatController::class, 'pin'])->middleware('throttle:30,1')->name('api.team-chat.pin');
+Route::post('/api/team-chat/rooms/{room}/read', [\App\Http\Controllers\Operations\OperationsTeamChatController::class, 'read'])->middleware('throttle:120,1')->name('api.team-chat.read');
+Route::post('/api/team-chat/rooms/{room}/typing', [\App\Http\Controllers\Operations\OperationsTeamChatController::class, 'typing'])->middleware('throttle:180,1')->name('api.team-chat.typing');
+Route::get('/api/team-chat/rooms/{room}/search', [\App\Http\Controllers\Operations\OperationsTeamChatController::class, 'search'])->name('api.team-chat.search');
+Route::get('/api/team-chat/presence', [\App\Http\Controllers\Operations\OperationsTeamChatController::class, 'presence'])->name('api.team-chat.presence');
+Route::delete('/api/team-chat/messages/{message}', [\App\Http\Controllers\Operations\OperationsTeamChatController::class, 'remove'])->middleware('throttle:30,1')->name('api.team-chat.remove');
+Route::get('/api/team-chat/gifs', [\App\Http\Controllers\Shared\ChatGifController::class, 'index'])->name('api.team-chat.gifs');
+
+Route::get('/knowledge-base', [\App\Http\Controllers\Admin\AdminKnowledgeBaseController::class, 'index'])->name('knowledge-base.index');
+Route::post('/knowledge-base', [\App\Http\Controllers\Admin\AdminKnowledgeBaseController::class, 'store'])->middleware('throttle:20,1')->name('knowledge-base.store');
+Route::patch('/knowledge-base/{article}', [\App\Http\Controllers\Admin\AdminKnowledgeBaseController::class, 'update'])->middleware('throttle:20,1')->name('knowledge-base.update');

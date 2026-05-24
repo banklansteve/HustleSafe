@@ -103,6 +103,8 @@
                 </div>
             </section>
 
+            <MaintenanceControlPanel v-if="activeSection === 'maintenance' && (!searchQuery || filteredSections.some((s) => s.key === 'maintenance'))" />
+
             <div>
                 <main class="space-y-5">
                     <section
@@ -163,14 +165,22 @@
                             </div>
                         </div>
 
-                        <div v-else class="mt-5 divide-y divide-slate-100 dark:divide-white/10">
-                            <SettingRow
-                                v-for="setting in section.settings"
-                                :key="setting.key"
-                                v-model="values[setting.key]"
-                                :setting="setting"
-                                :query="searchQuery"
-                            />
+                        <div v-else class="mt-5 space-y-5">
+                            <p
+                                v-if="section.key === 'maintenance'"
+                                class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950"
+                            >
+                                Use the <strong>Site maintenance switch</strong> above to turn workshop mode on or off. It saves immediately — you do not need to click Save section for the on/off state.
+                            </p>
+                            <div class="divide-y divide-slate-100 dark:divide-white/10">
+                                <SettingRow
+                                    v-for="setting in sectionSettings(section)"
+                                    :key="setting.key"
+                                    v-model="values[setting.key]"
+                                    :setting="setting"
+                                    :query="searchQuery"
+                                />
+                            </div>
                         </div>
 
                         <div v-if="errors[section.key]" class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800 dark:border-rose-500/30 dark:bg-rose-950/40 dark:text-rose-100">
@@ -208,11 +218,12 @@
 </template>
 
 <script setup>
+import MaintenanceControlPanel from '@/Components/Admin/MaintenanceControlPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { router } from '@inertiajs/vue3';
 import { MagnifyingGlassIcon } from '@heroicons/vue/24/outline';
-import { computed, defineComponent, h, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
     sections: { type: Array, required: true },
@@ -231,6 +242,9 @@ const errors = reactive({});
 
 props.sections.forEach((section) => {
     section.settings.forEach((setting) => {
+        if (setting.key === 'maintenance.enabled') {
+            return;
+        }
         values[setting.key] = setting.value;
         initialValues[setting.key] = setting.value;
     });
@@ -273,6 +287,36 @@ watch(filteredSections, (sections) => {
     if (sections.length && !sections.some((section) => section.key === activeSection.value)) {
         activeSection.value = sections[0].key;
     }
+});
+
+function syncMaintenanceSetting() {
+    /* maintenance.enabled is controlled only via MaintenanceControlPanel — never via Save section */
+}
+
+function onMaintenanceChanged() {
+    syncMaintenanceSetting();
+}
+
+function sectionSettings(section) {
+    if (section.key === 'maintenance') {
+        return section.settings.filter((setting) => setting.key !== 'maintenance.enabled');
+    }
+
+    return section.settings;
+}
+
+onMounted(() => {
+    const section = new URLSearchParams(window.location.search).get('section');
+    if (section && props.sections.some((s) => s.key === section)) {
+        activeSection.value = section;
+        goToSection(section);
+    }
+
+    window.addEventListener('admin:maintenance-changed', onMaintenanceChanged);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('admin:maintenance-changed', onMaintenanceChanged);
 });
 
 function searchableText(section, setting) {

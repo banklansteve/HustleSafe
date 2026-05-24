@@ -36,6 +36,7 @@ class AccountUpdateController extends Controller
         $user = $request->user();
         $patch = $request->validatedSettings();
         $merged = array_merge($user->public_profile_settings ?? [], $patch);
+        unset($merged['show_phone'], $merged['show_email']);
         $user->public_profile_settings = $merged;
         $user->save();
         $trustScores->recalculate($user->fresh());

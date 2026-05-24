@@ -21,6 +21,7 @@ class StaffSupportHubService
     {
         return [
             ['key' => 'my_tickets', 'label' => 'My tickets'],
+            ['key' => 'help_enquiries', 'label' => 'Help & enquiries'],
             ['key' => 'overdue', 'label' => 'Overdue'],
             ['key' => 'escalated', 'label' => 'Escalated to me'],
         ];
@@ -52,6 +53,7 @@ class StaffSupportHubService
                 ->orWhere('opened_by_admin_id', $staff->id));
 
         match ($queue) {
+            'help_enquiries' => $query->where('category', 'help_enquiry'),
             'overdue' => $query->whereNotIn('status', ['resolved', 'closed'])
                 ->where('due_at', '<', now()),
             'escalated' => $query->where('priority', 'critical')->whereNotIn('status', ['resolved', 'closed']),
@@ -67,7 +69,7 @@ class StaffSupportHubService
                 'status' => $ticket->status,
                 'priority' => $ticket->priority,
                 'category' => $ticket->category,
-                'user' => $ticket->user?->only(['id', 'name', 'email']),
+                'user' => $ticket->customer?->only(['id', 'name', 'email']),
                 'due_at' => $ticket->due_at?->toIso8601String(),
                 'updated_at' => $ticket->updated_at?->toIso8601String(),
                 'age_hours' => $ticket->created_at ? $ticket->created_at->diffInHours(now()) : null,

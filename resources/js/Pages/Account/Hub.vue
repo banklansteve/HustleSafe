@@ -155,7 +155,10 @@
                                 Verification engine access
                             </h2>
                             <p class="mt-1 text-sm font-medium text-slate-600">
-                                Your effective level controls Quest posting, proposal access, escrow safeguards, and high-value checks across HustleSafe.
+                                Your verification level controls posting limits, proposals, and platform safeguards on HustleSafe.
+                            </p>
+                            <p v-if="verificationEngine.next_hint" class="mt-2 text-sm font-semibold text-primary-900">
+                                {{ verificationEngine.next_hint }}
                             </p>
                             <p v-if="verificationEngine.cooldown?.active" class="mt-2 text-sm font-black text-amber-700">
                                 New-account cool-down active until {{ dateLabel(verificationEngine.cooldown.expires_at) }}.
@@ -171,22 +174,28 @@
                             Manage verification
                         </Link>
                     </div>
-                    <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div class="mt-5 grid gap-3 sm:grid-cols-2">
                         <div class="rounded-2xl border border-white bg-white/80 p-4 shadow-sm">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Earned level</p>
-                            <p class="mt-1 text-2xl font-black text-slate-950">L{{ verificationEngine.earned_level }}</p>
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Verification level</p>
+                            <p class="mt-1 text-2xl font-black text-slate-950">{{ verificationEngine.current_label || ('L' + verificationEngine.current_level) }}</p>
+                            <p v-if="verificationEngine.next_level_label" class="mt-2 text-xs font-semibold text-slate-600">
+                                Next: {{ verificationEngine.next_level_label }}
+                            </p>
                         </div>
                         <div class="rounded-2xl border border-white bg-white/80 p-4 shadow-sm">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Effective level</p>
-                            <p class="mt-1 text-2xl font-black text-primary-800">L{{ verificationEngine.effective_level }}</p>
-                        </div>
-                        <div class="rounded-2xl border border-white bg-white/80 p-4 shadow-sm">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Quest posting limit</p>
-                            <p class="mt-1 text-lg font-black text-slate-950">{{ money(verificationEngine.client_posting_limit_minor) }}</p>
-                        </div>
-                        <div class="rounded-2xl border border-white bg-white/80 p-4 shadow-sm">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Proposal limit</p>
-                            <p class="mt-1 text-lg font-black text-slate-950">{{ money(verificationEngine.freelancer_proposal_limit_minor) }}</p>
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">{{ verificationEngine.limit_label || (verificationEngine.is_freelancer ? 'Proposal limit' : 'Quest posting limit') }}</p>
+                            <p class="mt-1 text-lg font-black text-slate-950">{{ verificationEngine.limit_formatted || money(verificationEngine.limit_minor) }}</p>
+                            <p v-if="verificationEngine.limit_description" class="mt-2 text-xs font-semibold text-slate-600">
+                                {{ verificationEngine.limit_description }}
+                            </p>
+                            <p
+                                v-if="verificationEngine.enforced_limit_minor != null && verificationEngine.enforced_limit_minor < verificationEngine.limit_minor"
+                                class="mt-2 text-xs font-black text-amber-700"
+                            >
+                                Posting is temporarily capped at
+                                {{ verificationEngine.enforced_limit_formatted || money(verificationEngine.enforced_limit_minor) }}
+                                until your new-account cooldown ends.
+                            </p>
                         </div>
                     </div>
                 </section>
@@ -1140,7 +1149,7 @@
                             <h2 class="font-display text-lg font-bold text-slate-900">
                                 Online status
                             </h2>
-                            <p class="mt-2 text-sm font-medium text-slate-600">
+                            <p class="mt-1 text-sm font-medium text-slate-600">
                                 When you allow it, a green indicator can show on your public profile while you are active. If you hide your status, you will not see whether other people are online either — this keeps the feature fair for everyone.
                             </p>
                         </div>
@@ -1155,7 +1164,7 @@
                             <XMarkIcon v-else class="h-6 w-6" aria-hidden="true" />
                         </button>
                     </div>
-                    <div class="mt-5 min-h-[8rem]">
+                    <div class="mt-4">
                         <p v-if="editSection !== 'presence'" class="text-sm font-bold text-slate-900">
                             {{ presenceForm.hide_online_presence ? 'Hidden — others will not see when you are online.' : 'Visible — you and others can see online indicators when enabled.' }}
                         </p>
@@ -1415,8 +1424,6 @@ const visibilityLabels = {
     show_headline: 'Headline',
     show_location: 'Location',
     show_rates: 'Rate guide',
-    show_phone: 'Phone number',
-    show_email: 'Email address',
     show_credentials: 'Certifications & insurance',
     show_cac: 'CAC registration',
     show_portfolio: 'Portfolio previews',
@@ -1430,8 +1437,6 @@ const visibilityHints = {
     show_headline: 'A sharp one-liner under your name.',
     show_location: 'State, LGA, and city when you enable location.',
     show_rates: 'Typical hourly range for budgeting.',
-    show_phone: 'Only enable if you want direct calls.',
-    show_email: 'Rarely needed — messaging inside HustleSafe is safer.',
     show_credentials: 'Licences and insurance build instant trust.',
     show_cac: 'Registered business signals seriousness.',
     show_portfolio: 'Link visitors to your best work.',

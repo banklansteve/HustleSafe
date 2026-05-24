@@ -358,7 +358,7 @@
 
                     <AdminTabs v-model="activeTab" :tabs="tabs" id-prefix="proposal-engine" aria-label="Proposal management tabs" />
 
-                    <AdminTabPanel v-model="activeTab" value="content" id-prefix="proposal-engine">
+                    <AdminTabPanel :current-tab="activeTab" value="content" id-prefix="proposal-engine">
                         <div class="grid gap-4 xl:grid-cols-[1fr_20rem]">
                             <article class="rounded-3xl border border-white/10 bg-slate-900/60 p-5">
                                 <div class="flex items-start justify-between gap-3">
@@ -386,7 +386,7 @@
                         </div>
                     </AdminTabPanel>
 
-                    <AdminTabPanel v-model="activeTab" value="risk" id-prefix="proposal-engine">
+                    <AdminTabPanel :current-tab="activeTab" value="risk" id-prefix="proposal-engine">
                         <div class="grid gap-4 xl:grid-cols-[20rem_1fr]">
                             <div class="rounded-3xl border border-white/10 bg-slate-900/70 p-5">
                                 <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Automated risk score</p>
@@ -416,7 +416,7 @@
                         </div>
                     </AdminTabPanel>
 
-                    <AdminTabPanel v-model="activeTab" value="freelancer" id-prefix="proposal-engine">
+                    <AdminTabPanel :current-tab="activeTab" value="freelancer" id-prefix="proposal-engine">
                         <div class="grid gap-4 xl:grid-cols-[20rem_1fr]">
                             <div class="rounded-3xl border border-white/10 bg-slate-900/70 p-5">
                                 <div class="flex items-center gap-3">
@@ -454,7 +454,7 @@
                         </div>
                     </AdminTabPanel>
 
-                    <AdminTabPanel v-model="activeTab" value="quest" id-prefix="proposal-engine">
+                    <AdminTabPanel :current-tab="activeTab" value="quest" id-prefix="proposal-engine">
                         <div class="rounded-3xl border border-white/10 bg-slate-900/60 p-5">
                             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                 <div>
@@ -477,7 +477,7 @@
                         </div>
                     </AdminTabPanel>
 
-                    <AdminTabPanel v-model="activeTab" value="flags" id-prefix="proposal-engine">
+                    <AdminTabPanel :current-tab="activeTab" value="flags" id-prefix="proposal-engine">
                         <div class="grid gap-4 xl:grid-cols-2">
                             <FlagStack :flags="proposalDetail.flags" @resolve="openResolve" />
                             <div class="rounded-3xl border border-white/10 bg-slate-900/70 p-5">
@@ -497,7 +497,7 @@
                         </div>
                     </AdminTabPanel>
 
-                    <AdminTabPanel v-model="activeTab" value="communications" id-prefix="proposal-engine">
+                    <AdminTabPanel :current-tab="activeTab" value="communications" id-prefix="proposal-engine">
                         <div class="grid gap-4 xl:grid-cols-2">
                             <ContactPanel :busy="actionBusy" inline @submit="submitContact" />
                             <div class="rounded-3xl border border-white/10 bg-slate-900/60 p-5">
@@ -508,11 +508,11 @@
                         </div>
                     </AdminTabPanel>
 
-                    <AdminTabPanel v-model="activeTab" value="activity" id-prefix="proposal-engine">
+                    <AdminTabPanel :current-tab="activeTab" value="activity" id-prefix="proposal-engine">
                         <Timeline :items="proposalDetail.activity.items.map((item) => ({ label: labelize(item.action), actor: item.actor || 'System', at: item.created_at, meta: item.properties }))" />
                     </AdminTabPanel>
 
-                    <AdminTabPanel v-model="activeTab" value="notes" id-prefix="proposal-engine">
+                    <AdminTabPanel :current-tab="activeTab" value="notes" id-prefix="proposal-engine">
                         <div class="grid gap-4 xl:grid-cols-[1fr_20rem]">
                             <div class="space-y-3">
                                 <article v-for="note in proposalDetail.notes" :key="note.id" class="rounded-3xl border border-white/10 bg-slate-900/60 p-4" :class="note.is_pinned ? 'border-amber-300/40 bg-amber-400/10' : ''">

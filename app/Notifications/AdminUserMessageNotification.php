@@ -10,9 +10,13 @@ class AdminUserMessageNotification extends Notification
 {
     use Queueable;
 
+    /**
+     * @param  array<string, mixed>  $meta
+     */
     public function __construct(
         private readonly string $subject,
         private readonly string $message,
+        private readonly array $meta = [],
     ) {}
 
     /**
@@ -35,10 +39,10 @@ class AdminUserMessageNotification extends Notification
      */
     public function toArray(object $notifiable): array
     {
-        return [
+        return array_merge([
             'title' => $this->subject,
             'body' => $this->message,
             'source' => 'admin_team',
-        ];
+        ], $this->meta);
     }
 }

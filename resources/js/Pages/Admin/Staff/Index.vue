@@ -3,10 +3,10 @@
         title="Staff & roles"
         subtitle="Grant operational admin access. CSV import expects a header row with an email column. Exports include every admin and super admin account."
     >
-        <div class="mb-6 flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/40 p-4 ring-1 ring-white/5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div class="mb-6 flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between" :class="shell.card">
             <div>
-                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">CSV</p>
-                <p class="mt-1 text-sm font-semibold text-slate-400">Bulk promote existing users to admin (max 200 rows per upload).</p>
+                <p class="text-[10px] font-black uppercase tracking-[0.2em]" :class="shell.label">CSV</p>
+                <p class="mt-1 text-sm font-semibold" :class="shell.cardMuted">Bulk promote existing users to admin (max 200 rows per upload).</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <a
@@ -37,7 +37,7 @@
             </p>
         </div>
 
-        <section class="rounded-2xl border border-white/10 bg-slate-900/50 p-5 ring-1 ring-white/5">
+        <section class="rounded-2xl border p-5" :class="shell.card">
             <h2 class="font-display text-lg font-bold text-white">Create operations staff (email invite)</h2>
             <p class="mt-2 text-sm font-semibold text-slate-400">
                 Creates a new platform account with the <span class="text-teal-200">admin</span> role. They receive an email to set their password (or can use Forgot password). They cannot self-register.
@@ -51,7 +51,8 @@
                         type="text"
                         required
                         autocomplete="given-name"
-                        class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-semibold text-white outline-none ring-2 ring-transparent focus:border-teal-400/60 focus:ring-teal-500/40"
+                        class="mt-1 w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none ring-2 ring-transparent focus:border-primary-500 focus:ring-primary-500/25"
+                        :class="shell.input"
                     />
                     <p v-if="inviteForm.errors.first_name" class="mt-1 text-xs font-bold text-rose-300">{{ inviteForm.errors.first_name }}</p>
                 </div>
@@ -63,7 +64,8 @@
                         type="text"
                         required
                         autocomplete="family-name"
-                        class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-semibold text-white outline-none ring-2 ring-transparent focus:border-teal-400/60 focus:ring-teal-500/40"
+                        class="mt-1 w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none ring-2 ring-transparent focus:border-primary-500 focus:ring-primary-500/25"
+                        :class="shell.input"
                     />
                     <p v-if="inviteForm.errors.last_name" class="mt-1 text-xs font-bold text-rose-300">{{ inviteForm.errors.last_name }}</p>
                 </div>
@@ -75,7 +77,8 @@
                         type="email"
                         required
                         autocomplete="off"
-                        class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-semibold text-white outline-none ring-2 ring-transparent focus:border-teal-400/60 focus:ring-teal-500/40"
+                        class="mt-1 w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none ring-2 ring-transparent focus:border-primary-500 focus:ring-primary-500/25"
+                        :class="shell.input"
                         placeholder="name@company.com"
                     />
                     <p v-if="inviteForm.errors.email" class="mt-1 text-xs font-bold text-rose-300">{{ inviteForm.errors.email }}</p>
@@ -92,7 +95,7 @@
             </form>
         </section>
 
-        <section class="mt-8 rounded-2xl border border-white/10 bg-slate-900/50 p-5 ring-1 ring-white/5">
+        <section class="mt-8 rounded-2xl border p-5" :class="shell.card">
             <h2 class="font-display text-lg font-bold text-white">Promote existing member</h2>
             <p class="mt-2 text-sm font-semibold text-slate-400">
                 If they already have an account, grant <span class="text-teal-200">admin</span> without a new login. Super admin accounts cannot be changed here.
@@ -106,7 +109,8 @@
                         type="email"
                         required
                         autocomplete="off"
-                        class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-semibold text-white outline-none ring-2 ring-transparent focus:border-teal-400/60 focus:ring-teal-500/40"
+                        class="mt-1 w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none ring-2 ring-transparent focus:border-primary-500 focus:ring-primary-500/25"
+                        :class="shell.input"
                         placeholder="name@company.com"
                     />
                     <p v-if="form.errors.email" class="mt-2 text-xs font-bold text-rose-300">
@@ -129,15 +133,49 @@
                 <article
                     v-for="user in staff.data"
                     :key="user.id"
-                    class="flex flex-col gap-2 rounded-2xl border border-white/10 bg-slate-900/60 p-4 ring-1 ring-white/5 sm:flex-row sm:items-center sm:justify-between"
+                    class="rounded-2xl border p-4"
+                    :class="shell.card"
                 >
-                    <div>
-                        <p class="font-display text-base font-bold text-white">{{ user.name }}</p>
-                        <p class="text-xs font-semibold text-slate-400">{{ user.email }}</p>
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <p class="font-display text-base font-bold text-white">{{ user.name }}</p>
+                            <p class="text-xs font-semibold text-slate-400">{{ user.email }}</p>
+                        </div>
+                        <span class="inline-flex w-fit shrink-0 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-teal-100">
+                            {{ (user.role?.slug ?? '—').replace(/_/g, ' ') }}
+                        </span>
                     </div>
-                    <span class="inline-flex w-fit rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-teal-100">
-                        {{ (user.role?.slug ?? '—').replace(/_/g, ' ') }}
-                    </span>
+                    <div
+                        v-if="user.support_ratings"
+                        class="mt-4 rounded-xl border border-white/10 bg-slate-950/50 px-4 py-3"
+                    >
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Live support ratings</p>
+                        <div class="mt-2 flex flex-wrap items-baseline gap-4">
+                            <div>
+                                <p class="text-2xl font-black text-teal-300">
+                                    {{ user.support_ratings.average_score ?? '—' }}
+                                    <span v-if="user.support_ratings.average_score" class="text-sm font-bold text-slate-500">/ 10</span>
+                                </p>
+                                <p class="text-[10px] font-semibold text-slate-500">Average score</p>
+                            </div>
+                            <div>
+                                <p class="text-lg font-black text-white">{{ user.support_ratings.sessions_rated }}</p>
+                                <p class="text-[10px] font-semibold text-slate-500">Rated sessions</p>
+                            </div>
+                        </div>
+                        <ul v-if="user.support_ratings.recent?.length" class="mt-3 flex flex-wrap gap-2">
+                            <li
+                                v-for="r in user.support_ratings.recent"
+                                :key="r.id"
+                                class="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-bold text-slate-300"
+                                :title="r.subject"
+                            >
+                                {{ r.score }}/10
+                                <span v-if="r.reaction" class="ml-0.5">{{ reactionEmoji(r.reaction) }}</span>
+                            </li>
+                        </ul>
+                        <p v-else class="mt-2 text-xs font-semibold text-slate-500">No live support feedback yet.</p>
+                    </div>
                 </article>
             </div>
             <nav v-if="staff.links?.length > 3" class="mt-6 flex flex-wrap justify-center gap-2" aria-label="Pagination">
@@ -163,8 +201,11 @@
 
 <script setup>
 import AdminShell from '@/Layouts/AdminShell.vue';
+import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import { Link, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
+
+const { shell } = useInjectedAdminTheme();
 
 defineProps({
     staff: { type: Object, required: true },
@@ -206,6 +247,18 @@ function submit() {
 
 function onStaffFile(e) {
     importForm.file = e.target.files?.[0] || null;
+}
+
+const reactionEmojiMap = {
+    very_unhappy: '😞',
+    unhappy: '😕',
+    neutral: '😐',
+    happy: '🙂',
+    very_happy: '😄',
+};
+
+function reactionEmoji(key) {
+    return reactionEmojiMap[key] ?? '';
 }
 
 function submitImport() {
