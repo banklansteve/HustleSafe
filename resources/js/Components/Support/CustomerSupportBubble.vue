@@ -330,8 +330,13 @@ import { ChatBubbleLeftRightIcon, ChevronDownIcon } from '@heroicons/vue/24/outl
 import GifPickerPanel from '@/Components/Chat/GifPickerPanel.vue';
 import SupportChatMessages from '@/Components/Support/SupportChatMessages.vue';
 import SupportFeedbackModal from '@/Components/Support/SupportFeedbackModal.vue';
-import { ensureEcho } from '@/utils/ensureEcho';
 import { broadcastConfigFromPage } from '@/utils/broadcastConfig';
+import {
+    supportChatHttp,
+    supportChatPollHttp,
+    supportChatReadHttp,
+    supportChatSendHttp,
+} from '@/utils/supportChatHttp';
 import { useSupportChatRealtime } from '@/composables/useSupportChatRealtime';
 import { useChatComposer } from '@/composables/useChatComposer';
 import { useMessagingViewPresence } from '@/composables/useMessagingViewPresence';
@@ -378,17 +383,34 @@ let typingIdleTimer = null;
 let typingActive = false;
 let typingPollTimer = null;
 let markReadTimer = null;
+let pollAbortController = null;
 
-const chatPresence = useMessagingViewPresence(async () => {
-    if (!ticket.value?.id) {
+function ticketApiRef() {
+    return ticket.value?.uuid || ticket.value?.id;
+}
+
+async function markInboundRead() {
+    if (!ticket.value?.id || sending.value) {
         return;
     }
+
     const last = [...messages.value].reverse().find((m) => !messageIsMine(m));
-    await window.axios.post(r('api.support.chat.read', { ticket: ticket.value.id }), {
-        last_message_id: last?.id ?? undefined,
-    });
-    window.dispatchEvent(new CustomEvent('app:notifications-changed'));
-});
+    if (!last?.id) {
+        return;
+    }
+
+    try {
+        await supportChatReadHttp.post(
+            r('api.support.chat.read', { ticket: ticketApiRef() }),
+            { last_message_id: last.id },
+        );
+        window.dispatchEvent(new CustomEvent('app:notifications-changed'));
+    } catch {
+        /* non-blocking */
+    }
+}
+
+const chatPresence = useMessagingViewPresence(() => markInboundRead());
 
 function liveBroadcastConfig() {
     return broadcastConfigFromPage(page);
@@ -405,6 +427,25 @@ function hasMessage(msg) {
 
 const chatRealtime = useSupportChatRealtime({
     reverbConfig: liveBroadcastConfig,
+    getPausePolling: () => sending.value,
+    pollVisibleMs: liveBroadcastConfig()?.pollVisibleMs ?? 1500,
+    pollHiddenMs: liveBroadcastConfig()?.pollHiddenMs ?? 3000,
+    pollMessages: async (afterId) => {
+        const ticketRef = ticketApiRef();
+        if (!ticketRef || !afterId) {
+            return [];
+        }
+
+        pollAbortController?.abort();
+        pollAbortController = new AbortController();
+
+        const { data } = await supportChatPollHttp.get(r('api.support.chat.messages', { ticket: ticketRef }), {
+            params: { after_id: afterId },
+            signal: pollAbortController.signal,
+        });
+
+        return data.items ?? [];
+    },
     onMessage: (msg) => {
         if (hasMessage(msg)) {
             return false;
@@ -412,7 +453,7 @@ const chatRealtime = useSupportChatRealtime({
         messages.value.push(msg);
         if (!messageIsMine(msg)) {
             if (view.value === 'chat' && panelOpen.value) {
-                scheduleMarkRead();
+                scheduleMarkInboundRead();
             } else {
                 unreadTotal.value += 1;
             }
@@ -430,7 +471,7 @@ const chatRealtime = useSupportChatRealtime({
             view.value = 'chat';
             stopTyping();
             try {
-                const { data } = await window.axios.get(r('api.support.chat.open', { ticket: t.id }));
+                const { data } = await supportChatHttp.get(r('api.support.chat.open', { ticket: t.uuid || t.id }));
                 ticket.value = data.ticket ?? t;
                 messages.value = data.messages ?? messages.value;
                 chatRealtime.syncLastMessageId(messages.value);
@@ -444,11 +485,13 @@ const chatRealtime = useSupportChatRealtime({
         }
     },
     onTyping: (e) => {
-        if (e.side === 'admin') {
-            typingAdmin.value = e.typing
-                ? (e.first_name || supportAgentFirstName({ name: e.name }) || 'Support')
-                : null;
+        if (String(e?.side ?? '').toLowerCase() !== 'admin') {
+            return;
         }
+        const active = e.typing === true || e.typing === 1 || e.typing === '1' || e.typing === 'true';
+        typingAdmin.value = active
+            ? (e.first_name || supportAgentFirstName({ name: e.name }) || 'Support')
+            : null;
     },
 });
 
@@ -477,12 +520,12 @@ const typingLabel = computed(() => {
 });
 
 const feedbackSubmitUrl = computed(() => {
-    const id = ticket.value?.id;
-    if (!id) {
+    const ref = ticketApiRef();
+    if (!ref) {
         return '';
     }
 
-    return r('api.support.chat.feedback', { ticket: id });
+    return r('api.support.chat.feedback', { ticket: ref });
 });
 
 function messageIsMine(m) {
@@ -511,8 +554,8 @@ async function onMessageReact({ message, emoji }) {
         return;
     }
     try {
-        const { data } = await window.axios.post(
-            r('api.support.chat.react', { ticket: ticket.value.id, message: message.id }),
+        const { data } = await supportChatHttp.post(
+            r('api.support.chat.react', { ticket: ticketApiRef(), message: message.id }),
             { emoji },
         );
         const idx = messages.value.findIndex((m) => m.id === message.id);
@@ -564,7 +607,7 @@ function startTypingPoll() {
             return;
         }
         try {
-            const { data } = await window.axios.get(r('api.support.chat.typing-state', { ticket: ticket.value.id }));
+            const { data } = await supportChatHttp.get(r('api.support.chat.typing-state', { ticket: ticketApiRef() }));
             const t = data?.typing;
             const active = t && (t.typing === true || t.typing === 1);
             if (active && String(t.side ?? '').toLowerCase() === 'admin') {
@@ -595,15 +638,13 @@ function openPanel() {
     panelOpen.value = true;
     view.value = activeTicket.value ? 'chat' : 'home';
     if (activeTicket.value) {
-        resumeTicket(activeTicket.value);
-    } else {
-        ensureEcho(liveBroadcastConfig());
+        void resumeTicket(activeTicket.value);
     }
 }
 
 async function refreshBootstrap() {
     try {
-        const { data } = await window.axios.get(r('api.support.widget.bootstrap'));
+        const { data } = await supportChatHttp.get(r('api.support.widget.bootstrap'));
         if (!data.enabled) return;
         categories.value = data.categories ?? {};
         activeTicket.value = data.active_ticket ?? null;
@@ -616,12 +657,25 @@ async function refreshBootstrap() {
 
 async function resumeTicket(t) {
     view.value = 'chat';
+    const sameTicket = ticket.value?.id === t.id && messages.value.length > 0;
     ticket.value = t;
-    messages.value = [];
     typingAdmin.value = null;
-    ensureEcho(liveBroadcastConfig());
+
+    if (sameTicket && chatRealtime.isSubscribedTo(t.id)) {
+        startTypingPoll();
+        chatPresence.start({ immediate: false });
+        void chatRealtime.runPoll();
+        scrollBottom();
+
+        return;
+    }
+
+    if (!sameTicket) {
+        messages.value = [];
+    }
+
     try {
-        const { data } = await window.axios.get(r('api.support.chat.open', { ticket: t.id }));
+        const { data } = await supportChatHttp.get(r('api.support.chat.open', { ticket: t.uuid || t.id }));
         ticket.value = data.ticket;
         messages.value = data.messages ?? [];
         chatRealtime.syncLastMessageId(messages.value);
@@ -629,7 +683,7 @@ async function resumeTicket(t) {
         startTypingPoll();
         scrollBottom();
         unreadTotal.value = Math.max(0, unreadTotal.value - (t.unread_count ?? 0));
-        chatPresence.start();
+        chatPresence.start({ immediate: false });
     } catch {
         startError.value = 'Could not open chat.';
     }
@@ -639,7 +693,7 @@ async function startChat() {
     starting.value = true;
     startError.value = '';
     try {
-        const { data } = await window.axios.post(r('api.support.chat.start'), startForm.value);
+        const { data } = await supportChatHttp.post(r('api.support.chat.start'), startForm.value);
         ticket.value = data.ticket;
         messages.value = data.messages ?? [];
         view.value = 'chat';
@@ -648,7 +702,7 @@ async function startChat() {
         subscribeRealtime(data.ticket.id);
         startTypingPoll();
         scrollBottom();
-        chatPresence.start();
+        chatPresence.start({ immediate: false });
         await refreshBootstrap();
     } catch (e) {
         startError.value = e.response?.data?.message || 'Could not start chat. Try again.';
@@ -668,11 +722,11 @@ function teardownRealtime() {
     chatPresence.stop();
 }
 
-function scheduleMarkRead() {
+function scheduleMarkInboundRead() {
     clearTimeout(markReadTimer);
     markReadTimer = setTimeout(() => {
-        chatPresence.markNow();
-    }, 300);
+        void markInboundRead();
+    }, 400);
 }
 
 function scrollBottom() {
@@ -714,7 +768,7 @@ function onComposerInput() {
     typingStartDebounce = setTimeout(() => {
         if (!typingActive) {
             typingActive = true;
-            window.axios.post(r('api.support.chat.typing', { ticket: ticket.value.id }), { typing: true }).catch(() => {});
+            supportChatHttp.post(r('api.support.chat.typing', { ticket: ticketApiRef() }), { typing: true }).catch(() => {});
         }
     }, 300);
     typingIdleTimer = setTimeout(stopTyping, 300);
@@ -729,7 +783,7 @@ function stopTyping() {
         return;
     }
     typingActive = false;
-    window.axios.post(r('api.support.chat.typing', { ticket: ticket.value.id }), { typing: false }).catch(() => {});
+    supportChatHttp.post(r('api.support.chat.typing', { ticket: ticketApiRef() }), { typing: false }).catch(() => {});
 }
 
 function onComposerBlur() {
@@ -756,6 +810,18 @@ function customerMessageWasDelivered(body, snap) {
     return false;
 }
 
+function fireStopTyping() {
+    clearTimeout(typingStartDebounce);
+    typingStartDebounce = null;
+    clearTimeout(typingIdleTimer);
+    typingIdleTimer = null;
+    if (!ticket.value?.id || !typingActive) {
+        return;
+    }
+    typingActive = false;
+    supportChatHttp.post(r('api.support.chat.typing', { ticket: ticketApiRef() }), { typing: false }).catch(() => {});
+}
+
 async function send() {
     if (!ticket.value || sending.value) {
         return;
@@ -765,10 +831,11 @@ async function send() {
         return;
     }
 
-    sending.value = true;
-    stopTyping();
-    emojiOpen.value = false;
-    gifOpen.value = false;
+    startError.value = '';
+    clearTimeout(markReadTimer);
+    chatPresence.stop();
+    chatRealtime.pausePolling();
+    pollAbortController?.abort();
 
     const fd = new FormData();
     if (body) {
@@ -800,8 +867,13 @@ async function send() {
     pendingFiles.value = [];
     scrollBottom();
 
+    sending.value = true;
+    emojiOpen.value = false;
+    gifOpen.value = false;
+    fireStopTyping();
+
     try {
-        const { data } = await window.axios.post(r('api.support.chat.send', { ticket: ticket.value.id }), fd);
+        const { data } = await supportChatSendHttp.post(r('api.support.chat.send', { ticket: ticketApiRef() }), fd);
         messages.value = messages.value.filter((m) => m.id !== optimisticId);
         const serverMsg = data?.message;
         if (serverMsg && !hasMessage(serverMsg)) {
@@ -811,15 +883,28 @@ async function send() {
             chatRealtime.setLastMessageId(serverMsg.id);
         }
         scrollBottom();
-    } catch {
+    } catch (error) {
+        const timedOut = error?.code === 'ECONNABORTED';
+        const status = error?.response?.status;
         messages.value = messages.value.filter((m) => m.id !== optimisticId);
         if (!customerMessageWasDelivered(body, snap)) {
             composer.value = snap.body;
             pendingGif.value = snap.gif;
             pendingFiles.value = snap.files;
+            if (timedOut) {
+                startError.value = 'Message send timed out. Check your connection and try again.';
+            } else if (status === 422) {
+                startError.value = error?.response?.data?.message || 'Could not send that message.';
+            } else {
+                startError.value = 'Could not send your message. Please try again.';
+            }
         }
     } finally {
         sending.value = false;
+        chatRealtime.resumePolling();
+        if (panelOpen.value && view.value === 'chat' && ticket.value?.id) {
+            chatPresence.start({ immediate: false });
+        }
     }
 }
 
@@ -849,14 +934,13 @@ watch(
 );
 
 watch(panelOpen, (open) => {
-    if (open) {
-        ensureEcho(liveBroadcastConfig());
-        if (view.value === 'chat' && ticket.value?.id) {
-            subscribeRealtime(ticket.value.id);
-            startTypingPoll();
-        }
-    } else {
+    if (!open) {
         teardownRealtime();
+    } else if (view.value === 'chat' && ticket.value?.id && !chatRealtime.isSubscribedTo(ticket.value.id)) {
+        subscribeRealtime(ticket.value.id);
+        startTypingPoll();
+        chatPresence.start({ immediate: false });
+        void chatRealtime.runPoll();
     }
 });
 </script>

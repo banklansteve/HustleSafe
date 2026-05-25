@@ -42,29 +42,18 @@ class StoreQuestProposalRequest extends FormRequest
             $this->merge(['pricing' => $pricing]);
         }
 
-        $materials = $this->input('materials');
-        if (is_array($materials)) {
-            $out = [];
-            foreach ($materials as $row) {
-                if (! is_array($row)) {
-                    continue;
-                }
-                $qtyRaw = $row['quantity'] ?? '1';
-                $qty = is_numeric($qtyRaw) ? (float) $qtyRaw : (float) str_replace(',', '.', preg_replace('/[^0-9.,\-]/', '', (string) $qtyRaw));
-                if (! is_finite($qty) || $qty < 0) {
-                    $qty = 0.0;
-                }
-                if (array_key_exists('unit_price_ngn', $row)) {
-                    $unit = max(0, (int) $row['unit_price_ngn']);
-                    $row['cost_ngn'] = (int) round($qty * $unit);
-                } elseif (! array_key_exists('cost_ngn', $row)) {
-                    $row['cost_ngn'] = 0;
-                } else {
-                    $row['cost_ngn'] = max(0, (int) $row['cost_ngn']);
-                }
-                $out[] = $row;
+        $materials = ProposalMoneyCalculator::incomingMaterialRows($this->input('materials'));
+        $this->merge(['materials' => $materials]);
+
+        $pricing = $this->input('pricing', []);
+        if (is_array($pricing)) {
+            $pricing['platform_fee_ngn'] = 0;
+            $breakdown = ProposalMoneyCalculator::breakdown($materials, $pricing);
+            if ($breakdown !== null) {
+                $pricing['platform_fee_ngn'] = (int) round($breakdown['platform_minor'] / 100);
+                $pricing['grand_total_ngn'] = (int) round($breakdown['grand_minor'] / 100);
+                $this->merge(['pricing' => $pricing]);
             }
-            $this->merge(['materials' => $out]);
         }
     }
 
@@ -85,11 +74,11 @@ class StoreQuestProposalRequest extends FormRequest
             'corrections_included' => ['sometimes', 'boolean'],
             'corrections_rounds' => ['nullable', 'integer', 'min:1', 'max:50', 'required_if:corrections_included,true'],
             'progress_report_frequency' => ['nullable', 'string', Rule::in(['daily', 'twice_weekly', 'weekly', 'biweekly', 'milestone_based', 'on_request'])],
-            'materials' => ['required', 'array', 'min:1', 'max:40'],
+            'materials' => ['nullable', 'array', 'max:40'],
             'materials.*.label' => ['required', 'string', 'max:200'],
             'materials.*.quantity' => ['nullable', 'string', 'max:64'],
             'materials.*.unit_price_ngn' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
-            'materials.*.cost_ngn' => ['required', 'integer', 'min:0', 'max:1000000000'],
+            'materials.*.cost_ngn' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
             'pricing' => ['required', 'array'],
             'pricing.professional_fee_ngn' => ['required', 'integer', 'min:0', 'max:1000000000'],
             'pricing.vat_applies' => ['sometimes', 'boolean'],
@@ -112,15 +101,24 @@ class StoreQuestProposalRequest extends FormRequest
                 return;
             }
 
-            $exists = QuestOffer::query()
+            $existing = QuestOffer::query()
                 ->where('quest_id', $quest->id)
                 ->where('freelancer_id', $user->id)
-                ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
-                ->exists();
+                ->first();
 
-            if ($exists) {
-                $v->errors()->add('proposal', __('You have already sent a proposal for this quest.'));
+            if ($existing === null) {
+                return;
             }
+
+            if (in_array($existing->status, ['submitted', 'shortlisted', 'accepted'], true)) {
+                $v->errors()->add('proposal', __('You have already sent a proposal for this quest.'));
+
+                return;
+            }
+
+            $v->errors()->add('proposal', __('You already have a proposal record on this quest (status: :status). You cannot submit a second one.', [
+                'status' => (string) $existing->status,
+            ]));
         });
 
         $validator->after(function (Validator $v): void {
@@ -143,17 +141,10 @@ class StoreQuestProposalRequest extends FormRequest
                 return;
             }
 
-            $declaredNgn = max(0, (int) ($p['grand_total_ngn'] ?? 0));
             $expectedNgn = (int) round($breakdown['grand_minor'] / 100);
 
             if ($expectedNgn < 1) {
                 $v->errors()->add('pricing.grand_total_ngn', __('Grand total must reflect your fees, materials, taxes, and discounts.'));
-
-                return;
-            }
-
-            if ($declaredNgn !== $expectedNgn) {
-                $v->errors()->add('pricing.grand_total_ngn', __('Totals do not add up. Check professional fee, materials, travel, taxes, fees, and discount.'));
             }
         });
     }
@@ -166,7 +157,7 @@ class StoreQuestProposalRequest extends FormRequest
         $data = $this->validated();
 
         return ProposalMoneyCalculator::normalizedPayload([
-            'materials' => $data['materials'],
+            'materials' => $data['materials'] ?? [],
             'pricing' => $data['pricing'],
         ], false);
     }

@@ -8,9 +8,8 @@
         </div>
         <Link
             href="/"
-            class="relative mb-8 inline-flex items-center gap-2 rounded-xl px-1 py-0.5 text-slate-900 transition hover:bg-white/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            class="relative mb-8 inline-flex rounded-xl px-1 py-0.5 text-slate-900 transition hover:bg-white/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
         >
-            <HustleSafeLogo variant="icon" theme="light" icon-class="h-10 w-10" />
             <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-8 w-auto max-w-[9.5rem]" />
         </Link>
         <div

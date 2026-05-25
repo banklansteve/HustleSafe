@@ -39,6 +39,18 @@ class QuestFormFieldProfileService
     ];
 
     /**
+     * Parent slugs for work that is normally delivered fully remotely (no site visits / on-site brief).
+     *
+     * @var list<string>
+     */
+    protected const REMOTE_FIRST_PARENTS = [
+        'technology-software',
+        'design-creative',
+        'writing-content',
+        'gaming-interactive',
+    ];
+
+    /**
      * @return array{
      *   show_site_visit: bool,
      *   show_site_access: bool,
@@ -46,6 +58,8 @@ class QuestFormFieldProfileService
      *   show_availability: bool,
      *   show_hourly_fields: bool,
      *   show_team_size: bool,
+     *   show_location_pref: bool,
+     *   remote_first: bool,
      *   default_site_visits: bool,
      *   parent_slug: ?string,
      *   leaf_slug: ?string
@@ -68,14 +82,15 @@ class QuestFormFieldProfileService
         $parentSlug = $leaf->parent?->slug;
         $leafSlug = $leaf->slug;
 
-        $showSiteVisit = $parentSlug !== null && in_array($parentSlug, self::SITE_VISIT_PARENTS, true);
+        $remoteFirst = $parentSlug !== null && in_array($parentSlug, self::REMOTE_FIRST_PARENTS, true);
+        $showSiteVisit = ! $remoteFirst && $parentSlug !== null && in_array($parentSlug, self::SITE_VISIT_PARENTS, true);
         $showAvailability = $parentSlug !== null && in_array($parentSlug, self::AVAILABILITY_PARENTS, true);
 
         $digitalParents = ['technology-software', 'design-creative', 'writing-content', 'gaming-interactive'];
         $showHourlyFields = $parentSlug !== null && ! in_array($parentSlug, ['legal-compliance'], true);
         $showTeamSize = $parentSlug !== null && ! in_array($parentSlug, $digitalParents, true);
 
-        $showSiteAccess = $this->siteAccessContextApplies($parentSlug, $leafSlug);
+        $showSiteAccess = ! $remoteFirst && $this->siteAccessContextApplies($parentSlug, $leafSlug);
 
         return [
             'show_site_visit' => $showSiteVisit,
@@ -84,6 +99,8 @@ class QuestFormFieldProfileService
             'show_availability' => $showAvailability,
             'show_hourly_fields' => $showHourlyFields,
             'show_team_size' => $showTeamSize,
+            'show_location_pref' => ! $remoteFirst,
+            'remote_first' => $remoteFirst,
             'default_site_visits' => $showSiteVisit,
             'parent_slug' => $parentSlug,
             'leaf_slug' => $leafSlug,
@@ -130,6 +147,8 @@ class QuestFormFieldProfileService
             'show_availability' => true,
             'show_hourly_fields' => true,
             'show_team_size' => true,
+            'show_location_pref' => true,
+            'remote_first' => false,
             'default_site_visits' => false,
             'parent_slug' => null,
             'leaf_slug' => null,

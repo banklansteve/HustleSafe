@@ -29,7 +29,7 @@
                 <button
                     type="button"
                     class="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-700 px-4 py-2.5 text-sm font-black text-white shadow-md hover:bg-primary-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    :disabled="busy"
+                    :disabled="busy || disabled"
                     @click="$emit('submit')"
                 >
                     <span v-if="busy" class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -55,6 +55,7 @@ const props = defineProps({
     submitLabel: { type: String, default: '' },
     secondaryLabel: { type: String, default: '' },
     busy: { type: Boolean, default: false },
+    disabled: { type: Boolean, default: false },
     busyLabel: { type: String, default: 'Working…' },
     defaultOpen: { type: Boolean, default: false },
 });

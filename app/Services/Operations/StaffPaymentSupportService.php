@@ -7,6 +7,7 @@ use App\Models\Quest;
 use App\Models\StaffPaymentException;
 use App\Models\User;
 use App\Services\AdminActivityLogger;
+use App\Support\NgnMoney;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -108,14 +109,20 @@ class StaffPaymentSupportService
 
     private function row(Quest $quest, bool $expanded = false): array
     {
+        $paidOutMinor = (int) ($quest->paid_out_minor ?? 0);
+        $budgetMinor = (int) ($quest->budget_amount_minor ?? 0);
+
         $base = [
             'id' => $quest->id,
+            'route_key' => $quest->getRouteKey(),
             'reference_code' => $quest->reference_code,
             'title' => $quest->title,
             'status' => $quest->status?->value ?? (string) $quest->status,
             'escrow_status' => $quest->escrow_status,
-            'budget_amount_minor' => $quest->budget_amount_minor,
-            'paid_out_minor' => $quest->paid_out_minor,
+            'budget_amount_minor' => $budgetMinor,
+            'budget_display' => NgnMoney::format($budgetMinor),
+            'paid_out_minor' => $paidOutMinor,
+            'paid_out_display' => NgnMoney::format($paidOutMinor),
             'client' => $quest->client?->name,
             'freelancer' => $quest->freelancer?->name,
             'escrow_funded_at' => $quest->escrow_funded_at?->toIso8601String(),

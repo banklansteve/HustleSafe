@@ -8,6 +8,53 @@ namespace App\Support;
 final class ProposalMoneyCalculator
 {
     /**
+     * Normalise incoming material rows: compute line costs and drop blank rows.
+     *
+     * @param  array<int, mixed>|null  $materials
+     * @return list<array<string, mixed>>
+     */
+    public static function incomingMaterialRows(?array $materials): array
+    {
+        if (! is_array($materials)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($materials as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $qtyRaw = $row['quantity'] ?? '1';
+            $qty = is_numeric($qtyRaw)
+                ? (float) $qtyRaw
+                : (float) str_replace(',', '.', preg_replace('/[^0-9.,\-]/', '', (string) $qtyRaw));
+            if (! is_finite($qty) || $qty < 0) {
+                $qty = 0.0;
+            }
+
+            if (array_key_exists('unit_price_ngn', $row)) {
+                $unit = max(0, (int) $row['unit_price_ngn']);
+                $row['cost_ngn'] = (int) round($qty * $unit);
+            } elseif (! array_key_exists('cost_ngn', $row)) {
+                $row['cost_ngn'] = 0;
+            } else {
+                $row['cost_ngn'] = max(0, (int) $row['cost_ngn']);
+            }
+
+            $label = trim((string) ($row['label'] ?? ''));
+            if ($label === '' && ((int) ($row['cost_ngn'] ?? 0)) < 1) {
+                continue;
+            }
+
+            $row['label'] = $label !== '' ? $label : __('Materials / parts');
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>|null  $materials
      * @param  array<string, mixed>|null  $pricing
      * @return array{
@@ -77,7 +124,7 @@ final class ProposalMoneyCalculator
     public static function normalizedPayload(array $data, bool $isUpdate = false): array
     {
         $materials = [];
-        foreach ($data['materials'] as $row) {
+        foreach ($data['materials'] ?? [] as $row) {
             $qty = isset($row['quantity']) ? (string) $row['quantity'] : null;
             $unitNgn = array_key_exists('unit_price_ngn', $row) ? max(0, (int) $row['unit_price_ngn']) : null;
             $lineMinor = max(0, (int) $row['cost_ngn']) * 100;

@@ -40,45 +40,12 @@
 </template>
 
 <script setup>
-import { usePage } from '@inertiajs/vue3';
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { useFlashToastWatcher, useToastAutoHide } from '@/composables/useFlashToast';
+import { ref } from 'vue';
 
-const page = usePage();
 const visible = ref(false);
 const message = ref('');
-let hideTimer = null;
+const { present, dismiss } = useToastAutoHide(visible, message);
 
-function dismiss() {
-    visible.value = false;
-    clearTimeout(hideTimer);
-    hideTimer = null;
-}
-
-function showToast(text) {
-    if (!text) {
-        return;
-    }
-    message.value = text;
-    visible.value = true;
-    clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => {
-        visible.value = false;
-        hideTimer = null;
-    }, 4800);
-}
-
-watch(
-    () => [page.url, page.props.flash?.success, page.props.flash?.status],
-    () => {
-        const s = page.props.flash?.success ?? page.props.flash?.status;
-        if (s) {
-            showToast(String(s));
-        }
-    },
-    { flush: 'post', immediate: true },
-);
-
-onBeforeUnmount(() => {
-    clearTimeout(hideTimer);
-});
+useFlashToastWatcher(present);
 </script>

@@ -554,8 +554,8 @@ class StaffNotificationCentreService
                 'body' => "{$sender->name}: ".Str::limit($ticket->subject, 80),
                 'action_label' => 'Reply',
                 'action_url' => $recipient->role?->slug === 'super_admin'
-                    ? route('admin.customer-support.index', ['ticket' => $ticket->id])
-                    : route('operations.customer-support.index', ['ticket' => $ticket->id]),
+                    ? route('admin.customer-support.index', ['ticket' => $ticket->uuid])
+                    : route('operations.customer-support.index', ['ticket' => $ticket->uuid]),
                 'data' => [
                     'dedupe_key' => "cs_msg:{$ticket->id}:{$recipient->id}:".now()->format('YmdHi'),
                     'ticket_id' => $ticket->id,
@@ -594,7 +594,7 @@ class StaffNotificationCentreService
                     'title' => 'New live support chat waiting',
                     'body' => $ticket->subject,
                     'action_label' => 'Open queue',
-                    'action_url' => route('operations.customer-support.index', ['ticket' => $ticket->id]),
+                    'action_url' => route('operations.customer-support.index', ['ticket' => $ticket->uuid]),
                     'data' => [
                         'dedupe_key' => "cs_queue:{$ticket->id}:{$admin->id}",
                         'ticket_id' => $ticket->id,

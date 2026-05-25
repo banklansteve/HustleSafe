@@ -165,7 +165,7 @@
                                     <UiSelect v-model="form.visibility" class="mt-2" :options="visibilityOptions" />
                                     <InputError class="mt-2" :message="form.errors.visibility" />
                                 </div>
-                                <div>
+                                <div v-if="fieldProfile.show_location_pref !== false">
                                     <div class="flex items-center gap-1">
                                         <InputLabel value="Preferred freelancer location" />
                                         <FieldHint text="Remote-friendly welcomes nationwide talent; local-only signals on-site expectations." />
@@ -173,6 +173,12 @@
                                     <UiSelect v-model="form.freelancer_location_pref" class="mt-2" :options="locationPrefOptions" />
                                     <InputError class="mt-2" :message="form.errors.freelancer_location_pref" />
                                 </div>
+                                <p
+                                    v-else
+                                    class="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5 text-xs font-semibold leading-relaxed text-slate-700 ring-1 ring-slate-100"
+                                >
+                                    This category is normally completed remotely — location preference is set to remote-friendly automatically.
+                                </p>
                                 <div v-if="fieldProfile.show_availability">
                                     <div class="flex items-center gap-1">
                                         <InputLabel value="Availability expectation" />
@@ -307,7 +313,7 @@
                                 </div>
                                 <div class="rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/90 to-white p-4 ring-1 ring-slate-100 sm:p-5">
                                     <div class="flex flex-wrap items-end justify-between gap-2">
-                                        <InputLabel for="budget" value="Budget ceiling" />
+                                        <InputLabel for="budget" value="Quest budget" />
                                         <p class="text-lg font-black tabular-nums text-primary-800">{{ formatNgn(clampedBudgetMinor) }}</p>
                                     </div>
                                     <div class="mt-2 flex justify-between gap-2 text-[10px] font-black uppercase tracking-wider text-slate-500">
@@ -332,7 +338,7 @@
                                         v-model.number="budgetSliderModel"
                                         type="range"
                                         :min="minBudgetMinor"
-                                        :max="maxBudgetMinor"
+                                        :max="effectiveMaxBudgetMinor"
                                         :step="budgetSliderStep"
                                         class="budget-range mt-4 w-full"
                                     />
@@ -719,6 +725,8 @@ const fieldProfile = reactive({
     show_availability: true,
     show_hourly_fields: true,
     show_team_size: true,
+    show_location_pref: true,
+    remote_first: false,
     default_site_visits: false,
 });
 const tagQuery = ref('');
@@ -781,7 +789,7 @@ const form = useForm({
     scheduled_start_date: '',
     estimated_completion_days: 14,
     estimated_delivery_date: '',
-    budget_amount_minor: 2_000_000,
+    budget_amount_minor: 10_000,
     project_type: 'fixed_price',
     estimated_hours: null,
     team_size: 'solo',
@@ -1267,6 +1275,9 @@ watch(
                 form.site_access_level = '';
                 form.pets_on_site = null;
                 form.pets_detail = '';
+            }
+            if (fieldProfile.remote_first || fieldProfile.show_location_pref === false) {
+                form.freelancer_location_pref = 'remote_friendly';
             }
             if (!fieldProfile.show_site_visit) {
                 siteVisitChoice.value = 'no';

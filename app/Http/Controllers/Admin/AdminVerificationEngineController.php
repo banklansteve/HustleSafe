@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\UserVerification;
 use App\Models\VerificationAnomalyFlag;
 use App\Models\VerificationEngineAuditLog;
+use App\Services\Admin\AdminVerificationQueueService;
 use App\Services\Verification\UserVerificationDecisionService;
 use App\Services\Verification\UserVerificationPresentationService;
 use App\Services\Verification\VerificationEngineService;
@@ -27,6 +28,7 @@ class AdminVerificationEngineController extends Controller
     public function __construct(
         private readonly VerificationEngineService $engine,
         private readonly UserVerificationPresentationService $presentation,
+        private readonly AdminVerificationQueueService $verificationQueue,
     ) {}
 
     public function index(Request $request): Response
@@ -326,50 +328,21 @@ class AdminVerificationEngineController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function accountTimeline(Request $request, User $user): JsonResponse
+    {
+        $typeKey = trim((string) $request->query('type_key', ''));
+
+        return response()->json($this->verificationQueue->accountTimeline(
+            $user,
+            $typeKey !== '' ? $typeKey : null,
+        ));
+    }
+
     private function pending(Request $request)
     {
-        return UserVerification::query()
-            ->with(['user:id,name,email,created_at,current_verification_level,kyc_tier,verification_tier,avatar_url', 'reviewer:id,name,email', 'referredToAdmin:id,name,email'])
-            ->whereIn('status', ['pending', 'in_review', 'flagged', 'unverified', 'rejected'])
-            ->when($request->filled('type'), fn ($q) => $q->where(fn ($scope) => $scope->where('verification_type', $request->input('type'))->orWhere('category', $request->input('type'))))
-            ->oldest('submitted_at')
-            ->paginate(20, ['*'], 'pending_page')
-            ->through(function (UserVerification $verification) {
-                $presentation = $this->presentation->forReview($verification, 'admin.user-verifications.document');
-
-                return [
-                    'id' => $verification->id,
-                    'type' => $verification->verification_type ?: $verification->category?->value ?: $verification->category,
-                    'type_label' => $presentation['category_label'],
-                    'status' => $verification->status?->value ?? $verification->status,
-                    'submitted_at' => $verification->submitted_at?->toIso8601String(),
-                    'submitted_at_label' => \App\Support\FormatsHumanDateTime::format($verification->submitted_at, config('app.timezone')),
-                    'document_previews' => collect($presentation['documents'] ?? [])->take(4)->values()->all(),
-                    'reviewed_at' => $verification->reviewed_at?->toIso8601String(),
-                    'reason' => $verification->rejection_reason,
-                    'concern' => $verification->admin_concern,
-                    'presentation' => $presentation,
-                    'reviewer' => $verification->reviewer ? [
-                        'id' => $verification->reviewer->id,
-                        'name' => $verification->reviewer->name,
-                        'email' => $verification->reviewer->email,
-                    ] : null,
-                    'referred_to_admin' => $verification->referredToAdmin ? [
-                        'id' => $verification->referredToAdmin->id,
-                        'name' => $verification->referredToAdmin->name,
-                        'email' => $verification->referredToAdmin->email,
-                    ] : null,
-                    'referred_at' => $verification->referred_at?->toIso8601String(),
-                    'user' => [
-                        'id' => $verification->user?->id,
-                        'name' => $verification->user?->name,
-                        'email' => $verification->user?->email,
-                        'level' => $verification->user ? $this->engine->storedLevel($verification->user) : 0,
-                        'account_age_days' => $verification->user?->created_at?->diffInDays(now()),
-                        'avatar_url' => $verification->user?->avatar_url,
-                    ],
-                ];
-            });
+        return $this->verificationQueue
+            ->paginatedQueue($request)
+            ->withQueryString();
     }
 
     private function anomalies(Request $request)

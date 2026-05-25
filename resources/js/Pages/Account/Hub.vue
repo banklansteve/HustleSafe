@@ -185,16 +185,20 @@
                         <div class="rounded-2xl border border-white bg-white/80 p-4 shadow-sm">
                             <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">{{ verificationEngine.limit_label || (verificationEngine.is_freelancer ? 'Proposal limit' : 'Quest posting limit') }}</p>
                             <p class="mt-1 text-lg font-black text-slate-950">{{ verificationEngine.limit_formatted || money(verificationEngine.limit_minor) }}</p>
-                            <p v-if="verificationEngine.limit_description" class="mt-2 text-xs font-semibold text-slate-600">
+                            <p v-if="verificationEngine.limit_capped && verificationEngine.earned_limit_formatted" class="mt-2 text-xs font-semibold text-amber-800">
+                                Earned {{ verificationEngine.current_label }} limit:
+                                {{ verificationEngine.earned_limit_formatted }}
+                                <span v-if="verificationEngine.cooldown?.active"> (after cooldown)</span>
+                            </p>
+                            <p v-else-if="verificationEngine.limit_description" class="mt-2 text-xs font-semibold text-slate-600">
                                 {{ verificationEngine.limit_description }}
                             </p>
                             <p
-                                v-if="verificationEngine.enforced_limit_minor != null && verificationEngine.enforced_limit_minor < verificationEngine.limit_minor"
+                                v-if="verificationEngine.limit_capped && verificationEngine.cooldown?.active"
                                 class="mt-2 text-xs font-black text-amber-700"
                             >
-                                Posting is temporarily capped at
-                                {{ verificationEngine.enforced_limit_formatted || money(verificationEngine.enforced_limit_minor) }}
-                                until your new-account cooldown ends.
+                                Active limit uses {{ verificationEngine.effective_label || ('L' + verificationEngine.effective_level) }}
+                                until {{ formatWhen(verificationEngine.cooldown.expires_at) }}.
                             </p>
                         </div>
                     </div>
@@ -1637,8 +1641,8 @@ const credentialSectionDefs = [
     },
     {
         type: 'professional_licence',
-        title: 'Professional licences',
-        short: 'Licence',
+        title: 'Professional qualifications',
+        short: 'Prof. qualification',
         hint: 'Council registrations such as COREN, ARCON, NIM, MDCN, or other Nigerian regulators.',
     },
     {

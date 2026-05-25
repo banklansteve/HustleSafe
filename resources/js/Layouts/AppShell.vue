@@ -40,12 +40,8 @@
                     class="flex shrink-0 items-center gap-3 rounded-xl outline-none ring-2 ring-transparent ring-offset-2 transition focus-visible:ring-primary-600"
                     :class="homeActive ? 'ring-primary-200' : ''"
                 >
-                    <HustleSafeLogo variant="icon" theme="light" icon-class="h-11 w-11" />
-                    <div class="hidden min-w-0 leading-tight sm:block">
-                        <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-8 w-auto max-w-[10rem]" />
-                        <p class="mt-0.5 text-sm font-semibold text-slate-500">
-                            Escrow-first marketplace
-                        </p>
+                    <div class="min-w-0 leading-tight">
+                        <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-9 w-auto max-w-[11rem] sm:h-10 sm:max-w-[12rem] drop-shadow-sm contrast-[1.08]" />
                     </div>
                 </Link>
 

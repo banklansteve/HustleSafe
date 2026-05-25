@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\AdminMessagesController;
 use App\Http\Controllers\Admin\AdminStaffActivitySummaryController;
 use App\Http\Controllers\Admin\AdminNotificationCentreController;
 use App\Http\Controllers\Admin\AdminPromotionsGrowthController;
+use App\Http\Controllers\Admin\AdminPortfolioReviewController;
 use App\Http\Controllers\Admin\AdminProposalsController;
 use App\Http\Controllers\Admin\AdminUserActivityController;
 use App\Http\Controllers\Admin\AdminReportsController;
@@ -83,7 +84,7 @@ Route::post('/api/customer-support/tickets/{ticket}/messages', [AdminCustomerSup
 Route::get('/api/customer-support/tickets/{ticket}/typing', [AdminCustomerSupportController::class, 'typingState'])->name('api.customer-support.typing-state');
 Route::post('/api/customer-support/tickets/{ticket}/typing', [AdminCustomerSupportController::class, 'typing'])->middleware('throttle:180,1')->name('api.customer-support.typing');
 Route::post('/api/customer-support/tickets/{ticket}/read', [AdminCustomerSupportController::class, 'read'])->middleware('throttle:120,1')->name('api.customer-support.read');
-Route::post('/api/customer-support/reconcile-notifications', [AdminCustomerSupportController::class, 'reconcileNotifications'])->middleware('throttle:30,1')->name('api.customer-support.reconcile-notifications');
+Route::post('/api/customer-support/reconcile-notifications', [AdminCustomerSupportController::class, 'reconcileNotifications'])->middleware('throttle:120,1')->name('api.customer-support.reconcile-notifications');
 Route::post('/api/customer-support/tickets/{ticket}/end', [AdminCustomerSupportController::class, 'end'])->middleware('throttle:60,1')->name('api.customer-support.end');
 Route::post('/api/customer-support/tickets/{ticket}/reassign', [AdminCustomerSupportController::class, 'reassign'])->middleware('throttle:30,1')->name('api.customer-support.reassign');
 Route::post('/api/customer-support/tickets/{ticket}/messages/{message}/react', [AdminCustomerSupportController::class, 'react'])->middleware('throttle:120,1')->name('api.customer-support.react');
@@ -192,6 +193,9 @@ Route::post('/verification-engine/anomalies/{flag}/action', [AdminVerificationEn
 Route::get('/verification-engine/users/search', [AdminVerificationEngineController::class, 'searchUsers'])
     ->middleware('throttle:60,1')
     ->name('verification-engine.users.search');
+Route::get('/verification-engine/users/{user}/timeline', [AdminVerificationEngineController::class, 'accountTimeline'])
+    ->middleware('throttle:60,1')
+    ->name('verification-engine.users.timeline');
 Route::post('/verification-engine/users/{user}/level-override', [AdminVerificationEngineController::class, 'overrideLevel'])
     ->middleware('throttle:20,1')
     ->name('verification-engine.users.level-override');
@@ -334,6 +338,12 @@ Route::get('/live-activity/summary', [AdminLiveActivityController::class, 'summa
 Route::get('/live-activity/widget', [AdminLiveActivityController::class, 'widget'])->name('live-activity.widget');
 Route::get('/live-activity/entity', [AdminLiveActivityController::class, 'entity'])->name('live-activity.entity');
 Route::post('/live-activity/{event}/action', [AdminLiveActivityController::class, 'action'])->name('live-activity.action');
+
+Route::get('/portfolio-review', [AdminPortfolioReviewController::class, 'index'])->name('portfolio-review.index');
+Route::get('/portfolio-review/{portfolio}', [AdminPortfolioReviewController::class, 'show'])->name('portfolio-review.show');
+Route::patch('/portfolio-review/{portfolio}', [AdminPortfolioReviewController::class, 'update'])
+    ->middleware('throttle:40,1')
+    ->name('portfolio-review.update');
 
 Route::get('/content-moderation', [AdminContentModerationController::class, 'index'])->name('content-moderation.index');
 Route::get('/content-moderation/cases/{case}', [AdminContentModerationController::class, 'show'])->name('content-moderation.cases.show');

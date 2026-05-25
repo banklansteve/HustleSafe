@@ -94,7 +94,7 @@ return [
         'portfolio_review' => ['label' => 'Portfolio Review Verification', 'enabled' => false, 'manual_review' => true, 'soft' => true],
     ],
     'limits' => [
-        'client_posting_minor' => [0 => 0, 1 => 5_000_000, 2 => 50_000_000, 3 => 200_000_000, 4 => 500_000_000, 5 => 1_000_000_000],
+        'client_posting_minor' => [0 => 0, 1 => 5_000_000, 2 => 50_000_000, 3 => 200_000_000, 4 => 100_000_000, 5 => 1_000_000_000],
         'freelancer_proposal_minor' => [0 => 0, 1 => 5_000_000, 2 => 50_000_000, 3 => 200_000_000, 4 => 500_000_000, 5 => 1_000_000_000],
     ],
     'safeguards' => [

@@ -36,14 +36,14 @@
                 </div>
                 <p class="mt-1 text-xs font-semibold text-slate-500">Tap a session to open it in the chat panel — no page reload.</p>
                 <ul class="mt-3 max-h-64 space-y-2 overflow-y-auto pr-0.5">
-                    <li v-for="item in context.previous_support_chats" :key="item.id">
+                    <li v-for="item in context.previous_support_chats" :key="item.uuid || item.id">
                         <button
                             type="button"
                             class="flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition"
-                            :class="Number(currentTicketId) === Number(item.id)
+                            :class="currentTicketRef && (currentTicketRef === item.uuid || String(currentTicketRef) === String(item.id))
                                 ? 'border-primary-300 bg-primary-50 ring-1 ring-primary-200'
                                 : 'border-slate-200 bg-white hover:border-primary-200 hover:bg-primary-50/40'"
-                            @click="emit('open-chat', item.id)"
+                            @click="emit('open-chat', item.uuid || item.id)"
                         >
                             <span
                                 class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-black uppercase"
@@ -165,7 +165,7 @@ import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 defineProps({
     open: { type: Boolean, default: false },
     context: { type: Object, default: null },
-    currentTicketId: { type: [Number, String], default: null },
+    currentTicketRef: { type: String, default: null },
 });
 
 const emit = defineEmits(['close', 'open-chat']);

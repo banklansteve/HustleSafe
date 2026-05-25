@@ -71,7 +71,10 @@ Broadcast::channel('customer-support.{ticketId}', function ($user, string $ticke
         return false;
     }
 
-    $ticket = \App\Models\SupportTicket::query()->find($ticketId);
+    $ticket = \App\Models\SupportTicket::query()
+        ->where('uuid', $ticketId)
+        ->orWhere('id', $ticketId)
+        ->first();
     if ($ticket === null) {
         return false;
     }

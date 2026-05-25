@@ -626,7 +626,7 @@ class QuestManagementEngineService
     private function proposalPayload(Quest $quest): array
     {
         $offers = QuestOffer::query()
-            ->with('freelancer:id,name,email,avatar_url,verification_tier')
+            ->with('freelancer:id,name,slug,email,avatar_url,verification_tier')
             ->where('quest_id', $quest->id)
             ->latest()
             ->get();
@@ -653,6 +653,7 @@ class QuestManagementEngineService
                 'freelancer' => [
                     'id' => $offer->freelancer?->id,
                     'name' => $offer->freelancer?->name,
+                    'slug' => $offer->freelancer?->slug,
                     'email' => $offer->freelancer?->email,
                     'avatar_url' => $offer->freelancer?->avatar_url,
                     'verification_tier' => $offer->freelancer?->verification_tier,

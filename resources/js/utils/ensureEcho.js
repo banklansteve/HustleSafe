@@ -12,7 +12,6 @@ function readMeta(name) {
 
 /**
  * WebSocket host must match how you open the site in the browser.
- * REVERB_HOST=localhost breaks when you use hustlesafe.test (or similar).
  */
 function resolveWsHost(configuredHost) {
     const pageHost = window.location.hostname;
@@ -26,6 +25,19 @@ function resolveWsHost(configuredHost) {
     }
 
     return configuredHost;
+}
+
+/**
+ * Single source of truth for wsHost — must match between create and compare.
+ */
+export function normalizedEchoHost(config) {
+    const browserHost = typeof window !== 'undefined' ? window.location.hostname : '';
+
+    if (config.broadcaster === 'reverb' && browserHost) {
+        return browserHost;
+    }
+
+    return resolveWsHost(config.host);
 }
 
 function buildConfig(inertiaConfig = null) {
@@ -102,7 +114,7 @@ function createEcho(config) {
         const cluster = config.cluster || 'mt1';
 
         if (config.useCustomHost) {
-            const host = resolveWsHost(config.host);
+            const host = config.host;
             const scheme = config.scheme === 'https' ? 'https' : 'http';
             const port = config.port;
 
@@ -133,7 +145,7 @@ function createEcho(config) {
         });
     }
 
-    const host = resolveWsHost(config.host);
+    const host = config.host;
     const scheme = config.scheme === 'https' ? 'https' : 'http';
     const port = config.port;
 
@@ -167,26 +179,34 @@ function echoMatchesConfig(existingEcho, config) {
         return (cfg.cluster || 'mt1') === (config.cluster || 'mt1');
     }
 
-    const host = resolveWsHost(config.host);
-
-    return cfg.wsHost === host && Number(cfg.wsPort) === Number(config.port);
+    return cfg.wsHost === config.host && Number(cfg.wsPort) === Number(config.port);
 }
 
 /**
  * @param {{ appKey?: string|null, host?: string, port?: number, scheme?: string, broadcaster?: string, driver?: string, cluster?: string, useCustomHost?: boolean }|null|undefined} inertiaConfig
  */
+export function safeEchoLeave(channelName) {
+    if (!window.Echo || !channelName) {
+        return;
+    }
+
+    try {
+        window.Echo.leave(channelName);
+    } catch {
+        /* channel may already be CLOSING */
+    }
+}
+
 export function ensureEcho(inertiaConfig = null) {
     const config = buildConfig(inertiaConfig);
     if (!config?.appKey) {
         return null;
     }
 
-    // Browser hostname wins for Reverb (avoids localhost vs 127.0.0.1 mismatch).
-    const browserHost = typeof window !== 'undefined' ? window.location.hostname : '';
-    const host = config.broadcaster === 'reverb' && browserHost
-        ? browserHost
-        : resolveWsHost(config.host);
-    const normalized = { ...config, host };
+    const normalized = {
+        ...config,
+        host: normalizedEchoHost(config),
+    };
 
     if (window.Echo && echoMatchesConfig(window.Echo, normalized)) {
         return window.Echo;

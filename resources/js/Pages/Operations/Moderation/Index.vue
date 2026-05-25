@@ -62,6 +62,31 @@
         <OperationsSlideOver :open="slideOpen" :title="slideTitle" :subtitle="slideSubtitle" eyebrow="Moderation panel" @close="slideOpen = false">
             <div v-if="detailLoading" class="py-10 text-center text-sm font-semibold text-slate-500">Loading detail…</div>
             <div v-else-if="detail" class="space-y-4">
+                <section
+                    v-if="publicPreviewLinks.length"
+                    class="rounded-xl border border-primary-200 bg-gradient-to-br from-primary-50/90 via-white to-teal-50/60 p-4 shadow-sm ring-1 ring-primary-100"
+                >
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-primary-800">
+                        Public preview
+                    </p>
+                    <p class="mt-1 text-xs font-semibold leading-relaxed text-slate-600">
+                        Open the live pages exactly as clients and freelancers see them on HustleSafe.
+                    </p>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <a
+                            v-for="link in publicPreviewLinks"
+                            :key="link.href"
+                            :href="link.href"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-white px-3.5 py-2 text-[11px] font-black uppercase tracking-wide text-primary-900 shadow-sm transition hover:border-primary-400 hover:bg-primary-50"
+                        >
+                            {{ link.label }}
+                            <span aria-hidden="true">↗</span>
+                        </a>
+                    </div>
+                </section>
+
                 <OperationsContextStats :heading="slideTitle" :stats="moderationStats" :chips="moderationChips" :links="moderationLinks" />
                 <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Actions</p>
 
@@ -75,36 +100,80 @@
                     :busy="busy.contact"
                     @submit="contactQuest('client')"
                 >
-                    <input v-model="contactForm.subject" class="form-input" placeholder="Subject" />
-                    <textarea v-model="contactForm.body" class="form-input mt-3 min-h-20" placeholder="Message body" />
-                    <select v-model="contactForm.channel" class="form-input mt-3">
-                        <option value="both">Email + in-app</option>
-                        <option value="email">Email only</option>
-                        <option value="in_app">In-app only</option>
-                    </select>
-                    <label class="mt-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
-                        <input v-model="contactForm.open_cs_ticket" type="checkbox" class="rounded border-slate-300 text-primary-600" />
-                        Also open a CS support ticket
-                    </label>
+                    <div class="space-y-4">
+                        <div class="moderation-field">
+                            <label class="moderation-label">Subject</label>
+                            <input v-model="contactForm.subject" class="form-input" placeholder="Subject" />
+                        </div>
+                        <div class="moderation-field">
+                            <label class="moderation-label">Message</label>
+                            <textarea v-model="contactForm.body" class="form-input min-h-24" placeholder="Message body" />
+                        </div>
+                        <div class="moderation-field">
+                            <label class="moderation-label">Delivery</label>
+                            <select v-model="contactForm.channel" class="form-input">
+                                <option value="both">Email + in-app</option>
+                                <option value="email">Email only</option>
+                                <option value="in_app">In-app only</option>
+                            </select>
+                        </div>
+                        <label class="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                            <input v-model="contactForm.open_cs_ticket" type="checkbox" class="rounded border-slate-300 text-primary-600" />
+                            Also open a CS support ticket
+                        </label>
+                    </div>
                 </OperationsExpandableAction>
 
                 <OperationsExpandableAction
                     v-if="activeModule === 'quests'"
                     title="Contact freelancer"
-                    hint="Reach the freelancer on this quest."
+                    hint="Only freelancers who have submitted a proposal on this quest."
                     icon="💬"
                     tone="sky"
                     submit-label="Send to freelancer"
                     :busy="busy.contact"
+                    :disabled="!contactForm.freelancer_id"
                     @submit="contactQuest('freelancer')"
                 >
-                    <input v-model="contactForm.subject" class="form-input" placeholder="Subject" />
-                    <textarea v-model="contactForm.body" class="form-input mt-3 min-h-20" placeholder="Message body" />
-                    <select v-model="contactForm.channel" class="form-input mt-3">
-                        <option value="both">Email + in-app</option>
-                        <option value="email">Email only</option>
-                        <option value="in_app">In-app only</option>
-                    </select>
+                    <div class="space-y-4">
+                        <div class="moderation-field">
+                            <label class="moderation-label">Freelancer</label>
+                            <select
+                                v-model="contactForm.freelancer_id"
+                                class="form-input"
+                                :disabled="!questProposalFreelancers.length"
+                            >
+                                <option value="">
+                                    {{ questProposalFreelancers.length ? 'Select a freelancer…' : 'No freelancers with proposals' }}
+                                </option>
+                                <option v-for="freelancer in questProposalFreelancers" :key="freelancer.id" :value="freelancer.id">
+                                    {{ freelancer.label }}
+                                </option>
+                            </select>
+                            <p v-if="!questProposalFreelancers.length" class="mt-2 text-xs font-semibold text-slate-500">
+                                This quest has no proposals yet, so there is no freelancer to contact.
+                            </p>
+                        </div>
+
+                        <template v-if="contactForm.freelancer_id !== '' && contactForm.freelancer_id != null">
+                            <div class="moderation-field">
+                                <label class="moderation-label">Subject</label>
+                                <input v-model="contactForm.subject" class="form-input" placeholder="Subject" />
+                            </div>
+                            <div class="moderation-field">
+                                <label class="moderation-label">Message</label>
+                                <textarea v-model="contactForm.body" class="form-input min-h-24" placeholder="Message body" />
+                            </div>
+                            <div class="moderation-field">
+                                <label class="moderation-label">Delivery</label>
+                                <select v-model="contactForm.channel" class="form-input">
+                                    <option value="both">Email + in-app</option>
+                                    <option value="email">Email only</option>
+                                    <option value="in_app">In-app only</option>
+                                </select>
+                            </div>
+                        </template>
+                    </div>
                 </OperationsExpandableAction>
 
                 <OperationsExpandableAction
@@ -131,25 +200,49 @@
                 </OperationsExpandableAction>
 
                 <OperationsExpandableAction v-if="activeModule === 'quests'" title="Edit quest" hint="Non-critical fields; submit major edits for approval." icon="✎" tone="slate">
-                    <input v-model="editForm.title" class="form-input" placeholder="Title" />
-                    <textarea v-model="editForm.description" class="form-input min-h-28" placeholder="Description" />
-                    <select v-model="editForm.quest_category_id" class="form-input">
-                        <option value="">Category unchanged</option>
-                        <option v-for="cat in categoryOptions" :key="cat.value" :value="cat.value">{{ cat.label }}</option>
-                    </select>
-                    <input v-model.number="editForm.max_offers" type="number" min="1" class="form-input" placeholder="Max proposals" />
-                    <input v-model="editForm.city" class="form-input" placeholder="City" />
-                    <textarea v-model="editForm.reason" class="form-input min-h-20" placeholder="Audit reason (required)" />
-                    <label class="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                        <input v-model="editForm.notify_client" type="checkbox" class="rounded border-slate-300 text-primary-600" />
-                        Notify client after save
-                    </label>
-                    <div class="flex flex-wrap gap-2">
-                        <button type="button" class="inline-flex items-center gap-2 rounded-xl bg-primary-700 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50" :disabled="busy.edit" @click="saveQuestEdit(false)">
-                            <span v-if="busy.edit" class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                            Save now
-                        </button>
-                        <button type="button" class="rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-black text-primary-900 disabled:opacity-50" :disabled="busy.edit" @click="saveQuestEdit(true)">Submit for approval</button>
+                    <div class="space-y-5">
+                        <div class="moderation-field">
+                            <label class="moderation-label" for="edit-quest-title">Title</label>
+                            <input id="edit-quest-title" v-model="editForm.title" class="form-input" placeholder="Title" />
+                        </div>
+                        <div class="moderation-field">
+                            <label class="moderation-label">Description</label>
+                            <QuestRichDescriptionEditor
+                                :key="`quest-edit-desc-${selectedRow?.id ?? 'new'}`"
+                                v-model="editForm.description"
+                                placeholder="Quest description as posted by the client…"
+                            />
+                        </div>
+                        <div class="moderation-field">
+                            <label class="moderation-label" for="edit-quest-category">Category</label>
+                            <select id="edit-quest-category" v-model="editForm.quest_category_id" class="form-input">
+                                <option value="">Category unchanged</option>
+                                <option v-for="cat in categoryOptions" :key="cat.value" :value="cat.value">{{ cat.label }}</option>
+                            </select>
+                        </div>
+                        <div class="moderation-field">
+                            <label class="moderation-label" for="edit-quest-max-offers">Max proposals</label>
+                            <input id="edit-quest-max-offers" v-model.number="editForm.max_offers" type="number" min="1" class="form-input" placeholder="e.g. 10" />
+                        </div>
+                        <div class="moderation-field">
+                            <label class="moderation-label" for="edit-quest-city">City</label>
+                            <input id="edit-quest-city" v-model="editForm.city" class="form-input" placeholder="City" />
+                        </div>
+                        <div class="moderation-field">
+                            <label class="moderation-label" for="edit-quest-reason">Audit reason</label>
+                            <textarea id="edit-quest-reason" v-model="editForm.reason" class="form-input min-h-24" placeholder="Required — explain what you changed and why" />
+                        </div>
+                        <label class="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                            <input v-model="editForm.notify_client" type="checkbox" class="rounded border-slate-300 text-primary-600" />
+                            Notify client after save
+                        </label>
+                        <div class="flex flex-wrap gap-2 pt-1">
+                            <button type="button" class="inline-flex items-center gap-2 rounded-xl bg-primary-700 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50" :disabled="busy.edit" @click="saveQuestEdit(false)">
+                                <span v-if="busy.edit" class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                Save now
+                            </button>
+                            <button type="button" class="rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-black text-primary-900 disabled:opacity-50" :disabled="busy.edit" @click="saveQuestEdit(true)">Submit for approval</button>
+                        </div>
                     </div>
                 </OperationsExpandableAction>
 
@@ -239,6 +332,7 @@ import OperationsExpandableAction from '@/Pages/Operations/Components/Operations
 import OperationsQueueTable from '@/Pages/Operations/Components/OperationsQueueTable.vue';
 import OperationsSlideOver from '@/Pages/Operations/Components/OperationsSlideOver.vue';
 import OperationsShell from '@/Layouts/OperationsShell.vue';
+import QuestRichDescriptionEditor from '@/Components/Quests/QuestRichDescriptionEditor.vue';
 import { useClientQueue } from '@/composables/useClientQueue';
 import { useOperationsToast } from '@/composables/useOperationsToast';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
@@ -306,7 +400,9 @@ const statusOptions = computed(() =>
     activeModule.value === 'quests' ? props.options.quest_admin_statuses : props.options.proposal_admin_statuses,
 );
 
-const emptyMessage = computed(() => 'Select a queue tab to load items.');
+const emptyMessage = computed(() =>
+    activeQueue.value ? 'No items in this queue. Try “All quests” or “All proposals”.' : 'Select a queue tab to load items.',
+);
 
 const slideTitle = computed(() => selectedRow.value?.title || selectedRow.value?.reference_code || (selectedRow.value ? `#${selectedRow.value.id}` : ''));
 const slideSubtitle = computed(() => (activeModule.value === 'quests' ? 'Quest moderation' : 'Proposal moderation'));
@@ -317,7 +413,14 @@ const noteForm = reactive({ body: '' });
 const flagForm = reactive({ type: 'policy_violation', priority: 'medium', description: '' });
 const proposalFlagForm = reactive({ type: 'policy_violation', priority: 'medium', description: '', notify_freelancer: true });
 const removeForm = reactive({ reason: '', confirmation: '' });
-const contactForm = reactive({ subject: '', body: '', channel: 'both', recipient: 'client', open_cs_ticket: false });
+const contactForm = reactive({
+    subject: '',
+    body: '',
+    channel: 'both',
+    recipient: 'client',
+    freelancer_id: '',
+    open_cs_ticket: false,
+});
 const editForm = reactive({
     title: '',
     description: '',
@@ -374,6 +477,89 @@ const moderationChips = computed(() => {
     return chips;
 });
 
+const questProposalFreelancers = computed(() => {
+    const items = detail.value?.proposals?.items ?? [];
+    const excluded = new Set(['withdrawn', 'declined']);
+    const byId = new Map();
+
+    for (const item of items) {
+        const freelancer = item?.freelancer;
+        if (!freelancer?.id || excluded.has(String(item?.status ?? ''))) {
+            continue;
+        }
+
+        const name = freelancer.first_name || freelancer.name || freelancer.email || `Freelancer #${freelancer.id}`;
+        const statusLabel = item.status ? String(item.status).replace(/_/g, ' ') : '';
+        byId.set(freelancer.id, {
+            id: freelancer.id,
+            slug: freelancer.slug ?? null,
+            name,
+            label: statusLabel ? `${name} · ${statusLabel}` : name,
+        });
+    }
+
+    return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+});
+
+const publicPreviewLinks = computed(() => {
+    if (!detail.value) {
+        return [];
+    }
+
+    const links = [];
+
+    if (activeModule.value === 'quests') {
+        const routeKey = detail.value.overview?.quest?.route_key;
+        if (routeKey) {
+            links.push({
+                label: 'View public quest',
+                href: route('quests.show', routeKey),
+            });
+        }
+
+        for (const freelancer of questProposalFreelancers.value.slice(0, 6)) {
+            if (!freelancer.slug) {
+                continue;
+            }
+            links.push({
+                label: `Profile · ${freelancer.name}`,
+                href: route('freelancers.public', freelancer.slug),
+            });
+            links.push({
+                label: `Portfolio · ${freelancer.name}`,
+                href: route('freelancers.public.portfolios', freelancer.slug),
+            });
+        }
+    } else {
+        const quest = detail.value.overview?.proposal?.quest ?? detail.value.quest;
+        if (quest?.route_key) {
+            links.push({
+                label: 'View public quest',
+                href: route('quests.show', quest.route_key),
+            });
+        }
+
+        const slug =
+            detail.value.overview?.proposal?.freelancer?.slug
+            ?? detail.value.communications?.freelancer?.slug
+            ?? detail.value.freelancer?.profile?.slug
+            ?? detail.value.freelancer?.slug;
+
+        if (slug) {
+            links.push({
+                label: 'View freelancer profile',
+                href: route('freelancers.public', slug),
+            });
+            links.push({
+                label: 'View portfolio gallery',
+                href: route('freelancers.public.portfolios', slug),
+            });
+        }
+    }
+
+    return links;
+});
+
 const moderationLinks = computed(() => {
     if (!detail.value) return [];
     const links = [];
@@ -421,6 +607,23 @@ const moderationLinks = computed(() => {
                 preview: quest.reference_code,
                 href: quest.route_key ? route('quests.show', quest.route_key) : route('operations.moderation.index', { module: 'quests' }),
                 external: Boolean(quest.route_key),
+            });
+        }
+
+        if (freelancer?.slug) {
+            links.push({
+                label: 'Public profile',
+                title: freelancer.name,
+                preview: 'Freelancer marketplace profile',
+                href: route('freelancers.public', freelancer.slug),
+                external: true,
+            });
+            links.push({
+                label: 'Portfolio gallery',
+                title: freelancer.name,
+                preview: 'Public portfolio pieces',
+                href: route('freelancers.public.portfolios', freelancer.slug),
+                external: true,
             });
         }
 
@@ -516,6 +719,9 @@ async function openDetail(row) {
             editForm.city = q.city ?? '';
             editForm.reason = '';
             contactForm.subject = `Regarding your quest: ${q.title}`;
+            contactForm.freelancer_id = '';
+            contactForm.body = '';
+            contactForm.channel = 'both';
         }
 
         if (activeModule.value === 'proposals') {
@@ -621,10 +827,43 @@ async function removeMedia(media) {
     });
 }
 
+watch(
+    () => contactForm.freelancer_id,
+    (id) => {
+        if (id === '' || id == null || activeModule.value !== 'quests') {
+            return;
+        }
+        const match = questProposalFreelancers.value.find((f) => Number(f.id) === Number(id));
+        if (match) {
+            const questTitle = detail.value?.overview?.quest?.title ?? 'your quest';
+            contactForm.subject = `Regarding ${questTitle}`;
+        }
+    },
+);
+
 async function contactQuest(recipient) {
     if (!selectedRow.value) return;
+
+    if (recipient === 'freelancer' && (contactForm.freelancer_id === '' || contactForm.freelancer_id == null)) {
+        toast('Select a freelancer who has proposed on this quest.', 'error');
+
+        return;
+    }
+
     contactForm.recipient = recipient;
-    await runAction('contact', () => window.axios.post(route('operations.api.moderation.quests.contact', selectedRow.value.id), { ...contactForm, recipient }), 'Message sent.', async () => {
+    const payload = {
+        subject: contactForm.subject,
+        body: contactForm.body,
+        channel: contactForm.channel,
+        recipient,
+        open_cs_ticket: contactForm.open_cs_ticket,
+    };
+
+    if (recipient === 'freelancer') {
+        payload.freelancer_id = contactForm.freelancer_id;
+    }
+
+    await runAction('contact', () => window.axios.post(route('operations.api.moderation.quests.contact', selectedRow.value.id), payload), 'Message sent.', async () => {
         contactForm.body = '';
     });
 }
@@ -659,5 +898,13 @@ function labelize(value) {
 <style scoped>
 .form-input {
     @apply w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100;
+}
+
+.moderation-label {
+    @apply mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-slate-500;
+}
+
+.moderation-field {
+    @apply space-y-0;
 }
 </style>

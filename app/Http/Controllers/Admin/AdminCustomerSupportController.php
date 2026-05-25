@@ -37,26 +37,20 @@ class AdminCustomerSupportController extends Controller
         $admin = $request->user();
         $this->processUnassignedQueue();
 
-        $ticketId = $request->integer('ticket') ?: null;
-        $selected = $ticketId
-            ? SupportTicket::query()->find($ticketId)
+        $ticketRef = trim((string) $request->query('ticket', ''));
+        $selected = $ticketRef !== ''
+            ? SupportTicket::query()->where('uuid', $ticketRef)->first()
             : null;
 
         if ($selected && ! $this->service->canAccessTicket($selected, $admin)) {
             $selected = null;
         }
 
-        $messages = [];
-        $hasMore = false;
-        $context = null;
-
         if ($selected) {
-            $result = $this->service->messages($selected, $admin);
-            $messages = $result['items'];
-            $hasMore = $result['has_more'];
-            $this->service->markRead($selected, $admin);
-            $selected->load('customer');
-            $context = $selected->customer ? $this->safeUserContext($selected->customer, $admin) : null;
+            $selected->load([
+                'customer:id,name,email,username,current_verification_level,verification_tier',
+                'assignedAdmin:id,name',
+            ]);
         }
 
         $panels = $this->service->queuePanelsForAdmin(
@@ -69,10 +63,10 @@ class AdminCustomerSupportController extends Controller
         return Inertia::render('Admin/CustomerSupport/Workspace', [
             'routeNamespace' => $routeNamespace,
             'queuePanels' => $panels,
-            'selectedTicket' => $selected ? $this->service->ticketListPayload($selected, $admin) : null,
-            'messages' => $messages,
-            'hasMore' => $hasMore,
-            'userContext' => $context,
+            'selectedTicket' => $selected ? $this->service->ticketDetailPayload($selected, $admin, 0) : null,
+            'messages' => [],
+            'hasMore' => false,
+            'userContext' => null,
             'onlineAdmins' => $this->onlineAdminsPayload(),
             'allAdmins' => $this->reassignTargetsPayload($admin),
             'filterAdmins' => $this->staffAdminsPayload(),
@@ -131,14 +125,12 @@ class AdminCustomerSupportController extends Controller
     {
         abort_unless($this->service->canAccessTicket($ticket, $request->user()), 403);
 
-        $result = $this->service->messages($ticket, $request->user());
-        $this->service->markRead($ticket, $request->user());
-        $ticket->load('customer');
+        $payload = $this->service->openTicketForAdmin($ticket, $request->user());
+        $lastId = $this->latestMessageIdFromPayload($payload['messages'] ?? []);
+        $this->service->markRead($ticket, $request->user(), $lastId);
 
         return response()->json([
-            'ticket' => $this->service->ticketListPayload($ticket, $request->user()),
-            'messages' => $result['items'],
-            'has_more' => $result['has_more'],
+            ...$payload,
             'context' => null,
         ]);
     }
@@ -203,7 +195,12 @@ class AdminCustomerSupportController extends Controller
     public function read(Request $request, SupportTicket $ticket): JsonResponse
     {
         abort_unless($this->service->canAccessTicket($ticket, $request->user()), 403);
-        $this->service->markRead($ticket, $request->user(), $request->integer('last_message_id') ?: null);
+
+        $data = $request->validate([
+            'last_message_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $this->service->markRead($ticket, $request->user(), (int) $data['last_message_id']);
 
         return response()->json(['ok' => true]);
     }
@@ -287,7 +284,8 @@ class AdminCustomerSupportController extends Controller
             ->whereNull('opened_by_admin_id')
             ->where('chat_status', 'queued')
             ->whereNull('assigned_admin_id')
-            ->limit(20)
+            ->orderBy('queued_at')
+            ->limit(5)
             ->get()
             ->each(fn (SupportTicket $t) => $this->service->assignNextAvailableAdmin($t));
     }
@@ -355,5 +353,19 @@ class AdminCustomerSupportController extends Controller
                 'online' => $onlineIds->contains($u->id),
             ])
             ->all();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $messages
+     */
+    private function latestMessageIdFromPayload(array $messages): ?int
+    {
+        if ($messages === []) {
+            return null;
+        }
+
+        $last = $messages[array_key_last($messages)];
+
+        return isset($last['id']) ? (int) $last['id'] : null;
     }
 }

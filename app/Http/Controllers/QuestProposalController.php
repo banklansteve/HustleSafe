@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\AdminProposalStatus;
 use App\Enums\QuestStatus;
 use App\Enums\QuestVisibility;
 use App\Models\Quest;
@@ -35,13 +34,10 @@ class QuestProposalController extends Controller
         $active = $quest->offers()
             ->where('freelancer_id', $user->id)
             ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
-            ->when(Schema::hasColumn('quest_offers', 'admin_status'), function ($query): void {
-                $query->whereNull('admin_status')
-                    ->orWhere('admin_status', '!=', AdminProposalStatus::Suspended->value);
-            })
+            ->excludingAdminSuspended()
             ->first();
 
-        if ($active) {
+        if ($active !== null && (int) $active->quest_id === (int) $quest->id) {
             return redirect()->route('quests.proposals.show', [$quest, $active]);
         }
 
@@ -91,6 +87,7 @@ class QuestProposalController extends Controller
             ],
             'pricing_hints' => $pricingHints,
             'vat_preset_percent' => (float) config('quests.proposal_vat_percent', 7.5),
+            'platform_fee_percent' => PlatformSettings::platformFeePercent(),
             'proposal_edit' => null,
         ]);
     }
@@ -224,9 +221,6 @@ class QuestProposalController extends Controller
                 'quantity' => (string) $qtyRaw,
                 'unit_price_ngn' => $unitNgn,
             ];
-        }
-        if ($materials === []) {
-            $materials[] = ['label' => '', 'quantity' => '1', 'unit_price_ngn' => 0];
         }
 
         $pricing = [

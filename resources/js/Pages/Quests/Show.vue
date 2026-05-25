@@ -745,7 +745,15 @@
                     </Link>
                     <p v-else class="mt-3 text-xs font-semibold text-amber-900">
                         <template v-if="verification_access && !verification_access.can_submit_for_budget">
-                            <span>Your current verification level (L{{ verification_access.effective_level }}) allows proposals up to <span class="font-black">{{ formatBudget(verification_access.proposal_limit_minor) }}</span>. Complete more verification to unlock this Quest.</span>
+                            <span>
+                                Your active limit is L{{ verification_access.effective_level }}
+                                (up to <span class="font-black">{{ formatBudget(verification_access.proposal_limit_minor) }}</span>).
+                                <template v-if="verification_access.limit_capped && verification_access.earned_proposal_limit_minor">
+                                    You earned L{{ verification_access.earned_level }}
+                                    (up to {{ formatBudget(verification_access.earned_proposal_limit_minor) }}).
+                                </template>
+                                Complete more verification to unlock this quest.
+                            </span>
                             <span v-if="verification_access.cooldown?.active"> Cool-down ends {{ formatWhen(verification_access.cooldown.expires_at) }}.</span>
                         </template>
                         <template v-else-if="workspacePanelItems.length">

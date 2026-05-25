@@ -1,5 +1,8 @@
 import { onBeforeUnmount, ref } from 'vue';
-import { ensureEcho } from '@/utils/ensureEcho';
+import { ensureEcho, safeEchoLeave } from '@/utils/ensureEcho';
+
+const WS_WATCHDOG_MS = 5_000;
+const POLL_BACKUP_MS = 1000;
 
 function messageIdKey(msg) {
     const id = Number(msg?.id);
@@ -31,8 +34,7 @@ function bindPusherConnectionOnce(echo, handlers) {
 }
 
 /**
- * Live support delivery via Reverb only — no HTTP polling for new messages.
- * Callers must load initial history over HTTP before subscribe().
+ * WebSocket for instant delivery + HTTP poll backup (always on while chat is open).
  */
 export function useSupportChatRealtime(options) {
     const {
@@ -42,11 +44,16 @@ export function useSupportChatRealtime(options) {
         onTyping,
         normalizeMessage = (m) => m,
         getMessageCutoff = () => null,
+        /** @type {null | ((afterMessageId: number) => Promise<object[]>)} */
+        pollMessages = null,
+        pollVisibleMs = 500,
+        pollHiddenMs = 2000,
+        getPausePolling = () => false,
     } = options;
 
     const wsConnected = ref(false);
     const wsFailed = ref(false);
-    const deliveryMode = ref('reverb');
+    const deliveryMode = ref(pollMessages ? 'poll' : 'reverb');
 
     let channel = null;
     let channelName = null;
@@ -54,6 +61,27 @@ export function useSupportChatRealtime(options) {
     let activeTicketId = null;
     let channelRetryTimer = null;
     let subscribeWatchdogTimer = null;
+    let pollTimer = null;
+    let pollInFlight = false;
+    let visibilityBound = false;
+    let pollingPaused = false;
+
+    function resolvePollMs() {
+        if (typeof document !== 'undefined' && document.hidden) {
+            return pollHiddenMs;
+        }
+
+        if (wsConnected.value) {
+            return POLL_BACKUP_MS;
+        }
+
+        return pollVisibleMs;
+    }
+
+    function stopPoll() {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+    }
 
     function syncLastMessageId(messages) {
         if (Array.isArray(messages)) {
@@ -87,6 +115,7 @@ export function useSupportChatRealtime(options) {
             setLastMessageId(id);
             if (viaWs) {
                 wsFailed.value = false;
+                deliveryMode.value = 'reverb';
             }
         }
 
@@ -102,11 +131,103 @@ export function useSupportChatRealtime(options) {
     function markChannelLive() {
         wsConnected.value = true;
         wsFailed.value = false;
+        deliveryMode.value = 'reverb';
+        schedulePoll();
     }
 
     function markChannelOffline() {
         wsConnected.value = false;
         wsFailed.value = true;
+        schedulePoll();
+        void runPoll();
+    }
+
+    function pausePolling() {
+        pollingPaused = true;
+        stopPoll();
+    }
+
+    function resumePolling() {
+        pollingPaused = false;
+        if (activeTicketId) {
+            schedulePoll();
+            void runPoll();
+        }
+    }
+
+    async function runPoll() {
+        if (!activeTicketId || !pollMessages || pollInFlight || pollingPaused || getPausePolling()) {
+            return;
+        }
+
+        if (!lastMessageId) {
+            return;
+        }
+
+        pollInFlight = true;
+        try {
+            const items = await pollMessages(lastMessageId);
+            if (!Array.isArray(items) || activeTicketId === null) {
+                return;
+            }
+
+            let delivered = false;
+            for (const raw of items) {
+                if (ingestMessage(raw, { viaWs: false })) {
+                    delivered = true;
+                }
+            }
+
+            if (delivered && !wsConnected.value) {
+                deliveryMode.value = 'poll';
+            }
+        } catch {
+            /* retry next tick */
+        } finally {
+            pollInFlight = false;
+        }
+    }
+
+    function schedulePoll() {
+        stopPoll();
+
+        if (!activeTicketId || !pollMessages || pollingPaused) {
+            return;
+        }
+
+        pollTimer = window.setTimeout(async () => {
+            await runPoll();
+            if (activeTicketId) {
+                schedulePoll();
+            }
+        }, resolvePollMs());
+    }
+
+    function onVisibilityChange() {
+        if (!activeTicketId) {
+            return;
+        }
+
+        void runPoll();
+        schedulePoll();
+    }
+
+    function bindVisibilityListener() {
+        if (visibilityBound || typeof document === 'undefined') {
+            return;
+        }
+
+        visibilityBound = true;
+        document.addEventListener('visibilitychange', onVisibilityChange);
+    }
+
+    function unbindVisibilityListener() {
+        if (!visibilityBound || typeof document === 'undefined') {
+            return;
+        }
+
+        visibilityBound = false;
+        document.removeEventListener('visibilitychange', onVisibilityChange);
     }
 
     function attachChannelListeners(ch) {
@@ -152,12 +273,8 @@ export function useSupportChatRealtime(options) {
         if (!echo || !ticketId || activeTicketId !== ticketId) {
             wsConnected.value = false;
             wsFailed.value = true;
-            clearTimeout(channelRetryTimer);
-            channelRetryTimer = setTimeout(() => {
-                if (activeTicketId === ticketId) {
-                    bindWsChannel(ticketId);
-                }
-            }, 800);
+            schedulePoll();
+            void runPoll();
 
             return;
         }
@@ -177,9 +294,16 @@ export function useSupportChatRealtime(options) {
         clearTimeout(subscribeWatchdogTimer);
 
         const nextChannelName = `customer-support.${ticketId}`;
-        if (channel && channelName && channelName !== nextChannelName) {
-            echo.leave(channelName);
+        if (channelName && channelName !== nextChannelName) {
+            safeEchoLeave(channelName);
             channel = null;
+            channelName = null;
+        }
+
+        if (channel && channelName === nextChannelName) {
+            schedulePoll();
+
+            return;
         }
 
         channelName = nextChannelName;
@@ -192,35 +316,53 @@ export function useSupportChatRealtime(options) {
             }
             if (!wsConnected.value) {
                 wsFailed.value = true;
-                bindWsChannel(ticketId);
+                void runPoll();
             }
-        }, 6000);
+        }, WS_WATCHDOG_MS);
     }
 
     function subscribe(ticketId, initialMessages = []) {
-        teardown();
-        activeTicketId = ticketId;
-        lastMessageId = 0;
+        const sameTicket = activeTicketId === ticketId && channelName === `customer-support.${ticketId}`;
+
+        if (!sameTicket) {
+            teardown({ keepVisibility: true });
+            activeTicketId = ticketId;
+            lastMessageId = 0;
+            wsConnected.value = false;
+            wsFailed.value = false;
+            deliveryMode.value = pollMessages ? 'poll' : 'reverb';
+            bindVisibilityListener();
+            bindWsChannel(ticketId);
+        }
+
         syncLastMessageId(initialMessages);
-        wsConnected.value = false;
-        wsFailed.value = false;
-        bindWsChannel(ticketId);
+        schedulePoll();
+        void runPoll();
     }
 
-    function teardown() {
+    function teardown({ keepVisibility = false } = {}) {
         clearTimeout(channelRetryTimer);
         channelRetryTimer = null;
         clearTimeout(subscribeWatchdogTimer);
         subscribeWatchdogTimer = null;
+        stopPoll();
 
-        if (window.Echo && channelName) {
-            window.Echo.leave(channelName);
+        if (channelName) {
+            safeEchoLeave(channelName);
         }
 
         channel = null;
         channelName = null;
         activeTicketId = null;
         wsConnected.value = false;
+
+        if (!keepVisibility) {
+            unbindVisibilityListener();
+        }
+    }
+
+    function isSubscribedTo(ticketId) {
+        return activeTicketId === ticketId && channelName === `customer-support.${ticketId}`;
     }
 
     onBeforeUnmount(() => {
@@ -233,8 +375,12 @@ export function useSupportChatRealtime(options) {
         deliveryMode,
         subscribe,
         teardown,
+        isSubscribedTo,
         syncLastMessageId,
         setLastMessageId,
         getLastMessageId: () => lastMessageId,
+        runPoll,
+        pausePolling,
+        resumePolling,
     };
 }

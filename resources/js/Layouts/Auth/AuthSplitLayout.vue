@@ -13,9 +13,8 @@
                 <div class="relative mx-auto flex w-full max-w-lg flex-col justify-center">
                     <Link
                         href="/"
-                        class="mb-10 inline-flex w-fit items-center gap-2 rounded-xl text-slate-900 transition hover:bg-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                        class="mb-10 inline-flex w-fit rounded-xl text-slate-900 transition hover:bg-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                     >
-                        <HustleSafeLogo variant="icon" theme="light" icon-class="h-10 w-10" />
                         <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-8 w-auto max-w-[9.5rem]" />
                     </Link>
 
@@ -66,9 +65,8 @@
                     <div class="mb-6 lg:mb-8 lg:hidden">
                         <Link
                             href="/"
-                            class="inline-flex items-center gap-2 rounded-lg text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                            class="inline-flex rounded-lg text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                         >
-                            <HustleSafeLogo variant="icon" theme="light" icon-class="h-9 w-9" />
                             <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-7 w-auto max-w-[8.5rem]" />
                         </Link>
                     </div>

@@ -24,7 +24,7 @@
 
         <title inertia>{{ config('app.name', 'Laravel') }}</title>
 
-        <link rel="icon" type="image/png" href="/images/logo/v7b_icon_512_light.png">
+        <link rel="icon" type="image/svg+xml" href="/images/logo/v7b_icon_light.svg" data-brand-favicon>
         <link rel="apple-touch-icon" href="/images/logo/v7b_icon_512_light.png">
 
         <!-- Fonts -->

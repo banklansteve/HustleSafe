@@ -205,7 +205,7 @@ class DashboardListController extends Controller
 
             'freelancer-proposals-sent' => QuestOffer::query()
                 ->where('freelancer_id', $user->id)
-                ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
+                ->excludingAdminSuspended()
                 ->with(['quest:id,uuid,slug,title,status'])
                 ->latest('updated_at'),
 
@@ -226,7 +226,7 @@ class DashboardListController extends Controller
 
             'client-proposals-inbox' => QuestOffer::query()
                 ->whereHas('quest', fn ($q) => $q->where('client_id', $user->id))
-                ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
+                ->visibleInClientInbox()
                 ->with(['quest:id,uuid,slug,title,status', 'freelancer:id,first_name,name,avatar_url'])
                 ->latest('updated_at'),
 

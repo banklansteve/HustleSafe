@@ -75,6 +75,26 @@ class SupportTicket extends Model
         return in_array($this->chat_status, ['closed'], true) || $this->status === 'closed';
     }
 
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
+    /**
+     * @param  mixed  $value
+     * @param  string|null  $field
+     */
+    public function resolveRouteBinding($value, $field = null): ?static
+    {
+        $field ??= $this->getRouteKeyName();
+
+        if ($field === 'uuid' && is_numeric($value)) {
+            return $this->newQuery()->whereKey((int) $value)->first();
+        }
+
+        return parent::resolveRouteBinding($value, $field);
+    }
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');

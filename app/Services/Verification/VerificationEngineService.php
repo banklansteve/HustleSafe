@@ -99,14 +99,7 @@ class VerificationEngineService
      */
     public function displayClientPostingLimitMinor(User $user): int
     {
-        if ($user->verification_restricted_at !== null) {
-            return 0;
-        }
-        if ($user->custom_client_post_limit_minor !== null) {
-            return (int) $user->custom_client_post_limit_minor;
-        }
-
-        return $this->limitAtLevel($user, $this->storedLevel($user));
+        return $this->clientPostingLimitMinor($user);
     }
 
     /**
@@ -114,14 +107,7 @@ class VerificationEngineService
      */
     public function displayFreelancerProposalLimitMinor(User $user): int
     {
-        if ($user->verification_restricted_at !== null) {
-            return 0;
-        }
-        if ($user->custom_freelancer_proposal_limit_minor !== null) {
-            return (int) $user->custom_freelancer_proposal_limit_minor;
-        }
-
-        return $this->limitAtLevel($user, $this->storedLevel($user));
+        return $this->freelancerProposalLimitMinor($user);
     }
 
     /**
@@ -509,13 +495,31 @@ class VerificationEngineService
             return __('Your account is temporarily restricted from this action while an admin reviews verification risk flags.');
         }
 
-        $level = 'L'.$this->effectiveLevel($user);
-        $amount = '₦'.number_format($limit / 100, 0);
-        $missing = implode(', ', $this->missingForNextLevel($user));
+        $earned = $this->storedLevel($user);
+        $effective = $this->effectiveLevel($user);
+        $amount = $this->formatMoneyMinor($limit);
+        $cooldown = $this->cooldown($user);
 
-        return $limit <= 0
-            ? __("Your current verification level ({$level}) cannot {$action}. Complete: {$missing}.")
-            : __("Your current verification level ({$level}) allows up to {$amount}. Complete: {$missing} to unlock a higher limit.");
+        if ($cooldown['active'] && $earned > $effective) {
+            $expires = $cooldown['expires_at'] !== null
+                ? Carbon::parse($cooldown['expires_at'])->timezone('Africa/Lagos')->format('j M Y')
+                : __('soon');
+            $earnedAmount = $this->formatMoneyMinor($this->limitAtLevel($user, $earned));
+
+            return __("You earned L{$earned} (up to {$earnedAmount}), but new-account safeguards cap you at L{$effective} (up to {$amount}) until {$expires}.");
+        }
+
+        $level = 'L'.$effective;
+
+        if ($limit <= 0) {
+            $missing = implode(', ', $this->missingForNextLevel($user, $effective));
+
+            return __("Your current verification level ({$level}) cannot {$action}. Complete: {$missing}.");
+        }
+
+        $missing = implode(', ', $this->missingForNextLevel($user, $effective));
+
+        return __("Your current verification level ({$level}) allows up to {$amount}. Complete: {$missing} to unlock a higher limit.");
     }
 
     /**
@@ -523,7 +527,7 @@ class VerificationEngineService
      */
     public function missingForNextLevelPublic(User $user): array
     {
-        return $this->missingForNextLevel($user);
+        return $this->missingForNextLevel($user, $this->effectiveLevel($user));
     }
 
     public function levelLabel(int $level, ?User $user = null): string
@@ -538,30 +542,36 @@ class VerificationEngineService
      */
     public function trustSummaryFor(User $user, bool $isFreelancer): array
     {
-        $current = $this->storedLevel($user);
-        $next = $current < self::LEVEL_MAX ? $current + 1 : null;
-        $limitMinor = $isFreelancer
-            ? $this->displayFreelancerProposalLimitMinor($user)
-            : $this->displayClientPostingLimitMinor($user);
+        $earned = $this->storedLevel($user);
+        $effective = $this->effectiveLevel($user);
+        $next = $earned < self::LEVEL_MAX ? $earned + 1 : null;
+        $enforcedLimit = $isFreelancer
+            ? $this->freelancerProposalLimitMinor($user)
+            : $this->clientPostingLimitMinor($user);
+        $earnedLimit = $this->limitAtLevel($user, $earned);
         $nextLimitMinor = $next !== null ? $this->limitAtLevel($user, $next) : null;
+        $limitCapped = $enforcedLimit < $earnedLimit;
 
         return [
-            'current_level' => $current,
-            'current_label' => $this->levelLabel($current, $user),
+            'earned_level' => $earned,
+            'effective_level' => $effective,
+            'current_level' => $earned,
+            'current_label' => $this->levelLabel($earned, $user),
+            'effective_label' => $this->levelLabel($effective, $user),
             'next_level' => $next,
             'next_level_label' => $next !== null ? $this->levelLabel($next, $user) : null,
-            'limit_minor' => $limitMinor,
-            'limit_label' => $isFreelancer ? __('Proposal limit') : __('Quest posting limit'),
-            'limit_formatted' => $this->formatMoneyMinor($limitMinor),
+            'limit_minor' => $enforcedLimit,
+            'limit_label' => $isFreelancer ? __('Proposal limit (active now)') : __('Quest posting limit (active now)'),
+            'limit_formatted' => $this->formatMoneyMinor($enforcedLimit),
             'limit_description' => $isFreelancer
-                ? __('Maximum quest value you can propose on at your current verification level (from platform limit settings).')
-                : __('Maximum budget for a quest you can post at your current verification level (from platform limit settings).'),
-            'enforced_limit_minor' => $isFreelancer
-                ? $this->freelancerProposalLimitMinor($user)
-                : $this->clientPostingLimitMinor($user),
-            'enforced_limit_formatted' => $this->formatMoneyMinor($isFreelancer
-                ? $this->freelancerProposalLimitMinor($user)
-                : $this->clientPostingLimitMinor($user)),
+                ? __('Maximum quest value you can propose on right now — from Super Admin verification limits at your active level.')
+                : __('Maximum quest budget you can post right now — from Super Admin verification limits at your active level.'),
+            'earned_limit_minor' => $earnedLimit,
+            'earned_limit_formatted' => $this->formatMoneyMinor($earnedLimit),
+            'limit_applies_level' => $effective,
+            'limit_capped' => $limitCapped,
+            'enforced_limit_minor' => $enforcedLimit,
+            'enforced_limit_formatted' => $this->formatMoneyMinor($enforcedLimit),
             'next_level_limit_minor' => $nextLimitMinor,
             'next_level_limit_formatted' => $nextLimitMinor !== null ? $this->formatMoneyMinor($nextLimitMinor) : null,
             'cooldown' => $this->cooldown($user),
@@ -604,9 +614,10 @@ class VerificationEngineService
         };
     }
 
-    private function missingForNextLevel(User $user): array
+    private function missingForNextLevel(User $user, ?int $fromLevel = null): array
     {
-        $next = min(self::LEVEL_MAX, $this->storedLevel($user) + 1);
+        $current = $fromLevel ?? $this->effectiveLevel($user);
+        $next = min(self::LEVEL_MAX, $current + 1);
         $completed = $this->completedVerificationTypes($user);
         $requirements = Arr::get($this->levelRequirementsFor($user), "{$next}.requirements", []);
         $missing = [];

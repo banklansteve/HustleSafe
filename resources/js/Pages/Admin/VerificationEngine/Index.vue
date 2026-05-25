@@ -230,9 +230,31 @@
             </AdminTabPanel>
 
             <AdminTabPanel :current-tab="activeTab" value="queue" id-prefix="verification-engine">
-                <AdminPanel title="Document Review Desk" description="Review BVN, NIN, utility, identity, and credential submissions with reasons, concerns, referrals, and audit trails.">
+                <AdminPanel title="Document Review Desk" description="One row per user and verification type — the latest outcome only. Open a row to review every attempt for that type (approve, reject, request corrections, or re-review an approval).">
+                    <div class="mb-4 grid gap-3 sm:grid-cols-[1fr_12rem_auto]">
+                        <input
+                            v-model="queueSearch"
+                            type="search"
+                            placeholder="Search name, email, or verification type…"
+                            class="rounded-2xl border px-4 py-3 text-sm font-semibold"
+                            :class="shell.input"
+                            @input="debouncedQueueReload"
+                        />
+                        <button type="button" class="rounded-2xl px-4 py-3 text-sm font-black uppercase" :class="shell.btnGhost" @click="reloadQueue">
+                            Refresh
+                        </button>
+                    </div>
                     <div class="grid gap-3">
-                        <div v-for="item in pending.data" :key="item.id" class="rounded-3xl border p-4" :class="shell.card">
+                        <div
+                            v-for="item in pending.data"
+                            :key="`${item.user_id}-${item.type_key || item.type}`"
+                            class="cursor-pointer rounded-3xl border p-4 transition hover:border-primary-300 hover:shadow-md"
+                            :class="shell.card"
+                            role="button"
+                            tabindex="0"
+                            @click="openAccountTimeline(item)"
+                            @keydown.enter.prevent="openAccountTimeline(item)"
+                        >
                             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                 <div>
                                     <div class="flex flex-wrap items-center gap-2">
@@ -250,7 +272,7 @@
                                             :key="doc.path"
                                             type="button"
                                             class="h-16 w-16 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-sm ring-1 ring-slate-100"
-                                            @click="openVerification(item)"
+                                            @click.stop="openAccountTimeline(item)"
                                         >
                                             <img v-if="doc.is_image" :src="doc.url" :alt="doc.label" class="h-full w-full object-cover" />
                                             <span v-else class="flex h-full items-center justify-center text-lg">{{ doc.is_pdf ? '📄' : '📎' }}</span>
@@ -260,9 +282,17 @@
                                         {{ item.concern || item.reason }}
                                     </p>
                                 </div>
-                                <div class="flex flex-wrap gap-2">
-                                    <button type="button" class="rounded-xl px-4 py-2 text-xs font-black" :class="shell.btnGhost" @click="openVerification(item)">Open details</button>
-                                    <button type="button" class="rounded-xl px-4 py-2 text-xs font-black" :class="shell.btnPrimary" @click="openVerification(item, 'verified')">Mark verified</button>
+                                <div class="flex flex-wrap gap-2" @click.stop>
+                                    <button type="button" class="rounded-xl px-4 py-2 text-xs font-black" :class="shell.btnGhost" @click="openAccountTimeline(item)">Account timeline</button>
+                                    <button
+                                        v-if="item.needs_review"
+                                        type="button"
+                                        class="rounded-xl px-4 py-2 text-xs font-black"
+                                        :class="shell.btnPrimary"
+                                        @click="openAccountTimeline(item)"
+                                    >
+                                        Review now
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -417,23 +447,16 @@
             </AdminTabPanel>
             </AdminTabbedPage>
 
-            <AdminSlideOver
-                :open="!!selectedVerification"
-                :title="selectedVerification ? `${selectedVerification.user.name} · ${labelize(selectedVerification.type)}` : 'Verification review'"
-                eyebrow="Document Verification"
-                width-class="max-w-full sm:max-w-2xl xl:max-w-3xl"
-                panel-class="bg-white text-slate-950"
-                @close="closeVerification"
-            >
-                <VerificationReviewPanel
-                    v-if="selectedVerification?.presentation"
-                    :presentation="selectedVerification.presentation"
-                    :can-decide="true"
-                    :decide-url="verificationDecideUrl"
-                    :decision-reasons="decision_reasons"
-                    @decided="onVerificationDecided"
-                />
-            </AdminSlideOver>
+            <VerificationAccountTimelineSlideOver
+                :open="timelineOpen"
+                :user-id="timelineUserId"
+                :type-key="timelineTypeKey"
+                :type-label="timelineTypeLabel"
+                :initial-verification-id="timelineVerificationId"
+                :decision-reasons="decision_reasons"
+                @close="closeAccountTimeline"
+                @decided="onVerificationDecided"
+            />
 
             <div class="fixed bottom-5 right-5 z-[100] space-y-2">
                 <div v-for="toast in toasts" :key="toast.id" class="rounded-2xl border px-4 py-3 text-sm font-bold shadow-2xl" :class="toast.type === 'error' ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'">
@@ -445,7 +468,7 @@
 </template>
 
 <script setup>
-import VerificationReviewPanel from '@/Components/Verification/VerificationReviewPanel.vue';
+import VerificationAccountTimelineSlideOver from '@/Components/Admin/VerificationAccountTimelineSlideOver.vue';
 import { formatFormalDateTime } from '@/utils/formatFormalDateTime';
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
@@ -492,7 +515,13 @@ const { activeTab } = useAdminPageTabs(props.section || 'settings', {
 const editingSetting = ref('');
 const editingLimits = ref('');
 const editingSafeguard = ref('');
-const selectedVerification = ref(null);
+const timelineOpen = ref(false);
+const timelineUserId = ref(null);
+const timelineTypeKey = ref('');
+const timelineTypeLabel = ref('');
+const timelineVerificationId = ref(null);
+const queueSearch = ref('');
+let queueSearchTimer = null;
 const reviewBusy = ref(false);
 const toasts = ref([]);
 const reviewForm = reactive({
@@ -790,30 +819,41 @@ function formatMoney(minor) {
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(minor || 0) / 100);
 }
 
-function openVerification(item, status = null) {
-    selectedVerification.value = item;
-    reviewForm.status = status || (['verified', 'unverified', 'flagged'].includes(item.status) ? item.status : 'verified');
-    reviewForm.reason = item.reason || '';
-    reviewForm.concern = item.concern || '';
-    reviewForm.referred_to_admin_id = item.referred_to_admin?.id || '';
+function openAccountTimeline(item) {
+    timelineUserId.value = item.user?.id ?? item.user_id ?? null;
+    timelineTypeKey.value = item.type_key ?? item.type ?? '';
+    timelineTypeLabel.value = item.type_label ?? '';
+    timelineVerificationId.value = item.id ?? null;
+    timelineOpen.value = true;
 }
 
-const verificationDecideUrl = computed(() => {
-    if (!selectedVerification.value?.id) {
-        return '';
-    }
+function closeAccountTimeline() {
+    timelineOpen.value = false;
+    timelineUserId.value = null;
+    timelineTypeKey.value = '';
+    timelineTypeLabel.value = '';
+    timelineVerificationId.value = null;
+}
 
-    return route('admin.verification-engine.verifications.decision', selectedVerification.value.id);
-});
+function debouncedQueueReload() {
+    clearTimeout(queueSearchTimer);
+    queueSearchTimer = setTimeout(reloadQueue, 350);
+}
 
-function closeVerification() {
-    selectedVerification.value = null;
-    reviewBusy.value = false;
+function reloadQueue() {
+    router.get(
+        route('admin.verification-engine.index'),
+        {
+            tab: 'queue',
+            q: queueSearch.value || undefined,
+        },
+        { only: ['pending'], preserveScroll: true, replace: true },
+    );
 }
 
 function onVerificationDecided(data) {
     toast(data?.message || 'Verification decision saved.');
-    selectedVerification.value = null;
+    closeAccountTimeline();
     router.reload({ only: ['pending', 'levelCounts', 'audit'], preserveScroll: true });
 }
 
@@ -878,12 +918,19 @@ function statusPill(status) {
     }[status] || 'bg-slate-100 text-slate-800 ring-1 ring-slate-200';
 }
 
+let pageToastTimer = null;
+
 function toast(message, type = 'success') {
-    const id = Date.now() + Math.random();
-    toasts.value.push({ id, message, type });
-    window.setTimeout(() => {
-        toasts.value = toasts.value.filter((item) => item.id !== id);
-    }, 4200);
+    if (!message) {
+        return;
+    }
+
+    const id = Date.now();
+    toasts.value = [{ id, message, type }];
+    window.clearTimeout(pageToastTimer);
+    pageToastTimer = window.setTimeout(() => {
+        toasts.value = [];
+    }, 8000);
 }
 
 function dateLabel(value) {

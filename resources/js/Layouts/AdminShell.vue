@@ -10,14 +10,26 @@
                 <div class="flex items-center justify-between gap-2">
                     <Link
                         :href="route('admin.dashboard')"
-                        class="flex min-w-0 items-center gap-2.5 transition"
+                        class="flex min-w-0 flex-col transition"
                         :title="sidebarCollapsed ? 'Super admin home' : undefined"
                     >
-                        <HustleSafeLogo variant="icon" :theme="isDark ? 'dark' : 'light'" icon-class="h-9 w-9" />
-                        <div v-show="!sidebarCollapsed" class="min-w-0 hidden lg:block">
-                            <HustleSafeLogo variant="lockup" :theme="isDark ? 'dark' : 'light'" lockup-class="h-7 w-auto max-w-[9rem]" />
-                            <p class="mt-0.5 text-[10px] font-black uppercase tracking-[0.28em]" :class="shell.brandEyebrow">Super admin</p>
+                        <div
+                            class="min-w-0 shrink-0"
+                            :class="sidebarCollapsed ? 'w-9 overflow-hidden' : 'w-auto'"
+                        >
+                            <HustleSafeLogo
+                                variant="lockup"
+                                :theme="logoTheme"
+                                :lockup-class="sidebarCollapsed ? 'h-9 w-auto max-w-none' : 'h-7 w-auto max-w-[9rem]'"
+                            />
                         </div>
+                        <p
+                            v-show="!sidebarCollapsed"
+                            class="mt-0.5 hidden text-[10px] font-black uppercase tracking-[0.28em] lg:block"
+                            :class="shell.brandEyebrow"
+                        >
+                            Super admin
+                        </p>
                     </Link>
                     <Link
                         href="/dashboard"
@@ -449,6 +461,7 @@
 <script setup>
 import AdminThemeToggle from '@/Components/Admin/AdminThemeToggle.vue';
 import HustleSafeLogo from '@/Components/Brand/HustleSafeLogo.vue';
+import { useBrandFavicon } from '@/composables/useBrandFavicon';
 import { provideAdminTheme } from '@/composables/useAdminTheme';
 import { useAdminSidebar } from '@/composables/useAdminSidebar';
 import { Link, router, usePage } from '@inertiajs/vue3';
@@ -475,6 +488,7 @@ import {
     IdentificationIcon,
     MagnifyingGlassIcon,
     NewspaperIcon,
+    PhotoIcon,
     RocketLaunchIcon,
     ShieldCheckIcon,
     Squares2X2Icon,
@@ -492,6 +506,9 @@ defineProps({
 const page = usePage();
 const { shell, isDark } = provideAdminTheme();
 const { collapsed: sidebarCollapsed, toggleCollapsed } = useAdminSidebar();
+const logoTheme = computed(() => (isDark.value ? 'dark' : 'light'));
+
+useBrandFavicon(logoTheme);
 const mobileNavOpen = ref(false);
 const commandOpen = ref(false);
 const commandQuery = ref('');
@@ -561,7 +578,17 @@ const flashBanner = computed(() => {
     return { message: '', class: shell.value.flash };
 });
 
-watch([flashSuccess, firstError, flashToken], ([success, error]) => {
+let lastConsumedFlashToken = null;
+
+watch(flashToken, (token) => {
+    if (!token || token === lastConsumedFlashToken) {
+        return;
+    }
+
+    lastConsumedFlashToken = token;
+
+    const success = flashSuccess.value;
+    const error = firstError.value;
     const message = success || error;
     if (!message) {
         return;
@@ -572,8 +599,8 @@ watch([flashSuccess, firstError, flashToken], ([success, error]) => {
     window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => {
         toastMessage.value = '';
-    }, 4500);
-}, { immediate: true });
+    }, 8000);
+});
 
 function openCommandPalette() {
     commandOpen.value = true;
@@ -622,12 +649,21 @@ function showToast(message, tone = 'success') {
         return;
     }
 
+    if (toastMessage.value === message) {
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => {
+            toastMessage.value = '';
+        }, 8000);
+
+        return;
+    }
+
     toastMessage.value = message;
     toastClass.value = tone === 'error' ? errorTone.value : shell.value.flash;
     window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => {
         toastMessage.value = '';
-    }, 4500);
+    }, 8000);
 }
 
 const unreadAlerts = ref(0);
@@ -837,9 +873,17 @@ const navGroups = [
         items: [
             { label: 'Quests', href: route('admin.quests.index'), icon: BriefcaseIcon, match: (p) => p.startsWith('/admin/quests') },
             { label: 'Proposals', href: route('admin.proposals.index'), icon: ClipboardDocumentCheckIcon, match: (p) => p.startsWith('/admin/proposals') },
+            {
+                label: 'Quest & proposal review',
+                hint: 'Slide-in moderation for all quests and proposals',
+                href: route('operations.moderation.index'),
+                icon: ShieldCheckIcon,
+                match: (p) => p.startsWith('/operations/moderation'),
+            },
             { label: 'Categories', href: route('admin.categories.index'), icon: Squares2X2Icon, match: (p) => p.startsWith('/admin/categories') },
             { label: 'Users', href: route('admin.users.index'), icon: UsersIcon, match: (p) => p.startsWith('/admin/users') },
             { label: 'Verification Engine', href: route('admin.verification-engine.index'), icon: IdentificationIcon, match: (p) => p.startsWith('/admin/verification-engine') || p.startsWith('/admin/kyc') },
+            { label: 'Portfolio review', href: route('admin.portfolio-review.index'), icon: PhotoIcon, match: (p) => p.startsWith('/admin/portfolio-review') },
             { label: 'Content Moderation', href: route('admin.content-moderation.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/content-moderation') },
             { label: 'Disputes', href: route('admin.disputes.index'), icon: ExclamationTriangleIcon, match: (p) => p.startsWith('/admin/disputes') },
         ],

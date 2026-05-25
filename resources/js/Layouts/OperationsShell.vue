@@ -9,12 +9,9 @@
 
         <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur sm:px-6">
             <div class="mx-auto flex max-w-7xl items-center justify-between gap-3">
-                <Link :href="route('operations.dashboard')" prefetch="false" class="flex min-w-0 items-center gap-3" @click.prevent="visitNav(route('operations.dashboard'))">
-                    <HustleSafeLogo variant="icon" theme="light" icon-class="h-10 w-10" />
-                    <span class="min-w-0 hidden sm:block">
-                        <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-8 w-auto max-w-[9.5rem]" />
-                        <span class="mt-0.5 block text-[10px] font-black uppercase tracking-[0.2em] text-primary-700">Staff Admin</span>
-                    </span>
+                <Link :href="route('operations.dashboard')" prefetch="false" class="flex min-w-0 flex-col" @click.prevent="visitNav(route('operations.dashboard'))">
+                    <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-8 w-auto max-w-[9.5rem]" />
+                    <span class="mt-0.5 hidden text-[10px] font-black uppercase tracking-[0.2em] text-primary-700 sm:block">Staff Admin</span>
                 </Link>
 
                 <div class="hidden items-center gap-2 sm:flex">
@@ -188,7 +185,7 @@
 
         <OperationsToastHost />
 
-        <AdminMessengerPanel
+        <AdminMessengerDrawer
             :open="messengerOpen"
             route-namespace="operations"
             event-prefix="operations"
@@ -199,7 +196,7 @@
 </template>
 
 <script setup>
-import AdminMessengerPanel from '@/Components/Admin/AdminMessengerPanel.vue';
+import AdminMessengerDrawer from '@/Components/Admin/AdminMessengerDrawer.vue';
 import HustleSafeLogo from '@/Components/Brand/HustleSafeLogo.vue';
 import OperationsToastHost from '@/Pages/Operations/Components/OperationsToastHost.vue';
 import { useInertiaNav } from '@/composables/useInertiaNav';
@@ -320,6 +317,7 @@ const navGroups = [
         label: 'Moderation',
         items: [
             { label: 'Moderation centre', hint: 'Tabbed quest & proposal queues with slide-in actions', href: route('operations.moderation.index'), match: (p) => p.startsWith('/operations/moderation') },
+            { label: 'Portfolio review', hint: 'Review freelancer portfolios and media for fraud or abuse', href: route('operations.portfolio-review.index'), match: (p) => p.startsWith('/operations/portfolio-review') },
             { label: 'Reviews', hint: 'Review moderation and appeals triage', href: route('operations.reviews.index'), match: (p) => p.startsWith('/operations/reviews') },
             { label: 'Review integrity', hint: 'Coordinated review manipulation patterns', href: route('operations.review-integrity.index'), match: (p) => p.startsWith('/operations/review-integrity') },
             { label: 'Content patrol', hint: 'Proactive sampled Quest & proposal review', href: route('operations.patrol.index'), match: (p) => p.startsWith('/operations/patrol') },

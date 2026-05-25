@@ -57,7 +57,10 @@
                     <p class="mt-2 text-2xl font-black text-slate-900">
                         {{ trust.current_label || ('L' + trust.current_level) }}
                     </p>
-                    <p v-if="trust.next_level_label" class="mt-2 text-xs font-bold text-primary-800">
+                    <p v-if="trust.limit_capped && trust.effective_label" class="mt-2 text-xs font-bold text-amber-800">
+                        Active limit uses {{ trust.effective_label }} until safeguards lift.
+                    </p>
+                    <p v-else-if="trust.next_level_label" class="mt-2 text-xs font-bold text-primary-800">
                         Next: {{ trust.next_level_label }}
                     </p>
                 </div>
@@ -68,7 +71,12 @@
                     <p class="mt-2 text-2xl font-black text-slate-900">
                         {{ trust.limit_formatted || formatLimit(trust.limit_minor) }}
                     </p>
-                    <p v-if="trust.next_level_limit_formatted" class="mt-2 text-xs font-semibold text-primary-900">
+                    <p v-if="trust.limit_capped && trust.earned_limit_formatted" class="mt-2 text-xs font-semibold text-primary-900">
+                        Full {{ trust.current_label || ('L' + trust.current_level) }} limit:
+                        {{ trust.earned_limit_formatted }}
+                        <span v-if="trust.cooldown?.active"> after cooldown</span>
+                    </p>
+                    <p v-else-if="trust.next_level_limit_formatted" class="mt-2 text-xs font-semibold text-primary-900">
                         {{ trust.next_level_label }} unlocks up to {{ trust.next_level_limit_formatted }}
                     </p>
                 </div>
@@ -93,7 +101,14 @@
                 New-account cooldown until {{ formatWhen(trust.cooldown.expires_at) }}.
             </p>
             <p
-                v-if="trust.enforced_limit_minor != null && trust.enforced_limit_minor < trust.limit_minor"
+                v-if="trust.limit_capped && trust.earned_limit_formatted"
+                class="-mt-4 mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900"
+            >
+                You earned {{ trust.current_label || ('L' + trust.current_level) }} (up to {{ trust.earned_limit_formatted }}).
+                Until safeguards lift, proposals are capped at {{ trust.limit_formatted || formatLimit(trust.limit_minor) }}.
+            </p>
+            <p
+                v-else-if="trust.enforced_limit_minor != null && trust.enforced_limit_minor < trust.earned_limit_minor"
                 class="-mt-4 mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900"
             >
                 Posting capped at {{ trust.enforced_limit_formatted || formatLimit(trust.enforced_limit_minor) }} until cooldown ends.

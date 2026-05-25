@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 57 64" role="img" aria-label="HustleSafe">
+  <defs>
+    <linearGradient id="vL" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#0f766e"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+    <linearGradient id="vR" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#0d9488"/>
+      <stop offset="100%" stop-color="#14b8a6"/>
+    </linearGradient>
+    <linearGradient id="vC" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0d9488"/>
+      <stop offset="50%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+    <filter id="fShadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#0d9488" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  <g filter="url(#fShadow)">
+    <rect x="0" y="22" width="15" height="42" rx="7.5" fill="url(#vL)"/>
+    <rect x="42" y="0" width="15" height="64" rx="7.5" fill="url(#vR)"/>
+    <rect x="15" y="30" width="27" height="12" rx="6" fill="url(#vC)"/>
+    <circle cx="15" cy="36" r="6.5" fill="#0f766e"/>
+    <circle cx="15" cy="36" r="3" fill="#ccfbf1"/>
+    <circle cx="42" cy="36" r="6.5" fill="#0d9488"/>
+    <circle cx="42" cy="36" r="3" fill="#f0fdfa"/>
+  </g>
+</svg>

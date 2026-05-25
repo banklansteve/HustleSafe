@@ -73,7 +73,7 @@ const columns = [
     { key: 'title', label: 'Quest' },
     { key: 'escrow_status', label: 'Escrow' },
     { key: 'status', label: 'Status' },
-    { key: 'paid_out_minor', label: 'Paid out' },
+    { key: 'paid_out_display', label: 'Paid out' },
 ];
 
 const rawItems = ref([]);
@@ -110,7 +110,7 @@ async function openDetail(row) {
     slideOpen.value = true;
     detailLoading.value = true;
     try {
-        const { data } = await window.axios.get(route('operations.api.payments.detail', row.id));
+        const { data } = await window.axios.get(route('operations.api.payments.detail', row.route_key ?? row.id));
         detail.value = data;
     } finally {
         detailLoading.value = false;
@@ -118,7 +118,7 @@ async function openDetail(row) {
 }
 
 async function request(type) {
-    await runAction(type, () => window.axios.post(route('operations.api.payments.requests', selectedRow.value.id), { type, reason: requestForms[type].reason }), 'Request submitted to Super Admin.');
+    await runAction(type, () => window.axios.post(route('operations.api.payments.requests', selectedRow.value.route_key ?? selectedRow.value.id), { type, reason: requestForms[type].reason }), 'Request submitted to Super Admin.');
 }
 
 function requestLabel(type) {

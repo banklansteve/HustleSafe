@@ -33,17 +33,19 @@ const props = defineProps({
 });
 
 const src = computed(() => {
+    const isDark = props.theme === 'dark';
+
     if (props.variant === 'svg') {
-        return '/images/logo/hustlesafe_v7b_logo.svg';
+        return isDark ? '/images/logo/v7b_lockup_dark.svg' : '/images/logo/v7b_lockup_light.svg';
     }
     if (props.variant === 'banner') {
-        return props.theme === 'dark' ? '/images/logo/v7b_banner_dark.png' : '/images/logo/v7b_banner_light.png';
+        return isDark ? '/images/logo/v7b_banner_dark.png' : '/images/logo/v7b_banner_light.png';
     }
     if (props.variant === 'icon') {
-        return props.theme === 'dark' ? '/images/logo/v7b_icon_dark.png' : '/images/logo/v7b_icon_light.png';
+        return isDark ? '/images/logo/v7b_icon_dark.svg' : '/images/logo/v7b_icon_light.svg';
     }
 
-    return props.theme === 'dark' ? '/images/logo/v7b_lockup_dark.png' : '/images/logo/v7b_lockup_light.png';
+    return isDark ? '/images/logo/v7b_lockup_dark.svg' : '/images/logo/v7b_lockup_light.svg';
 });
 
 const imgClass = computed(() => {

@@ -172,6 +172,9 @@ class Quest extends Model
                 if (is_string($value) && preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/', $value)) {
                     $q->orWhere('uuid', $value);
                 }
+                if (is_numeric($value) && (int) $value > 0) {
+                    $q->orWhere('id', (int) $value);
+                }
             })
             ->firstOrFail();
     }

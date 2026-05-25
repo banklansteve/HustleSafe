@@ -12,7 +12,7 @@ return new class extends Migration
         $exists = DB::table('roles')->where('slug', 'super_admin')->exists();
         if (! $exists) {
             DB::table('roles')->insert([
-                'name' => 'Super Administrator',
+                'name' => 'Super Admin',
                 'slug' => 'super_admin',
                 'description' => 'Full platform control — seed sparingly.',
                 'created_at' => now(),

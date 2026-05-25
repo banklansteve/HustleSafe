@@ -263,7 +263,7 @@ class FreelancerWorkspaceReadinessService
         if (! $summary['can_submit_proposals']) {
             $messages = array_map(fn (array $b) => $b['message'], $summary['blockers']);
             throw ValidationException::withMessages([
-                'workspace' => $messages !== [] ? $messages : [__('Complete your freelancer profile before sending proposals.')],
+                'proposal' => $messages !== [] ? $messages : [__('Complete your freelancer profile before sending proposals.')],
             ]);
         }
 

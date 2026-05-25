@@ -161,7 +161,7 @@ class ProposalManagementEngineService
             'quest:id,reference_code,slug,title,description,budget_amount_minor,quest_category_id,status,admin_status,client_id,max_offers,offers_count,created_at',
             'quest.questCategory.parent',
             'quest.client:id,name,email,avatar_url,verification_tier,created_at',
-            'freelancer:id,name,email,avatar_url,verification_tier,created_at,headline,bio',
+            'freelancer:id,name,slug,email,avatar_url,verification_tier,created_at,headline,bio',
             'freelancer.trustMetrics',
         ]);
 
@@ -198,7 +198,7 @@ class ProposalManagementEngineService
                 : collect(),
             'activity' => $this->activityPayload($proposal),
             'communications' => [
-                'freelancer' => $proposal->freelancer?->only(['id', 'name', 'email']),
+                'freelancer' => $proposal->freelancer?->only(['id', 'name', 'slug', 'email']),
                 'client' => $proposal->quest?->client?->only(['id', 'name', 'email']),
                 'messages' => [],
             ],
@@ -370,6 +370,7 @@ class ProposalManagementEngineService
             'freelancer' => [
                 'id' => $proposal->freelancer?->id,
                 'name' => $proposal->freelancer?->name,
+                'slug' => $proposal->freelancer?->slug,
                 'email' => $proposal->freelancer?->email,
                 'avatar_url' => $proposal->freelancer?->avatar_url,
                 'verification_tier' => $proposal->freelancer?->verification_tier ?? 'Unverified',
@@ -478,6 +479,7 @@ class ProposalManagementEngineService
             'profile' => [
                 'id' => $freelancer?->id,
                 'name' => $freelancer?->name,
+                'slug' => $freelancer?->slug,
                 'email' => $freelancer?->email,
                 'avatar_url' => $freelancer?->avatar_url,
                 'verification_tier' => $freelancer?->verification_tier ?? 'Unverified',

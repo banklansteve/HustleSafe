@@ -50,7 +50,11 @@ class CustomerSupportChatController extends Controller
     {
         abort_unless($this->service->canAccessTicket($ticket, $request->user()), 403);
 
-        return response()->json($this->service->openTicketForUser($ticket, $request->user()));
+        $opened = $this->service->openTicketForUser($ticket, $request->user());
+        $lastId = $this->latestMessageIdFromList($opened['messages'] ?? []);
+        $this->service->markRead($ticket, $request->user(), $lastId);
+
+        return response()->json($opened);
     }
 
     public function rateJson(SubmitSupportRatingRequest $request, SupportTicket $ticket): JsonResponse
@@ -106,7 +110,8 @@ class CustomerSupportChatController extends Controller
         abort_unless($this->service->canAccessTicket($ticket, $request->user()), 403);
 
         $messages = $this->service->messages($ticket, $request->user());
-        $this->service->markRead($ticket, $request->user());
+        $lastId = $this->latestMessageIdFromList($messages['items'] ?? []);
+        $this->service->markRead($ticket, $request->user(), $lastId);
 
         return Inertia::render('Support/ChatShow', [
             'ticket' => $this->service->ticketListPayload($ticket, $request->user()),
@@ -171,7 +176,11 @@ class CustomerSupportChatController extends Controller
     {
         abort_unless($this->service->canAccessTicket($ticket, $request->user()), 403);
 
-        $this->service->markRead($ticket, $request->user(), $request->integer('last_message_id') ?: null);
+        $data = $request->validate([
+            'last_message_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $this->service->markRead($ticket, $request->user(), (int) $data['last_message_id']);
 
         return response()->json(['ok' => true]);
     }
@@ -252,5 +261,19 @@ class CustomerSupportChatController extends Controller
         $this->service->recordFeedback($ticket, $request->validatedFeedback());
 
         return back()->with('success', 'Thank you for your feedback!');
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $messages
+     */
+    private function latestMessageIdFromList(array $messages): ?int
+    {
+        if ($messages === []) {
+            return null;
+        }
+
+        $last = $messages[array_key_last($messages)];
+
+        return isset($last['id']) ? (int) $last['id'] : null;
     }
 }

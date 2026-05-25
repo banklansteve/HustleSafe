@@ -12,8 +12,10 @@ use App\Models\QuestOffer;
 use App\Services\Admin\AdminActivityFeedService;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\Verification\VerificationEngineService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 
 class QuestOfferController extends Controller
 {
@@ -44,33 +46,45 @@ class QuestOfferController extends Controller
 
         $editHours = max(1, (int) config('quests.proposal_freelancer_edit_hours', 48));
 
-        $offer = QuestOffer::query()->create([
-            'quest_id' => $quest->id,
-            'freelancer_id' => $user->id,
-            'pitch' => $validated['pitch'],
-            'scope_detail' => $validated['scope_detail'],
-            'warranty_terms' => $validated['warranty_terms'] ?? null,
-            'proposed_completion_date' => $validated['planned_finish_date'],
-            'planned_start_date' => $validated['planned_start_date'],
-            'planned_finish_date' => $validated['planned_finish_date'],
-            'estimated_duration_days' => $estimatedDurationDays,
-            'corrections_included' => (bool) ($validated['corrections_included'] ?? false),
-            'corrections_rounds' => ($validated['corrections_included'] ?? false) ? ($validated['corrections_rounds'] ?? null) : null,
-            'progress_report_frequency' => $validated['progress_report_frequency'] ?? null,
-            'materials' => $payload['materials'],
-            'pricing_snapshot' => $payload['pricing_snapshot'],
-            'quoted_amount_minor' => $grand,
-            'status' => 'submitted',
-            'freelancer_edit_deadline_at' => now()->addHours($editHours),
-        ]);
+        try {
+            $offer = QuestOffer::query()->create([
+                'quest_id' => $quest->id,
+                'freelancer_id' => $user->id,
+                'pitch' => $validated['pitch'],
+                'scope_detail' => $validated['scope_detail'],
+                'warranty_terms' => $validated['warranty_terms'] ?? null,
+                'proposed_completion_date' => $validated['planned_finish_date'],
+                'planned_start_date' => $validated['planned_start_date'],
+                'planned_finish_date' => $validated['planned_finish_date'],
+                'estimated_duration_days' => $estimatedDurationDays,
+                'corrections_included' => (bool) ($validated['corrections_included'] ?? false),
+                'corrections_rounds' => ($validated['corrections_included'] ?? false) ? ($validated['corrections_rounds'] ?? null) : null,
+                'progress_report_frequency' => $validated['progress_report_frequency'] ?? null,
+                'materials' => $payload['materials'],
+                'pricing_snapshot' => $payload['pricing_snapshot'],
+                'quoted_amount_minor' => $grand,
+                'status' => 'submitted',
+                'freelancer_edit_deadline_at' => now()->addHours($editHours),
+            ]);
+        } catch (QueryException $exception) {
+            if ((string) $exception->getCode() === '23000' || str_contains(strtolower($exception->getMessage()), 'unique')) {
+                throw ValidationException::withMessages([
+                    'proposal' => __('You already have a proposal on this quest and cannot submit another.'),
+                ]);
+            }
+
+            throw $exception;
+        }
 
         $quest->increment('offers_count');
 
-        try {
-            broadcast(new QuestProposalListUpdated((int) $quest->id));
-        } catch (\Throwable $exception) {
-            report($exception);
-        }
+        defer(function () use ($quest): void {
+            try {
+                broadcast(new QuestProposalListUpdated((int) $quest->id));
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        });
 
         DeliverQuestOfferClientNotification::dispatch($offer->id, 'new')->afterResponse();
         ScanContentForModerationJob::dispatch(QuestOffer::class, (int) $offer->id)->afterResponse();

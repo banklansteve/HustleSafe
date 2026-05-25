@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use App\Enums\AdminProposalStatus;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 
 class QuestOffer extends Model
 {
@@ -113,5 +115,32 @@ class QuestOffer extends Model
     public function adminProposalNotes(): HasMany
     {
         return $this->hasMany(AdminProposalNote::class, 'quest_offer_id');
+    }
+
+    /**
+     * @param  Builder<QuestOffer>  $query
+     */
+    public function scopeExcludingAdminSuspended(Builder $query): Builder
+    {
+        if (! Schema::hasColumn('quest_offers', 'admin_status')) {
+            return $query;
+        }
+
+        return $query->where(function (Builder $inner): void {
+            $inner->whereNull('admin_status')
+                ->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value);
+        });
+    }
+
+    /**
+     * Proposals the client should see in inbox / quest detail.
+     *
+     * @param  Builder<QuestOffer>  $query
+     */
+    public function scopeVisibleInClientInbox(Builder $query): Builder
+    {
+        return $query
+            ->excludingAdminSuspended()
+            ->whereIn('status', ['submitted', 'shortlisted', 'accepted']);
     }
 }

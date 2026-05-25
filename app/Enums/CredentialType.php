@@ -14,7 +14,7 @@ enum CredentialType: string
         return match ($this) {
             self::Certification => __('Certification'),
             self::Qualification => __('Qualification'),
-            self::ProfessionalLicence => __('Professional licence'),
+            self::ProfessionalLicence => __('Professional qualification'),
             self::Insurance => __('Insurance'),
         };
     }

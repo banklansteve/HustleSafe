@@ -91,13 +91,16 @@ class QuestController extends Controller
             return redirect()->route('dashboard');
         }
 
+        $verificationEngine = app(VerificationEngineService::class);
+        $clientLimit = $verificationEngine->clientPostingLimitMinor($user);
+
         return Inertia::render('Quests/Create', [
             'locations' => $this->locationsPayload(),
             'categoryTree' => $this->categoryTreePayload(),
             'startTimingOptions' => $this->startTimingOptions(),
-            'maxBudgetMinor' => 100_000_000,
+            'maxBudgetMinor' => max(10_000, min(100_000_000, $clientLimit > 0 ? $clientLimit : 100_000_000)),
             'minBudgetMinor' => 10_000,
-            'verificationLimit' => app(VerificationEngineService::class)->clientPostingLimitMinor($user),
+            'verificationLimit' => $clientLimit,
             'verificationCooldown' => app(VerificationEngineService::class)->cooldown($user),
             'fieldProfileUrl' => route('quests.field-profile'),
             'freelancersYouFollow' => $this->questCreateFreelancerNetworkFollowing($user),
@@ -313,11 +316,11 @@ class QuestController extends Controller
             $myOffer = $quest->offers()
                 ->where('freelancer_id', $user->id)
                 ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
-                ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
+                ->excludingAdminSuspended()
                 ->first()
                 ?? $quest->offers()
                     ->where('freelancer_id', $user->id)
-                    ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
+                    ->excludingAdminSuspended()
                     ->latest('id')
                     ->first();
         }
@@ -402,16 +405,15 @@ class QuestController extends Controller
         if ($user && (int) $user->id === (int) $quest->client_id) {
             $offerFreelancerIds = QuestOffer::query()
                 ->where('quest_id', $quest->id)
-                ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
+                ->visibleInClientInbox()
                 ->pluck('freelancer_id');
 
             $threadFreelancerIds = QuestConversationThread::query()
                 ->where('quest_id', $quest->id)
+                ->where('messages_count', '>', 0)
                 ->pluck('freelancer_id');
 
-            $invitedIds = $quest->invitedFreelancers->pluck('id');
-
-            $ids = $offerFreelancerIds->merge($threadFreelancerIds)->merge($invitedIds)->unique()->filter()->values();
+            $ids = $offerFreelancerIds->merge($threadFreelancerIds)->unique()->filter()->values();
 
             if ($ids->isNotEmpty()) {
                 $questMessageThreads = User::query()
@@ -453,8 +455,11 @@ class QuestController extends Controller
             'can_edit' => $user?->can('update', $quest) ?? false,
             'can_offer' => $canOffer,
             'verification_access' => $user && $user->role?->slug === 'freelancer' ? [
+                'earned_level' => $verificationEngine->storedLevel($user),
                 'effective_level' => $verificationEngine->effectiveLevel($user),
                 'proposal_limit_minor' => $freelancerLimit,
+                'earned_proposal_limit_minor' => $verificationEngine->limitAtLevel($user, $verificationEngine->storedLevel($user)),
+                'limit_capped' => $freelancerLimit < $verificationEngine->limitAtLevel($user, $verificationEngine->storedLevel($user)),
                 'cooldown' => $verificationEngine->cooldown($user),
                 'can_submit_for_budget' => $verificationCanOffer,
             ] : null,
@@ -525,7 +530,7 @@ class QuestController extends Controller
             $recipientIds = QuestOffer::query()
                 ->where('quest_id', $quest->id)
                 ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
-                ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
+                ->excludingAdminSuspended()
                 ->pluck('freelancer_id')
                 ->unique()
                 ->values();
@@ -704,8 +709,9 @@ class QuestController extends Controller
             return $empty;
         }
 
-        try {
-            $budgetRows = Quest::query()
+        return Cache::remember('quests:create-stats-hints', 300, function () use ($empty): array {
+            try {
+                $budgetRows = Quest::query()
                 ->where('status', QuestStatus::Open)
                 ->whereNotNull('quest_category_id')
                 ->groupBy('quest_category_id')
@@ -776,24 +782,25 @@ class QuestController extends Controller
                 ->selectRaw('MAX(estimated_completion_days) as max_days')
                 ->first();
 
-            return [
-                'by_category' => $byCategory,
-                'global_budget' => $gBudget && (int) $gBudget->sample_size > 0 ? [
-                    'sample_size' => (int) $gBudget->sample_size,
-                    'avg_minor' => (int) round((float) $gBudget->avg_minor),
-                    'min_minor' => (int) $gBudget->min_minor,
-                    'max_minor' => (int) $gBudget->max_minor,
-                ] : null,
-                'global_completion' => $gCompl && (int) $gCompl->sample_size > 0 ? [
-                    'sample_size' => (int) $gCompl->sample_size,
-                    'avg_days' => round((float) $gCompl->avg_days, 1),
-                    'min_days' => (int) $gCompl->min_days,
-                    'max_days' => (int) $gCompl->max_days,
-                ] : null,
-            ];
-        } catch (\Throwable) {
-            return $empty;
-        }
+                return [
+                    'by_category' => $byCategory,
+                    'global_budget' => $gBudget && (int) $gBudget->sample_size > 0 ? [
+                        'sample_size' => (int) $gBudget->sample_size,
+                        'avg_minor' => (int) round((float) $gBudget->avg_minor),
+                        'min_minor' => (int) $gBudget->min_minor,
+                        'max_minor' => (int) $gBudget->max_minor,
+                    ] : null,
+                    'global_completion' => $gCompl && (int) $gCompl->sample_size > 0 ? [
+                        'sample_size' => (int) $gCompl->sample_size,
+                        'avg_days' => round((float) $gCompl->avg_days, 1),
+                        'min_days' => (int) $gCompl->min_days,
+                        'max_days' => (int) $gCompl->max_days,
+                    ] : null,
+                ];
+            } catch (\Throwable) {
+                return $empty;
+            }
+        });
     }
 
     /**
@@ -976,7 +983,7 @@ class QuestController extends Controller
     {
         return QuestOffer::query()
             ->where('quest_id', $quest->id)
-            ->when(Schema::hasColumn('quest_offers', 'admin_status'), fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminProposalStatus::Suspended->value))
+            ->visibleInClientInbox()
             ->with(['freelancer:id,first_name,name,slug,avatar_url,headline'])
             ->latest('created_at')
             ->limit(120)

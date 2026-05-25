@@ -16,6 +16,7 @@ use App\Support\Operations\StaffCapabilities;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -208,11 +209,31 @@ class OperationsModerationController extends Controller
 
         $validated = $request->validate([
             'recipient' => ['required', Rule::in(['client', 'freelancer'])],
+            'freelancer_id' => ['nullable', 'integer', 'exists:users,id'],
             'subject' => ['required', 'string', 'max:180'],
             'body' => ['required', 'string', 'min:10', 'max:5000'],
             'channel' => ['nullable', Rule::in(['email', 'in_app', 'both'])],
             'open_cs_ticket' => ['sometimes', 'boolean'],
         ]);
+
+        if (($validated['recipient'] ?? '') === 'freelancer') {
+            if (empty($validated['freelancer_id'])) {
+                throw ValidationException::withMessages([
+                    'freelancer_id' => __('Select a freelancer who has submitted a proposal on this quest.'),
+                ]);
+            }
+
+            $hasProposal = $quest->offers()
+                ->where('freelancer_id', (int) $validated['freelancer_id'])
+                ->whereNotIn('status', ['withdrawn', 'declined'])
+                ->exists();
+
+            if (! $hasProposal) {
+                throw ValidationException::withMessages([
+                    'freelancer_id' => __('That freelancer does not have an active proposal on this quest.'),
+                ]);
+            }
+        }
 
         return response()->json($staffQuest->contactStakeholder($quest, $request->user(), $validated, $request));
     }

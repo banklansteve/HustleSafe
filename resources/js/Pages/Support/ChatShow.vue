@@ -99,6 +99,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import AppShell from '@/Layouts/AppShell.vue';
 import GifPickerPanel from '@/Components/Chat/GifPickerPanel.vue';
+import { useSupportChatRealtime } from '@/composables/useSupportChatRealtime';
+import { ensureEcho } from '@/utils/ensureEcho';
+import { broadcastConfigFromPage } from '@/utils/broadcastConfig';
 
 const props = defineProps({
     ticket: { type: Object, required: true },
@@ -116,39 +119,60 @@ const pendingFiles = ref([]);
 const scrollEl = ref(null);
 const typingAdmin = ref(null);
 let typingTimer = null;
-let channel = null;
+
+const ticketApiRef = () => props.ticket.uuid || props.ticket.id;
+const ticketChannelId = () => props.ticket.id;
+
+function liveBroadcastConfig() {
+    return broadcastConfigFromPage(page);
+}
+
+const chatRealtime = useSupportChatRealtime({
+    reverbConfig: liveBroadcastConfig,
+    pollVisibleMs: liveBroadcastConfig()?.pollVisibleMs ?? 500,
+    pollHiddenMs: liveBroadcastConfig()?.pollHiddenMs ?? 2000,
+    pollMessages: async (afterId) => {
+        if (!afterId) {
+            return [];
+        }
+
+        const { data } = await window.axios.get(route('api.support.chat.messages', { ticket: ticketApiRef() }), {
+            params: { after_id: afterId },
+        });
+
+        return data.items ?? [];
+    },
+    onMessage: (msg) => {
+        if (localMessages.value.some((m) => m.id === msg.id)) {
+            return false;
+        }
+        localMessages.value.push(msg);
+        scrollBottom();
+
+        return true;
+    },
+    onTyping: (e) => {
+        if (e.side === 'admin') {
+            typingAdmin.value = e.typing ? e.name : null;
+        }
+    },
+});
 
 const typingLabel = computed(() => (typingAdmin.value ? `${typingAdmin.value} is typing…` : ''));
 
 onMounted(() => {
-    subscribe();
+    ensureEcho(liveBroadcastConfig());
+    chatRealtime.subscribe(ticketChannelId(), localMessages.value);
     scrollBottom();
 });
 
 onBeforeUnmount(() => {
-    if (channel && window.Echo) {
-        window.Echo.leave(`customer-support.${props.ticket.id}`);
-    }
+    chatRealtime.teardown();
     clearTimeout(typingTimer);
 });
 
 function route(name, params = {}) {
     return window.route(name, params);
-}
-
-function subscribe() {
-    if (!window.Echo) return;
-    channel = window.Echo.private(`customer-support.${props.ticket.id}`);
-    channel.listen('.message.sent', (e) => {
-        const msg = e.message;
-        if (!localMessages.value.some((m) => m.id === msg.id)) {
-            localMessages.value.push(msg);
-            scrollBottom();
-        }
-    });
-    channel.listen('.typing', (e) => {
-        if (e.side === 'admin') typingAdmin.value = e.typing ? e.name : null;
-    });
 }
 
 function scrollBottom() {
@@ -182,12 +206,12 @@ function onFiles(e) {
 
 function onComposerInput() {
     clearTimeout(typingTimer);
-    window.axios.post(route('api.support.chat.typing', { ticket: props.ticket.id }), { typing: true }).catch(() => {});
+    window.axios.post(route('api.support.chat.typing', { ticket: ticketApiRef() }), { typing: true }).catch(() => {});
     typingTimer = setTimeout(stopTyping, 2000);
 }
 
 function stopTyping() {
-    window.axios.post(route('api.support.chat.typing', { ticket: props.ticket.id }), { typing: false }).catch(() => {});
+    window.axios.post(route('api.support.chat.typing', { ticket: ticketApiRef() }), { typing: false }).catch(() => {});
 }
 
 async function send() {
@@ -201,11 +225,15 @@ async function send() {
     pendingFiles.value.forEach((f) => fd.append('attachments[]', f));
     if (pendingGif.value?.url) fd.append('gif_url', pendingGif.value.url);
     try {
-        const { data } = await window.axios.post(route('api.support.chat.send', { ticket: props.ticket.id }), fd);
-        if (!localMessages.value.some((m) => m.id === data.message.id)) localMessages.value.push(data.message);
+        const { data } = await window.axios.post(route('api.support.chat.send', { ticket: ticketApiRef() }), fd);
+        const msg = data.message;
+        if (msg && !localMessages.value.some((m) => m.id === msg.id)) {
+            localMessages.value.push(msg);
+            chatRealtime.setLastMessageId(msg.id);
+        }
         composer.value = '';
-        pendingGif.value = null;
         pendingFiles.value = [];
+        pendingGif.value = null;
         scrollBottom();
     } finally {
         sending.value = false;

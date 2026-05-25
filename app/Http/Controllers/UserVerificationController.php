@@ -7,6 +7,7 @@ use App\Enums\UserVerificationStatus;
 use App\Http\Requests\Verification\StoreUserVerificationRequest;
 use App\Models\UserVerification;
 use App\Services\Kyc\KycCaseIntakeService;
+use App\Services\Verification\IdentityDocumentUniquenessService;
 use App\Services\Verification\UserVerificationCatalogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,7 +25,12 @@ class UserVerificationController extends Controller
         return Inertia::render('Verifications/Index', $catalog->forUser($request->user()));
     }
 
-    public function store(StoreUserVerificationRequest $request, KycCaseIntakeService $kycIntake, UserVerificationCatalogService $catalog): RedirectResponse
+    public function store(
+        StoreUserVerificationRequest $request,
+        KycCaseIntakeService $kycIntake,
+        UserVerificationCatalogService $catalog,
+        IdentityDocumentUniquenessService $identityUniqueness,
+    ): RedirectResponse
     {
         $this->authorize('create', UserVerification::class);
 
@@ -45,6 +51,8 @@ class UserVerificationController extends Controller
                 'category' => __('You already have a submission in progress for this category.'),
             ]);
         }
+
+        $this->assertIdentityUnique($identityUniqueness, $user, $category, $data);
 
         $userId = $user->id;
         $disk = 'local';
@@ -212,6 +220,30 @@ class UserVerificationController extends Controller
         }
 
         return [$paths, $metadata];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function assertIdentityUnique(
+        IdentityDocumentUniquenessService $identityUniqueness,
+        $user,
+        UserVerificationCategory $category,
+        array $data,
+    ): void {
+        if (in_array($category, [UserVerificationCategory::Nin, UserVerificationCategory::Bvn], true)) {
+            $identityUniqueness->assertAvailableForUser($user, $category->value, (string) $data['identifier_number']);
+
+            return;
+        }
+
+        if ($category === UserVerificationCategory::IdentityAddress) {
+            $identityUniqueness->assertAvailableForUser(
+                $user,
+                (string) $data['id_type'],
+                (string) $data['identifier_number'],
+            );
+        }
     }
 
     protected function assertCanSubmit($user, UserVerificationCategory $category, UserVerificationCatalogService $catalog): void

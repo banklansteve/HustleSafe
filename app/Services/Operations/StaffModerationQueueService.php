@@ -26,7 +26,9 @@ class StaffModerationQueueService
     public function questQueues(): array
     {
         return [
-            ['key' => 'needs_review', 'label' => 'Needs review', 'hint' => 'Open quests awaiting first-pass review', 'filter' => ['quick' => 'open', 'admin_status' => 'under_review']],
+            ['key' => 'all', 'label' => 'All quests', 'hint' => 'Every quest — browse, review, and edit', 'filter' => []],
+            ['key' => 'open_live', 'label' => 'Open & live', 'hint' => 'Marketplace-open quests', 'filter' => ['quick' => 'open']],
+            ['key' => 'needs_review', 'label' => 'Under review', 'hint' => 'Quests marked under admin review', 'filter' => ['admin_status' => 'under_review']],
             ['key' => 'flagged', 'label' => 'With flags', 'hint' => 'Quests with active moderation flags', 'filter' => ['quick' => 'flagged']],
             ['key' => 'notices', 'label' => 'With notices', 'hint' => 'Quests carrying user-visible admin notices', 'filter' => ['has_notices' => true]],
             ['key' => 'awaiting_edits', 'label' => 'Awaiting edits', 'hint' => 'Action required before the quest can proceed', 'filter' => ['admin_status' => 'action_required']],
@@ -41,6 +43,8 @@ class StaffModerationQueueService
     public function proposalQueues(): array
     {
         return [
+            ['key' => 'all', 'label' => 'All proposals', 'hint' => 'Every proposal — review, edit, or remove', 'filter' => []],
+            ['key' => 'recent', 'label' => 'Last 24 hours', 'hint' => 'Recently submitted proposals', 'filter' => ['quick' => 'last_24h']],
             ['key' => 'flagged', 'label' => 'Flagged proposals', 'hint' => 'Proposals with active flags', 'filter' => ['quick' => 'manual_flagged']],
             ['key' => 'under_review', 'label' => 'Under review', 'hint' => 'Proposals in active review', 'filter' => ['admin_status' => 'under_review']],
             ['key' => 'action_required', 'label' => 'Action required', 'hint' => 'Proposals needing staff action', 'filter' => ['admin_status' => 'action_required']],

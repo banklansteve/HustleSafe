@@ -135,7 +135,7 @@ class StaffQuestModerationService
     public function contactStakeholder(Quest $quest, User $staff, array $data, Request $request): array
     {
         $recipient = match ($data['recipient'] ?? 'client') {
-            'freelancer' => $quest->freelancer ?? $quest->acceptedOffer?->freelancer,
+            'freelancer' => $this->resolveFreelancerRecipient($quest, $data),
             default => $quest->client,
         };
 
@@ -212,6 +212,19 @@ class StaffQuestModerationService
             'channel' => $channel,
             'subject' => $subject,
         ], $request);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveFreelancerRecipient(Quest $quest, array $data): ?User
+    {
+        $freelancerId = (int) ($data['freelancer_id'] ?? 0);
+        if ($freelancerId > 0) {
+            return User::query()->find($freelancerId);
+        }
+
+        return $quest->freelancer ?? $quest->acceptedOffer?->freelancer;
     }
 
     /**

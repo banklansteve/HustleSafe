@@ -2,6 +2,7 @@
 
 namespace App\Services\Verification;
 
+use App\Enums\UserVerificationCategory;
 use App\Enums\UserVerificationStatus;
 use App\Models\AdminTask;
 use App\Models\User;
@@ -19,6 +20,7 @@ class UserVerificationDecisionService
         private readonly AdminActivityLogger $logger,
         private readonly UserVerificationPresentationService $presentation,
         private readonly VerificationDecisionReasonService $reasons,
+        private readonly IdentityDocumentUniquenessService $identityUniqueness,
     ) {}
 
     /**
@@ -69,6 +71,10 @@ class UserVerificationDecisionService
         $verification->forceFill($this->reviewPatch($patch))->save();
 
         $verification->loadMissing('user');
+        if ($action === 'approve' && $verification->user) {
+            $this->registerApprovedIdentity($verification);
+        }
+
         if ($verification->user) {
             $this->engine->recalculate($verification->user, $actor, 'Verification decision.');
         }
@@ -107,6 +113,43 @@ class UserVerificationDecisionService
                 default => __('Decision saved.'),
             },
         ];
+    }
+
+    private function registerApprovedIdentity(UserVerification $verification): void
+    {
+        $user = $verification->user;
+        if ($user === null) {
+            return;
+        }
+
+        if (in_array($verification->category, [UserVerificationCategory::Nin, UserVerificationCategory::Bvn], true)) {
+            $value = (string) data_get($verification->metadata, 'identifier_number', '');
+
+            if ($verification->category === UserVerificationCategory::Bvn && filled($verification->encrypted_identifier)) {
+                try {
+                    $value = \Illuminate\Support\Facades\Crypt::decryptString((string) $verification->encrypted_identifier);
+                } catch (\Throwable) {
+                    $value = '';
+                }
+            }
+
+            if ($value !== '') {
+                $this->identityUniqueness->assertAvailableForUser($user, $verification->category->value, $value);
+                $this->identityUniqueness->registerForUser($user, $verification->category->value, $value);
+            }
+
+            return;
+        }
+
+        if ($verification->category === UserVerificationCategory::IdentityAddress) {
+            $idType = (string) data_get($verification->metadata, 'id_type', '');
+            $value = (string) data_get($verification->metadata, 'identifier_number', '');
+
+            if ($idType !== '' && $value !== '') {
+                $this->identityUniqueness->assertAvailableForUser($user, $idType, $value);
+                $this->identityUniqueness->registerForUser($user, $idType, $value);
+            }
+        }
     }
 
     private function documentRouteForActor(User $actor): string

@@ -183,6 +183,12 @@ Route::patch('/portfolios/{portfolio}/visibility', [OperationsPortfoliosControll
     ->middleware('throttle:60,1')
     ->name('portfolios.visibility.update');
 
+Route::get('/portfolio-review', [\App\Http\Controllers\Admin\AdminPortfolioReviewController::class, 'operationsIndex'])->name('portfolio-review.index');
+Route::get('/portfolio-review/{portfolio}', [\App\Http\Controllers\Admin\AdminPortfolioReviewController::class, 'operationsShow'])->name('portfolio-review.show');
+Route::patch('/portfolio-review/{portfolio}', [\App\Http\Controllers\Admin\AdminPortfolioReviewController::class, 'operationsUpdate'])
+    ->middleware('throttle:40,1')
+    ->name('portfolio-review.update');
+
 Route::get('/review-integrity', [OperationsReviewIntegrityController::class, 'index'])->name('review-integrity.index');
 Route::get('/api/review-integrity', [OperationsReviewIntegrityController::class, 'listing'])->name('api.review-integrity.listing');
 Route::get('/api/review-integrity/cases/{case}', [OperationsReviewIntegrityController::class, 'detail'])->name('api.review-integrity.detail');
@@ -232,7 +238,7 @@ Route::post('/api/customer-support/tickets/{ticket}/messages', [AdminCustomerSup
 Route::get('/api/customer-support/tickets/{ticket}/typing', [AdminCustomerSupportController::class, 'typingState'])->name('api.customer-support.typing-state');
 Route::post('/api/customer-support/tickets/{ticket}/typing', [AdminCustomerSupportController::class, 'typing'])->middleware('throttle:180,1')->name('api.customer-support.typing');
 Route::post('/api/customer-support/tickets/{ticket}/read', [AdminCustomerSupportController::class, 'read'])->middleware('throttle:120,1')->name('api.customer-support.read');
-Route::post('/api/customer-support/reconcile-notifications', [AdminCustomerSupportController::class, 'reconcileNotifications'])->middleware('throttle:30,1')->name('api.customer-support.reconcile-notifications');
+Route::post('/api/customer-support/reconcile-notifications', [AdminCustomerSupportController::class, 'reconcileNotifications'])->middleware('throttle:120,1')->name('api.customer-support.reconcile-notifications');
 Route::post('/api/customer-support/tickets/{ticket}/end', [AdminCustomerSupportController::class, 'end'])->middleware('throttle:60,1')->name('api.customer-support.end');
 Route::post('/api/customer-support/tickets/{ticket}/reassign', [AdminCustomerSupportController::class, 'reassign'])->middleware('throttle:30,1')->name('api.customer-support.reassign');
 Route::post('/api/customer-support/tickets/{ticket}/messages/{message}/react', [AdminCustomerSupportController::class, 'react'])->middleware('throttle:120,1')->name('api.customer-support.react');

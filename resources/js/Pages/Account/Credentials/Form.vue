@@ -35,7 +35,7 @@
                     <InputError class="mt-1" :message="form.errors.title" />
                 </div>
                 <div>
-                    <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Issuing authority / insurer</label>
+                    <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">{{ authorityLabel }}</label>
                     <input
                         v-model="form.issuing_authority"
                         type="text"
@@ -44,18 +44,19 @@
                     />
                     <InputError class="mt-1" :message="form.errors.issuing_authority" />
                 </div>
-                <div>
+                <div v-if="showReferenceNumber">
                     <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Reference / policy number</label>
                     <input
                         v-model="form.reference_number"
                         type="text"
                         class="mt-1 w-full rounded-xl border-slate-200 text-sm font-medium shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                        placeholder="Policy or certificate reference"
                     />
                     <InputError class="mt-1" :message="form.errors.reference_number" />
                 </div>
-                <div class="grid gap-4 sm:grid-cols-2">
+                <div :class="showExpiresOn ? 'grid gap-4 sm:grid-cols-2' : ''">
                     <div>
-                        <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Issued on</label>
+                        <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">{{ issuedOnLabel }}</label>
                         <input
                             v-model="form.issued_on"
                             type="date"
@@ -63,8 +64,8 @@
                         />
                         <InputError class="mt-1" :message="form.errors.issued_on" />
                     </div>
-                    <div>
-                        <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Expires on</label>
+                    <div v-if="showExpiresOn">
+                        <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">{{ expiresOnLabel }}</label>
                         <input
                             v-model="form.expires_on"
                             type="date"
@@ -74,17 +75,20 @@
                     </div>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Coverage / details</label>
+                    <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">{{ detailsLabel }}</label>
                     <textarea
                         v-model="form.coverage_summary"
                         rows="4"
                         class="mt-1 w-full rounded-xl border-slate-200 text-sm font-medium shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                        placeholder="Sum insured, territorial scope, membership grade, etc."
+                        :placeholder="detailsPlaceholder"
                     />
                     <InputError class="mt-1" :message="form.errors.coverage_summary" />
                 </div>
                 <div>
-                    <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">Supporting document (PDF or image)</label>
+                    <label class="block text-xs font-bold uppercase tracking-wide text-slate-500">
+                        Supporting document (PDF or image)
+                        <span class="ml-1 font-semibold normal-case text-slate-400">— optional</span>
+                    </label>
                     <input
                         type="file"
                         accept=".pdf,image/*"
@@ -144,12 +148,16 @@ const pageTitle = computed(() =>
     props.mode === 'create' ? `Add ${props.typeLabel} · HustleSafe` : `Edit ${props.typeLabel} · HustleSafe`,
 );
 
+const showReferenceNumber = computed(() => props.credentialType === 'insurance');
+
+const showExpiresOn = computed(() => ['insurance', 'professional_licence'].includes(props.credentialType));
+
 const typeHelp = computed(() => {
     switch (props.credentialType) {
         case 'insurance':
             return 'Add each policy separately (you can save several). Use the schedule title and NAICOM-regulated insurer or broker details where applicable.';
         case 'professional_licence':
-            return 'Council or regulator registrations (e.g. COREN, ARCON, MDCN). Add one licence per entry if you hold more than one.';
+            return 'Council or regulator registrations (e.g. COREN, ARCON, MDCN). Add one entry per licence if you hold more than one.';
         case 'qualification':
             return 'Degrees, diplomas, and formal training. Add each qualification as its own entry.';
         case 'certification':
@@ -158,6 +166,27 @@ const typeHelp = computed(() => {
             return 'Use official names as they appear on your certificate or policy schedule.';
     }
 });
+
+const authorityLabel = computed(() => {
+    switch (props.credentialType) {
+        case 'insurance':
+            return 'Issuing authority / insurer';
+        case 'professional_licence':
+            return 'Issuing body';
+        case 'qualification':
+            return 'Issuing institution';
+        case 'certification':
+            return 'Issuing body / institution';
+        default:
+            return 'Issuing authority';
+    }
+});
+
+const issuedOnLabel = computed(() => (props.credentialType === 'qualification' ? 'Issued in' : 'Issued on'));
+
+const expiresOnLabel = computed(() => (props.credentialType === 'professional_licence' ? 'Expired on' : 'Expires on'));
+
+const detailsLabel = computed(() => (props.credentialType === 'insurance' ? 'Coverage / details' : 'Details'));
 
 const titlePlaceholder = computed(() => {
     switch (props.credentialType) {
@@ -179,10 +208,31 @@ const authorityPlaceholder = computed(() => {
         case 'insurance':
             return 'Insurer or broker (NAICOM-regulated where applicable)';
         case 'professional_licence':
-            return 'Council or issuing body';
+            return 'e.g. Council for the Regulation of Engineering in Nigeria';
+        case 'qualification':
+            return 'e.g. University of Lagos';
+        case 'certification':
+            return 'e.g. Amazon Web Services';
         default:
             return 'Institution or issuer';
     }
+});
+
+const detailsPlaceholder = computed(() => {
+    if (props.credentialType === 'insurance') {
+        return 'Sum insured, territorial scope, membership grade, etc.';
+    }
+    if (props.credentialType === 'professional_licence') {
+        return 'Registration grade, scope of practice, membership number, etc.';
+    }
+    if (props.credentialType === 'qualification') {
+        return 'Class of degree, honours, field of study, or programme notes';
+    }
+    if (props.credentialType === 'certification') {
+        return 'Credential ID, level, skills covered, or renewal notes';
+    }
+
+    return 'Additional context that helps verify this entry';
 });
 
 function submit() {

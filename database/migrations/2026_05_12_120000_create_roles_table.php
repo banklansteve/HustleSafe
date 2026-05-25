@@ -20,9 +20,9 @@ return new class extends Migration
         $now = now();
         DB::table('roles')->insert([
             [
-                'name' => 'Administrator',
+                'name' => 'Staff Admin',
                 'slug' => 'admin',
-                'description' => 'Full platform access.',
+                'description' => 'Operational platform staff with admin console access.',
                 'created_at' => $now,
                 'updated_at' => $now,
             ],

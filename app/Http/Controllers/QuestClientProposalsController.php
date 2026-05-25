@@ -2,11 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\AdminProposalStatus;
 use App\Models\Quest;
 use App\Models\QuestOffer;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -22,10 +20,7 @@ class QuestClientProposalsController extends Controller
 
         $proposals = QuestOffer::query()
             ->where('quest_id', $quest->id)
-            ->when(Schema::hasColumn('quest_offers', 'admin_status'), function ($query): void {
-                $query->whereNull('admin_status')
-                    ->orWhere('admin_status', '!=', AdminProposalStatus::Suspended->value);
-            })
+            ->visibleInClientInbox()
             ->with(['freelancer:id,first_name,name,slug,avatar_url,headline'])
             ->latest('created_at')
             ->limit(400)

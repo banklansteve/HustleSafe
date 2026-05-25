@@ -34,6 +34,8 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
+use function Illuminate\Support\defer;
+
 class CustomerSupportService
 {
     public function __construct(
@@ -531,39 +533,44 @@ class CustomerSupportService
 
         $ticket->forceFill($updates)->save();
 
-        if ($isAdmin) {
-            $this->notificationCentre->markCustomerSupportNotificationsRead($sender, (int) $ticket->id);
-        } else {
-            $this->userNotifications->markSupportChatForTicket($sender, (int) $ticket->id);
-        }
+        $payload = $this->messageBroadcastPayload($message);
+        $ticketId = (int) $ticket->id;
+        $assignedAdminId = (int) $ticket->assigned_admin_id;
+        $customerUserId = (int) $ticket->user_id;
 
-        $payload = $this->messagePayload($message, $sender);
-        $this->broadcastMessage($ticket, $this->messageBroadcastPayload($message));
-        $this->broadcastQueueChanged($ticket->fresh(['customer', 'assignedAdmin']), 'message');
+        defer(function () use ($isAdmin, $sender, $ticket, $payload, $ticketId, $assignedAdminId, $customerUserId): void {
+            $this->broadcastMessage($ticket, $payload);
 
-        try {
-            if (! $isAdmin && $ticket->assigned_admin_id) {
-                $admin = User::query()->find($ticket->assigned_admin_id);
-                if ($admin && ! MessagingViewPresence::isViewing(
-                    MessagingViewPresence::SCOPE_CUSTOMER_SUPPORT,
-                    (int) $ticket->id,
-                    (int) $admin->id,
-                )) {
-                    $this->notificationCentre->notifyCustomerSupportMessage($admin, $ticket, $sender);
+            try {
+                if ($isAdmin) {
+                    $this->notificationCentre->markCustomerSupportNotificationsRead($sender, $ticketId);
+                } else {
+                    $this->userNotifications->markSupportChatForTicket($sender, $ticketId);
                 }
-            } elseif ($isAdmin && $ticket->user_id) {
-                $customer = User::query()->find($ticket->user_id);
-                if ($customer && ! MessagingViewPresence::isViewing(
-                    MessagingViewPresence::SCOPE_CUSTOMER_SUPPORT,
-                    (int) $ticket->id,
-                    (int) $customer->id,
-                )) {
-                    $this->notificationCentre->notifyCustomerSupportMessage($customer, $ticket, $sender);
+
+                if (! $isAdmin && $assignedAdminId > 0) {
+                    $admin = User::query()->find($assignedAdminId);
+                    if ($admin && ! MessagingViewPresence::isViewing(
+                        MessagingViewPresence::SCOPE_CUSTOMER_SUPPORT,
+                        $ticketId,
+                        (int) $admin->id,
+                    )) {
+                        $this->notificationCentre->notifyCustomerSupportMessage($admin, $ticket, $sender);
+                    }
+                } elseif ($isAdmin && $customerUserId > 0) {
+                    $customer = User::query()->find($customerUserId);
+                    if ($customer && ! MessagingViewPresence::isViewing(
+                        MessagingViewPresence::SCOPE_CUSTOMER_SUPPORT,
+                        $ticketId,
+                        (int) $customer->id,
+                    )) {
+                        $this->notificationCentre->notifyCustomerSupportMessage($customer, $ticket, $sender);
+                    }
                 }
+            } catch (\Throwable $e) {
+                report($e);
             }
-        } catch (\Throwable $e) {
-            report($e);
-        }
+        });
 
         return $payload;
     }
@@ -625,18 +632,25 @@ class CustomerSupportService
             return;
         }
 
-        try {
-            broadcast(new CustomerSupportTyping(
-                $ticket->id,
-                $user->id,
-                $user->name,
-                $typing,
-                $side,
-                $isAdmin ? $this->staffFirstName($user) : null,
-            ));
-        } catch (\Throwable $e) {
-            report($e);
-        }
+        $ticketId = (int) $ticket->id;
+        $userId = (int) $user->id;
+        $userName = $user->name;
+        $firstName = $isAdmin ? $this->staffFirstName($user) : null;
+
+        defer(function () use ($ticketId, $userId, $userName, $typing, $side, $firstName): void {
+            try {
+                broadcast(new CustomerSupportTyping(
+                    $ticketId,
+                    $userId,
+                    $userName,
+                    $typing,
+                    $side,
+                    $firstName,
+                ));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
     }
 
     /**
@@ -687,11 +701,25 @@ class CustomerSupportService
         $isAdmin = in_array($reader->role?->slug, ['admin', 'super_admin'], true);
         $field = $isAdmin ? 'admin_last_read_message_id' : 'user_last_read_message_id';
 
-        if ($lastMessageId === null) {
-            $lastMessageId = (int) $ticket->messages()->max('id');
+        if ($lastMessageId === null || $lastMessageId < 1) {
+            return;
         }
 
-        $ticket->forceFill([$field => $lastMessageId])->save();
+        $current = (int) ($ticket->{$field} ?? 0);
+        if ($lastMessageId <= $current) {
+            MessagingViewPresence::touch(
+                MessagingViewPresence::SCOPE_CUSTOMER_SUPPORT,
+                (int) $ticket->id,
+                (int) $reader->id,
+            );
+
+            return;
+        }
+
+        SupportTicket::query()
+            ->whereKey($ticket->id)
+            ->where($field, '<', $lastMessageId)
+            ->update([$field => $lastMessageId]);
 
         MessagingViewPresence::touch(
             MessagingViewPresence::SCOPE_CUSTOMER_SUPPORT,
@@ -724,11 +752,465 @@ class CustomerSupportService
             $query->where('id', '<', $beforeId);
         }
 
-        $rows = $query->limit($limit)->get()->reverse()->values();
+        $rows = $query->limit($limit + 1)->get();
+        $hasMore = $rows->count() > $limit;
+        if ($hasMore) {
+            $rows = $rows->take($limit);
+        }
+
+        $rows = $rows->reverse()->values();
 
         return [
-            'items' => $rows->map(fn (SupportTicketMessage $m) => $this->messagePayload($m, $viewer))->all(),
-            'has_more' => $query->count() > $limit,
+            'items' => $rows->map(fn (SupportTicketMessage $m) => $this->messagePayload($m, $viewer, $ticket))->all(),
+            'has_more' => $hasMore,
+        ];
+    }
+
+    /**
+     * Fast path for staff opening a chat: batched DB reads, lean message payloads.
+     *
+     * @return array{ticket: array<string, mixed>, messages: list<array<string, mixed>>, has_more: bool}
+     */
+    public function openTicketForAdmin(SupportTicket $ticket, User $admin): array
+    {
+        $ticket->load([
+            'customer:id,name,email,username,current_verification_level,verification_tier',
+            'assignedAdmin:id,name',
+        ]);
+
+        $handoff = $this->viewerHandoffContext($ticket, $admin);
+        $result = $this->messagesForAdminInbox($ticket, $admin, null, 50, $handoff['cutoff']);
+        $lastPreview = $result['items'] !== []
+            ? (string) ($result['items'][array_key_last($result['items'])]['body'] ?? '')
+            : '';
+
+        return [
+            'ticket' => $this->ticketDetailPayload(
+                $ticket,
+                $admin,
+                0,
+                $lastPreview !== '' ? $lastPreview : null,
+                $handoff,
+            ),
+            'messages' => $result['items'],
+            'has_more' => $result['has_more'],
+        ];
+    }
+
+    /**
+     * @return array{items: list<array<string, mixed>>, has_more: bool}
+     */
+    public function messagesForAdminInbox(
+        SupportTicket $ticket,
+        User $admin,
+        ?int $beforeId = null,
+        int $limit = 50,
+        ?int $messageCutoff = null,
+    ): array {
+        $query = $ticket->messages()
+            ->select([
+                'id',
+                'support_ticket_id',
+                'sender_user_id',
+                'sender_type',
+                'visibility',
+                'body',
+                'metadata',
+                'created_at',
+            ])
+            ->with(['sender:id,name,username,avatar_url'])
+            ->orderByDesc('id');
+
+        $cutoff = $messageCutoff ?? $this->messageCutoffForViewer($ticket, $admin);
+        if ($cutoff !== null) {
+            $query->where('id', '<=', $cutoff);
+        }
+
+        if ($beforeId) {
+            $query->where('id', '<', $beforeId);
+        }
+
+        $rows = $query->limit($limit + 1)->get();
+        $hasMore = $rows->count() > $limit;
+        if ($hasMore) {
+            $rows = $rows->take($limit);
+        }
+
+        $rows = $rows->reverse()->values();
+        $otherReadId = (int) ($ticket->user_last_read_message_id ?? 0);
+        $adminId = (int) $admin->id;
+
+        return [
+            'items' => $rows->map(fn (SupportTicketMessage $m) => $this->adminInboxMessagePayload($m, $admin, $adminId, $otherReadId))->all(),
+            'has_more' => $hasMore,
+        ];
+    }
+
+    /**
+     * Full ticket row for an open chat (handoff / compose flags) without extra per-field queries.
+     *
+     * @param  array{cutoff: int|null, is_former: bool}|null  $handoffContext
+     * @return array<string, mixed>
+     */
+    public function ticketDetailPayload(
+        SupportTicket $ticket,
+        User $viewer,
+        ?int $unreadCount = null,
+        ?string $lastMessagePreview = null,
+        ?array $handoffContext = null,
+    ): array {
+        $handoffContext ??= $this->viewerHandoffContext($ticket, $viewer);
+
+        if ($unreadCount === null) {
+            $isAdmin = in_array($viewer->role?->slug, ['admin', 'super_admin'], true);
+            $readField = $isAdmin ? 'admin_last_read_message_id' : 'user_last_read_message_id';
+            $lastRead = (int) ($ticket->{$readField} ?? 0);
+            $unreadCount = $ticket->messages()
+                ->when(! $isAdmin, fn ($q) => $q->where('visibility', 'public'))
+                ->when($isAdmin, fn ($q) => $q->where('sender_type', '!=', 'admin'))
+                ->where('id', '>', $lastRead)
+                ->count();
+        }
+
+        $payload = $this->ticketQueuePayload($ticket, $viewer, (int) $unreadCount, $lastMessagePreview);
+        $payload['is_former_assignee'] = $handoffContext['is_former'];
+        $payload['message_cutoff_id'] = $handoffContext['cutoff'];
+        $payload['handoff_notice'] = $this->handoffNoticeFromContext($ticket, $viewer, $handoffContext);
+        $payload['feedback_url'] = $ticket->isClosed() && $ticket->rated_at === null && $ticket->isLiveChat()
+            ? $this->ratingUrl($ticket)
+            : null;
+
+        return $payload;
+    }
+
+    /**
+     * @param  Collection<int, SupportTicket>  $tickets
+     * @return list<array<string, mixed>>
+     */
+    private function mapTicketsForAdminDetailList(Collection $tickets, User $viewer): array
+    {
+        if ($tickets->isEmpty()) {
+            return [];
+        }
+
+        $ids = $tickets->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $unreadMap = $this->batchAdminUnreadCounts($ids);
+        $previewMap = $this->batchLastMessageBodies($ids);
+        $handoffMap = $this->batchViewerHandoffContexts($ids, $viewer);
+
+        return $tickets
+            ->map(function (SupportTicket $ticket) use ($viewer, $unreadMap, $previewMap, $handoffMap): array {
+                $handoff = $handoffMap[$ticket->id] ?? ['cutoff' => null, 'is_former' => false];
+
+                return $this->ticketDetailPayload(
+                    $ticket,
+                    $viewer,
+                    (int) ($unreadMap[$ticket->id] ?? 0),
+                    isset($previewMap[$ticket->id]) ? Str::limit((string) $previewMap[$ticket->id], 80) : null,
+                    $handoff,
+                );
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array{cutoff: int|null, is_former: bool}
+     */
+    private function viewerHandoffContext(SupportTicket $ticket, User $viewer): array
+    {
+        $empty = ['cutoff' => null, 'is_former' => false];
+
+        if ($viewer->role?->slug === 'super_admin' || (int) $ticket->user_id === (int) $viewer->id) {
+            return $empty;
+        }
+
+        if ((int) $ticket->assigned_admin_id === (int) $viewer->id) {
+            return $empty;
+        }
+
+        if ($viewer->role?->slug !== 'admin') {
+            return $empty;
+        }
+
+        $handoff = SupportTicketHandoff::query()
+            ->where('support_ticket_id', $ticket->id)
+            ->where('from_admin_id', $viewer->id)
+            ->orderByDesc('id')
+            ->first(['handoff_message_id']);
+
+        if ($handoff === null) {
+            return $empty;
+        }
+
+        return [
+            'cutoff' => (int) $handoff->handoff_message_id,
+            'is_former' => true,
+        ];
+    }
+
+    /**
+     * @param  list<int>  $ticketIds
+     * @return array<int, array{cutoff: int|null, is_former: bool}>
+     */
+    private function batchViewerHandoffContexts(array $ticketIds, User $viewer): array
+    {
+        if ($ticketIds === [] || $viewer->role?->slug !== 'admin') {
+            return [];
+        }
+
+        $rows = SupportTicketHandoff::query()
+            ->whereIn('support_ticket_id', $ticketIds)
+            ->where('from_admin_id', $viewer->id)
+            ->orderByDesc('id')
+            ->get(['support_ticket_id', 'handoff_message_id']);
+
+        $map = [];
+        foreach ($rows as $row) {
+            if (isset($map[$row->support_ticket_id])) {
+                continue;
+            }
+
+            $map[$row->support_ticket_id] = [
+                'cutoff' => (int) $row->handoff_message_id,
+                'is_former' => true,
+            ];
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  array{cutoff: int|null, is_former: bool}  $handoffContext
+     */
+    private function handoffNoticeFromContext(SupportTicket $ticket, User $viewer, array $handoffContext): ?string
+    {
+        if ($this->canComposeOnTicket($ticket, $viewer)) {
+            return null;
+        }
+
+        if ($viewer->role?->slug === 'super_admin') {
+            $handler = $ticket->assignedAdmin?->name ?? 'another admin';
+
+            return "View-only. Reassign this chat to yourself to reply. Currently handled by {$handler}.";
+        }
+
+        if ($handoffContext['is_former']) {
+            return 'This chat was reassigned. You can read history up to the handoff but cannot send new messages or see later replies.';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  Collection<int, SupportTicket>  $tickets
+     * @return list<array<string, mixed>>
+     */
+    private function mapTicketsForAdminQueue(Collection $tickets, User $admin): array
+    {
+        if ($tickets->isEmpty()) {
+            return [];
+        }
+
+        $ids = $tickets->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $unreadMap = $this->batchAdminUnreadCounts($ids);
+        $previewMap = $this->batchLastMessageBodies($ids);
+
+        return $tickets
+            ->map(fn (SupportTicket $ticket) => $this->ticketQueuePayload(
+                $ticket,
+                $admin,
+                (int) ($unreadMap[$ticket->id] ?? 0),
+                isset($previewMap[$ticket->id]) ? Str::limit((string) $previewMap[$ticket->id], 80) : null,
+            ))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  list<int>  $ticketIds
+     * @return array<int, int>
+     */
+    private function batchAdminUnreadCounts(array $ticketIds): array
+    {
+        if ($ticketIds === []) {
+            return [];
+        }
+
+        return DB::table('support_ticket_messages as m')
+            ->join('support_tickets as t', 't.id', '=', 'm.support_ticket_id')
+            ->whereIn('m.support_ticket_id', $ticketIds)
+            ->where('m.sender_type', '!=', 'admin')
+            ->whereColumn('m.id', '>', 't.admin_last_read_message_id')
+            ->groupBy('m.support_ticket_id')
+            ->selectRaw('m.support_ticket_id as ticket_id, COUNT(*) as unread_count')
+            ->pluck('unread_count', 'ticket_id')
+            ->map(fn ($count) => (int) $count)
+            ->all();
+    }
+
+    /**
+     * @param  list<int>  $ticketIds
+     * @return array<int, string>
+     */
+    private function batchLastMessageBodies(array $ticketIds): array
+    {
+        if ($ticketIds === []) {
+            return [];
+        }
+
+        $maxIds = DB::table('support_ticket_messages')
+            ->select('support_ticket_id', DB::raw('MAX(id) as max_id'))
+            ->whereIn('support_ticket_id', $ticketIds)
+            ->groupBy('support_ticket_id')
+            ->pluck('max_id', 'support_ticket_id');
+
+        if ($maxIds->isEmpty()) {
+            return [];
+        }
+
+        return SupportTicketMessage::query()
+            ->whereIn('id', $maxIds->values())
+            ->pluck('body', 'support_ticket_id')
+            ->map(fn ($body) => (string) $body)
+            ->all();
+    }
+
+    /**
+     * Sidebar / queue row — no per-ticket handoff or unread queries.
+     *
+     * @return array<string, mixed>
+     */
+    private function ticketQueuePayload(
+        SupportTicket $ticket,
+        User $viewer,
+        int $unreadCount,
+        ?string $lastMessagePreview,
+    ): array {
+        $waitMinutes = $ticket->queued_at
+            ? (int) $ticket->queued_at->diffInMinutes(now())
+            : 0;
+
+        return [
+            'id' => $ticket->id,
+            'uuid' => $ticket->uuid,
+            'subject' => $ticket->subject,
+            'category' => $ticket->category,
+            'category_label' => config("customer_support.categories.{$ticket->category}.label", $ticket->category),
+            'priority' => $ticket->priority,
+            'status' => $ticket->status,
+            'chat_status' => $ticket->chat_status ?? 'queued',
+            'customer' => [
+                'id' => $ticket->customer?->id ?? $ticket->user_id,
+                'name' => $ticket->customer_full_name ?? $ticket->customer?->name,
+                'first_name' => $ticket->customer ? $this->customerFirstName($ticket->customer) : null,
+                'username' => $ticket->customer_username ?? $ticket->customer?->username,
+                'email' => $ticket->customer?->email,
+                'verification_level' => $ticket->customer?->current_verification_level ?? $ticket->customer?->verification_tier ?? 0,
+            ],
+            'assigned_admin' => $ticket->assignedAdmin ? [
+                'id' => $ticket->assignedAdmin->id,
+                'name' => $ticket->assignedAdmin->name,
+                'first_name' => $this->staffFirstName($ticket->assignedAdmin),
+            ] : null,
+            'unread_count' => $unreadCount,
+            'wait_minutes' => $waitMinutes,
+            'last_message_preview' => $lastMessagePreview,
+            'last_activity_at' => $ticket->last_activity_at?->toIso8601String(),
+            'opened_at' => $ticket->opened_at?->toIso8601String(),
+            'closed_at' => $ticket->closed_at?->toIso8601String(),
+            'rated' => $ticket->rated_at !== null,
+            'rating_score' => $ticket->rating_score,
+            'feedback_url' => null,
+            'can_compose' => $this->canComposeOnTicket($ticket, $viewer),
+            'is_former_assignee' => false,
+            'handoff_notice' => null,
+            'message_cutoff_id' => null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function adminInboxMessagePayload(
+        SupportTicketMessage $message,
+        User $admin,
+        int $adminId,
+        int $otherReadId,
+    ): array {
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        $kind = $metadata['kind'] ?? null;
+        $attachments = ChatAttachmentHelper::normalizeList($metadata['attachments'] ?? null);
+
+        if ($kind === 'session_closed') {
+            $forStaff = $this->isStaffViewer($admin);
+
+            return [
+                'id' => $message->id,
+                'body' => $forStaff
+                    ? (string) config('customer_support.session_closed_admin_body')
+                    : $message->body,
+                'visibility' => $message->visibility,
+                'sender_type' => $message->sender_type,
+                'kind' => 'session_closed',
+                'sender' => null,
+                'sender_label' => 'HustleSafe Support',
+                'is_customer' => false,
+                'is_admin_message' => false,
+                'is_system' => true,
+                'align' => 'center',
+                'mine' => false,
+                'attachments' => $attachments,
+                'created_at' => $message->created_at?->toIso8601String(),
+                'receipt_status' => null,
+                'reaction_summary' => [],
+            ];
+        }
+
+        $isSystem = $message->sender_type === 'system';
+        $isCustomer = $message->sender_type === 'customer';
+        $isInternal = $message->visibility === 'internal';
+        $senderId = (int) $message->sender_user_id;
+        $isMine = ! $isSystem && $senderId === $adminId;
+
+        $reactions = $metadata['message_reactions'] ?? [];
+        $reactionSummary = [];
+        if (is_array($reactions) && $reactions !== []) {
+            $reactionSummary = collect($reactions)
+                ->groupBy('emoji')
+                ->map(fn ($group, $emoji) => [
+                    'emoji' => (string) $emoji,
+                    'count' => $group->count(),
+                    'reacted' => $group->contains(fn (array $r) => (int) ($r['user_id'] ?? 0) === $adminId),
+                ])
+                ->values()
+                ->all();
+        }
+
+        return [
+            'id' => $message->id,
+            'body' => $message->body,
+            'visibility' => $message->visibility,
+            'sender_type' => $message->sender_type,
+            'kind' => $kind,
+            'sender' => $message->sender ? [
+                'id' => $message->sender->id,
+                'name' => $message->sender->name,
+                'username' => $message->sender->username,
+                'avatar_url' => $message->sender->avatar_url,
+            ] : null,
+            'sender_label' => $isSystem ? 'HustleSafe Support' : ($isInternal ? 'Internal note' : ($isCustomer ? 'Customer' : 'Support')),
+            'is_customer' => $isCustomer,
+            'is_admin_message' => $message->sender_type === 'admin',
+            'is_system' => $isSystem,
+            'align' => $isSystem || $isInternal ? 'center' : ($isCustomer ? 'start' : 'end'),
+            'mine' => $isMine,
+            'attachments' => $attachments,
+            'created_at' => $message->created_at?->toIso8601String(),
+            'receipt_status' => $isMine
+                ? ($message->id <= $otherReadId ? 'read' : 'delivered')
+                : null,
+            'reaction_summary' => $reactionSummary,
         ];
     }
 
@@ -753,8 +1235,29 @@ class CustomerSupportService
             $query->where('id', '<=', $cutoff);
         }
 
-        return $query->get()
-            ->map(fn (SupportTicketMessage $m) => $this->messagePayload($m, $viewer))
+        return $this->mapMessagesSince($ticket, $viewer, $query->get());
+    }
+
+    /**
+     * Lean deltas for HTTP polling (no per-message ticket reload).
+     *
+     * @param  Collection<int, SupportTicketMessage>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function mapMessagesSince(SupportTicket $ticket, User $viewer, Collection $rows): array
+    {
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $isAdmin = in_array($viewer->role?->slug, ['admin', 'super_admin'], true);
+        $viewerId = (int) $viewer->id;
+        $otherReadId = $isAdmin
+            ? (int) ($ticket->user_last_read_message_id ?? 0)
+            : (int) ($ticket->admin_last_read_message_id ?? 0);
+
+        return $rows
+            ->map(fn (SupportTicketMessage $m) => $this->adminInboxMessagePayload($m, $viewer, $viewerId, $otherReadId))
             ->all();
     }
 
@@ -777,64 +1280,17 @@ class CustomerSupportService
 
     public function isFormerAssignee(SupportTicket $ticket, User $user): bool
     {
-        if ($user->role?->slug !== 'admin') {
-            return false;
-        }
-
-        if ((int) $ticket->assigned_admin_id === (int) $user->id) {
-            return false;
-        }
-
-        return SupportTicketHandoff::query()
-            ->where('support_ticket_id', $ticket->id)
-            ->where('from_admin_id', $user->id)
-            ->exists();
+        return $this->viewerHandoffContext($ticket, $user)['is_former'];
     }
 
     public function handoffNotice(SupportTicket $ticket, User $viewer): ?string
     {
-        if ($this->canComposeOnTicket($ticket, $viewer)) {
-            return null;
-        }
-
-        if ($viewer->role?->slug === 'super_admin') {
-            $handler = $ticket->assignedAdmin?->name ?? 'another admin';
-
-            return "View-only. Reassign this chat to yourself to reply. Currently handled by {$handler}.";
-        }
-
-        if ($this->isFormerAssignee($ticket, $viewer)) {
-            return 'This chat was reassigned. You can read history up to the handoff but cannot send new messages or see later replies.';
-        }
-
-        return null;
+        return $this->handoffNoticeFromContext($ticket, $viewer, $this->viewerHandoffContext($ticket, $viewer));
     }
 
     public function messageCutoffForViewer(SupportTicket $ticket, User $viewer): ?int
     {
-        if ($viewer->role?->slug === 'super_admin') {
-            return null;
-        }
-
-        if ((int) $ticket->user_id === (int) $viewer->id) {
-            return null;
-        }
-
-        if ((int) $ticket->assigned_admin_id === (int) $viewer->id) {
-            return null;
-        }
-
-        if ($viewer->role?->slug !== 'admin') {
-            return null;
-        }
-
-        $handoff = SupportTicketHandoff::query()
-            ->where('support_ticket_id', $ticket->id)
-            ->where('from_admin_id', $viewer->id)
-            ->orderByDesc('id')
-            ->first();
-
-        return $handoff?->handoff_message_id;
+        return $this->viewerHandoffContext($ticket, $viewer)['cutoff'];
     }
 
     /**
@@ -868,80 +1324,80 @@ class CustomerSupportService
             });
         }
 
-        $mine = (clone $base)
-            ->where('assigned_admin_id', $admin->id)
-            ->whereIn('chat_status', ['queued', 'active'])
-            ->orderByRaw($priorityOrder)
-            ->orderBy('queued_at')
-            ->limit(100)
-            ->get()
-            ->map(fn (SupportTicket $t) => $this->ticketListPayload($t, $admin))
-            ->values()
-            ->all();
-
-        $unassigned = (clone $base)
-            ->where('chat_status', 'queued')
-            ->whereNull('assigned_admin_id')
-            ->orderByRaw($priorityOrder)
-            ->orderBy('queued_at')
-            ->limit(100)
-            ->get()
-            ->map(fn (SupportTicket $t) => $this->ticketListPayload($t, $admin))
-            ->values()
-            ->all();
-
-        $teamActive = $isSuper
-            ? (clone $base)
-                ->where('chat_status', 'active')
-                ->when($filterAdminId, fn ($q) => $q->where('assigned_admin_id', $filterAdminId))
-                ->orderByRaw($priorityOrder)
-                ->orderByDesc('last_activity_at')
-                ->limit(150)
-                ->get()
-                ->map(fn (SupportTicket $t) => $this->ticketListPayload($t, $admin))
-                ->values()
-                ->all()
-            : [];
-
-        $allOpen = $isSuper
-            ? (clone $base)
-                ->whereIn('chat_status', ['queued', 'active'])
-                ->when($filterAdminId, fn ($q) => $q->where('assigned_admin_id', $filterAdminId))
-                ->orderByRaw($priorityOrder)
-                ->orderByDesc('last_activity_at')
-                ->limit(200)
-                ->get()
-                ->map(fn (SupportTicket $t) => $this->ticketListPayload($t, $admin))
-                ->values()
-                ->all()
-            : [];
-
-        $pool = ! $isSuper
-            ? (clone $base)
-                ->where(function ($q) use ($admin): void {
-                    $q->where('assigned_admin_id', $admin->id)
-                        ->orWhere(fn ($inner) => $inner->where('chat_status', 'queued')->whereNull('assigned_admin_id'));
-                })
+        $mine = $this->mapTicketsForAdminQueue(
+            (clone $base)
+                ->where('assigned_admin_id', $admin->id)
                 ->whereIn('chat_status', ['queued', 'active'])
                 ->orderByRaw($priorityOrder)
                 ->orderBy('queued_at')
-                ->limit(200)
-                ->get()
-                ->map(fn (SupportTicket $t) => $this->ticketListPayload($t, $admin))
-                ->values()
-                ->all()
+                ->limit(100)
+                ->get(),
+            $admin,
+        );
+
+        $unassigned = $this->mapTicketsForAdminQueue(
+            (clone $base)
+                ->where('chat_status', 'queued')
+                ->whereNull('assigned_admin_id')
+                ->orderByRaw($priorityOrder)
+                ->orderBy('queued_at')
+                ->limit(100)
+                ->get(),
+            $admin,
+        );
+
+        $teamActive = $isSuper
+            ? $this->mapTicketsForAdminQueue(
+                (clone $base)
+                    ->where('chat_status', 'active')
+                    ->when($filterAdminId, fn ($q) => $q->where('assigned_admin_id', $filterAdminId))
+                    ->orderByRaw($priorityOrder)
+                    ->orderByDesc('last_activity_at')
+                    ->limit(150)
+                    ->get(),
+                $admin,
+            )
+            : [];
+
+        $allOpen = $isSuper
+            ? $this->mapTicketsForAdminQueue(
+                (clone $base)
+                    ->whereIn('chat_status', ['queued', 'active'])
+                    ->when($filterAdminId, fn ($q) => $q->where('assigned_admin_id', $filterAdminId))
+                    ->orderByRaw($priorityOrder)
+                    ->orderByDesc('last_activity_at')
+                    ->limit(200)
+                    ->get(),
+                $admin,
+            )
+            : [];
+
+        $pool = ! $isSuper
+            ? $this->mapTicketsForAdminQueue(
+                (clone $base)
+                    ->where(function ($q) use ($admin): void {
+                        $q->where('assigned_admin_id', $admin->id)
+                            ->orWhere(fn ($inner) => $inner->where('chat_status', 'queued')->whereNull('assigned_admin_id'));
+                    })
+                    ->whereIn('chat_status', ['queued', 'active'])
+                    ->orderByRaw($priorityOrder)
+                    ->orderBy('queued_at')
+                    ->limit(200)
+                    ->get(),
+                $admin,
+            )
             : [];
 
         $allLive = ! $isSuper
-            ? (clone $base)
-                ->whereIn('chat_status', ['queued', 'active'])
-                ->orderByRaw($priorityOrder)
-                ->orderByDesc('last_activity_at')
-                ->limit(200)
-                ->get()
-                ->map(fn (SupportTicket $t) => $this->ticketListPayload($t, $admin))
-                ->values()
-                ->all()
+            ? $this->mapTicketsForAdminQueue(
+                (clone $base)
+                    ->whereIn('chat_status', ['queued', 'active'])
+                    ->orderByRaw($priorityOrder)
+                    ->orderByDesc('last_activity_at')
+                    ->limit(200)
+                    ->get(),
+                $admin,
+            )
             : [];
 
         $sections = $isSuper
@@ -957,7 +1413,7 @@ class CustomerSupportService
                 ['key' => 'pool', 'label' => 'Unassigned pool', 'count' => count($pool), 'items' => $pool],
             ];
 
-        $activeSection = $section ?? 'all';
+        $activeSection = $section ?? ($isSuper ? 'all' : 'mine');
         $matched = collect($sections)->firstWhere('key', $activeSection);
         $items = is_array($matched) ? ($matched['items'] ?? $mine) : $mine;
 
@@ -1014,14 +1470,15 @@ class CustomerSupportService
 
         $recentBuckets = [];
         $archivedBuckets = [];
+        $detailPayloads = $this->mapTicketsForAdminDetailList($tickets, $viewer);
 
-        foreach ($tickets as $ticket) {
+        foreach ($tickets as $index => $ticket) {
             $closedAt = $ticket->closed_at ?? $ticket->updated_at;
             if ($closedAt === null) {
                 continue;
             }
 
-            $payload = $this->ticketListPayload($ticket, $viewer);
+            $payload = $detailPayloads[$index] ?? $this->ticketDetailPayload($ticket, $viewer);
             $dateKey = $closedAt->toDateString();
             $isRecent = $closedAt->gte($archiveCutoff);
 
@@ -1087,13 +1544,16 @@ class CustomerSupportService
             $query->where('assigned_admin_id', $staff->id);
         }
 
-        $query->limit(500)->get()->each(function (SupportTicket $ticket) use ($staff, &$cleared): void {
-            if (($this->ticketListPayload($ticket, $staff)['unread_count'] ?? 0) > 0) {
-                return;
+        $tickets = $query->limit(200)->get(['id']);
+        $unreadMap = $this->batchAdminUnreadCounts($tickets->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+        foreach ($tickets as $ticket) {
+            if (($unreadMap[$ticket->id] ?? 0) > 0) {
+                continue;
             }
 
             $cleared += $this->notificationCentre->markCustomerSupportNotificationsRead($staff, (int) $ticket->id);
-        });
+        }
 
         return $cleared;
     }
@@ -1110,7 +1570,12 @@ class CustomerSupportService
             ->whereIn('chat_status', ['queued', 'active'])
             ->where('assigned_admin_id', $admin->id);
 
-        return (int) $query->get()->sum(fn (SupportTicket $t) => $this->ticketListPayload($t, $admin)['unread_count'] ?? 0);
+        $ids = $query->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if ($ids === []) {
+            return 0;
+        }
+
+        return (int) array_sum($this->batchAdminUnreadCounts($ids));
     }
 
     public function userChats(User $customer): Collection
@@ -1326,6 +1791,7 @@ class CustomerSupportService
             ])->values()->all(),
             'previous_support_chats' => $previousTickets->map(fn (SupportTicket $t) => [
                 'id' => $t->id,
+                'uuid' => $t->uuid,
                 'subject' => $t->subject,
                 'category' => $t->category,
                 'chat_status' => $t->chat_status,
@@ -1333,8 +1799,8 @@ class CustomerSupportService
                 'created_at' => $t->created_at?->toIso8601String(),
                 'closed_at' => $t->closed_at?->toIso8601String(),
                 'url' => $staffOps
-                    ? $this->safeRoute('operations.customer-support.index', ['ticket' => $t->id])
-                    : $this->safeRoute('admin.customer-support.index', ['ticket' => $t->id]),
+                    ? $this->safeRoute('operations.customer-support.index', ['ticket' => $t->uuid])
+                    : $this->safeRoute('admin.customer-support.index', ['ticket' => $t->uuid]),
             ])->values()->all(),
         ];
     }
@@ -1520,33 +1986,28 @@ class CustomerSupportService
     /**
      * @return array<string, mixed>
      */
-    public function ticketDetailPayload(SupportTicket $ticket, User $viewer): array
-    {
-        $ticket->load(['customer', 'assignedAdmin']);
-
-        return [
-            ...$this->ticketListPayload($ticket, $viewer),
-            'messages' => [],
-            'context' => $ticket->customer ? $this->userContext($ticket->customer, $viewer) : null,
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function ticketListPayload(SupportTicket $ticket, User $viewer): array
-    {
+    public function ticketListPayload(
+        SupportTicket $ticket,
+        User $viewer,
+        ?int $unreadCount = null,
+        ?SupportTicketMessage $lastMessage = null,
+        ?string $lastMessagePreview = null,
+    ): array {
         $isAdmin = in_array($viewer->role?->slug, ['admin', 'super_admin'], true);
         $readField = $isAdmin ? 'admin_last_read_message_id' : 'user_last_read_message_id';
         $lastRead = (int) ($ticket->{$readField} ?? 0);
 
-        $unread = $ticket->messages()
-            ->when(! $isAdmin, fn ($q) => $q->where('visibility', 'public'))
-            ->when($isAdmin, fn ($q) => $q->where('sender_type', '!=', 'admin'))
-            ->where('id', '>', $lastRead)
-            ->count();
+        if ($unreadCount === null) {
+            $unreadCount = $ticket->messages()
+                ->when(! $isAdmin, fn ($q) => $q->where('visibility', 'public'))
+                ->when($isAdmin, fn ($q) => $q->where('sender_type', '!=', 'admin'))
+                ->where('id', '>', $lastRead)
+                ->count();
+        }
 
-        $lastMessage = $ticket->messages()->latest('id')->first();
+        if ($lastMessage === null && $lastMessagePreview === null) {
+            $lastMessage = $ticket->messages()->latest('id')->first();
+        }
 
         $waitMinutes = $ticket->queued_at
             ? (int) $ticket->queued_at->diffInMinutes(now())
@@ -1574,9 +2035,11 @@ class CustomerSupportService
                 'name' => $ticket->assignedAdmin->name,
                 'first_name' => $this->staffFirstName($ticket->assignedAdmin),
             ] : null,
-            'unread_count' => $unread,
+            'unread_count' => $unreadCount,
             'wait_minutes' => $waitMinutes,
-            'last_message_preview' => $lastMessage ? Str::limit($lastMessage->body, 80) : null,
+            'last_message_preview' => $lastMessagePreview !== null
+                ? Str::limit($lastMessagePreview, 80)
+                : ($lastMessage ? Str::limit($lastMessage->body, 80) : null),
             'last_activity_at' => $ticket->last_activity_at?->toIso8601String(),
             'opened_at' => $ticket->opened_at?->toIso8601String(),
             'closed_at' => $ticket->closed_at?->toIso8601String(),
@@ -1586,9 +2049,9 @@ class CustomerSupportService
                 ? $this->ratingUrl($ticket)
                 : null,
             'can_compose' => $this->canComposeOnTicket($ticket, $viewer),
-            'is_former_assignee' => $this->isFormerAssignee($ticket, $viewer),
-            'handoff_notice' => $this->handoffNotice($ticket, $viewer),
-            'message_cutoff_id' => $this->messageCutoffForViewer($ticket, $viewer),
+            'is_former_assignee' => ($handoff = $this->viewerHandoffContext($ticket, $viewer))['is_former'],
+            'handoff_notice' => $this->handoffNoticeFromContext($ticket, $viewer, $handoff),
+            'message_cutoff_id' => $handoff['cutoff'],
         ];
     }
 
@@ -1661,7 +2124,7 @@ class CustomerSupportService
     /**
      * @return array<string, mixed>
      */
-    private function messagePayload(SupportTicketMessage $message, User $viewer): array
+    private function messagePayload(SupportTicketMessage $message, User $viewer, ?SupportTicket $ticket = null): array
     {
         $attachments = ChatAttachmentHelper::normalizeList($message->metadata['attachments'] ?? null);
         $senderId = (int) $message->sender_user_id;
@@ -1676,8 +2139,10 @@ class CustomerSupportService
             return $this->sessionClosedPayloadForViewer($message, $viewer, $metadata, $attachments);
         }
 
-        $message->loadMissing('ticket');
-        $ticket = $message->ticket;
+        if ($ticket === null) {
+            $message->loadMissing('ticket');
+            $ticket = $message->ticket;
+        }
         abort_if($ticket === null, 404);
 
         $payload = $this->messageBroadcastPayload($message);

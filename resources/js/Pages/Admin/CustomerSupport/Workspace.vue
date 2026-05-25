@@ -95,10 +95,10 @@
                 <div v-if="sidebarTab === 'live'" class="min-h-0 flex-1 overflow-y-auto">
                     <button
                         v-for="item in displayQueue"
-                        :key="item.id"
+                        :key="item.uuid || item.id"
                         type="button"
                         class="flex w-full gap-3 border-b border-slate-100 px-3 py-3 text-left transition hover:bg-white"
-                        :class="selected?.id === item.id ? 'bg-white ring-1 ring-inset ring-primary-200' : ''"
+                        :class="selected?.uuid === item.uuid ? 'bg-white ring-1 ring-inset ring-primary-200' : ''"
                         @click="selectTicket(item)"
                     >
                         <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-600 to-teal-600 text-xs font-black text-white">
@@ -131,10 +131,10 @@
                             <p class="sticky top-0 z-[1] bg-slate-50/95 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-500 backdrop-blur-sm">{{ group.label }}</p>
                             <button
                                 v-for="item in group.sessions"
-                                :key="item.id"
+                                :key="item.uuid || item.id"
                                 type="button"
                                 class="flex w-full gap-3 border-b border-slate-100/80 px-3 py-3 text-left transition hover:bg-white"
-                                :class="selected?.id === item.id ? 'bg-white ring-1 ring-inset ring-primary-200' : ''"
+                                :class="selected?.uuid === item.uuid ? 'bg-white ring-1 ring-inset ring-primary-200' : ''"
                                 @click="selectTicket(item)"
                             >
                                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-black text-slate-700">
@@ -151,10 +151,10 @@
                             <p class="sticky top-0 z-[1] bg-slate-50/95 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-400 backdrop-blur-sm">{{ group.label }}</p>
                             <button
                                 v-for="item in group.sessions"
-                                :key="item.id"
+                                :key="item.uuid || item.id"
                                 type="button"
                                 class="flex w-full gap-3 border-b border-slate-100/80 px-3 py-3 text-left transition hover:bg-white"
-                                :class="selected?.id === item.id ? 'bg-white ring-1 ring-inset ring-primary-200' : ''"
+                                :class="selected?.uuid === item.uuid ? 'bg-white ring-1 ring-inset ring-primary-200' : ''"
                                 @click="selectTicket(item)"
                             >
                                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-black text-slate-700">
@@ -172,8 +172,17 @@
                 </div>
             </aside>
 
-            <section class="flex min-h-0 min-w-0 flex-1 flex-col" :class="mobileView === 'queue' ? 'hidden lg:flex' : 'flex'">
+            <section
+                class="flex min-h-0 min-w-0 flex-1 flex-col"
+                :class="[
+                    mobileView === 'queue' ? 'hidden lg:flex' : 'flex',
+                    mobileView === 'chat' ? 'min-h-[min(72dvh,100%)] lg:min-h-0' : '',
+                ]"
+            >
                 <template v-if="selected">
+                    <div v-if="loadError" class="border-b border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-900">
+                        {{ loadError }}
+                    </div>
                     <header class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
                         <div class="flex min-w-0 items-center gap-2">
                             <button type="button" class="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" @click="mobileView = 'queue'">←</button>
@@ -224,48 +233,65 @@
                         </button>
                     </div>
 
-                    <div ref="scrollEl" class="min-h-0 flex-1 overflow-y-auto p-4">
-                        <SupportChatMessages
-                            :messages="messages"
-                            perspective="staff"
-                            @react="onMessageReact"
-                            @attachment-loaded="scrollBottom"
-                        />
-                    </div>
-
-                    <div
-                        v-if="typingLabel"
-                        class="flex shrink-0 items-center gap-2 border-t border-primary-100 bg-primary-50/90 px-4 py-2.5 text-xs font-semibold text-primary-800"
-                    >
-                        <span class="flex gap-0.5" aria-hidden="true">
-                            <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-600 [animation-delay:0ms]" />
-                            <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-600 [animation-delay:150ms]" />
-                            <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-600 [animation-delay:300ms]" />
-                        </span>
-                        {{ typingLabel }}
-                    </div>
-
-                    <footer v-if="selected.chat_status !== 'closed' && !canCompose" class="border-t border-slate-100 px-4 py-5 text-center text-sm font-semibold text-slate-600">
-                        <p v-if="isSuperAdmin">Reassign this chat to yourself to reply.</p>
-                        <p v-else>You no longer have access to reply on this chat.</p>
-                    </footer>
-                    <footer v-if="selected.chat_status !== 'closed' && canCompose" class="relative shrink-0 border-t border-slate-100 bg-white p-3">
-                        <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-150 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="translate-y-2 opacity-0">
-                            <div v-if="gifOpen" class="absolute bottom-full left-3 right-3 z-40 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-                                <GifPickerPanel :open="gifOpen" :search-url="apiRoute('gifs')" @select="onGifSelected" @close="gifOpen = false" />
+                    <div class="flex min-h-0 flex-1 flex-col xl:flex-row">
+                        <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+                            <div
+                                v-if="ticketLoading"
+                                class="shrink-0 border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-600"
+                                role="status"
+                            >
+                                Loading messages…
                             </div>
-                        </Transition>
-                        <SupportChatQuickTemplates
-                            v-if="!noteMode"
-                            :templates="messageTemplates"
-                            :disabled="sending || ending"
-                            @send-opening="onTemplateOpening"
-                            @send-closing="onTemplateClosing"
-                        />
-                        <p v-if="!noteMode && messageTemplates.agent_signature" class="mb-2 text-[10px] font-semibold text-slate-500">
-                            Templates sign as <strong class="text-slate-700">{{ messageTemplates.agent_signature }}</strong>
-                        </p>
-                        <form class="relative rounded-xl border border-slate-200 bg-white shadow-sm" @submit.prevent="send">
+                            <div ref="scrollEl" class="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+                                <SupportChatMessages
+                                    :messages="messages"
+                                    perspective="staff"
+                                    @react="onMessageReact"
+                                    @attachment-loaded="scrollBottom"
+                                />
+                            </div>
+
+                            <div
+                                v-if="typingLabel"
+                                class="flex shrink-0 items-center gap-2 border-t border-primary-100 bg-primary-50/90 px-4 py-2.5 text-xs font-semibold text-primary-800"
+                            >
+                                <span class="flex gap-0.5" aria-hidden="true">
+                                    <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-600 [animation-delay:0ms]" />
+                                    <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-600 [animation-delay:150ms]" />
+                                    <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-600 [animation-delay:300ms]" />
+                                </span>
+                                {{ typingLabel }}
+                            </div>
+
+                            <footer v-if="selected.chat_status !== 'closed' && !canCompose" class="border-t border-slate-100 px-4 py-5 text-center text-sm font-semibold text-slate-600">
+                                <p v-if="isSuperAdmin">Reassign this chat to yourself to reply.</p>
+                                <p v-else>You no longer have access to reply on this chat.</p>
+                            </footer>
+                            <footer v-if="selected.chat_status !== 'closed' && canCompose" class="relative shrink-0 border-t border-slate-100 bg-white p-2 sm:p-3">
+                                <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-150 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="translate-y-2 opacity-0">
+                                    <div v-if="gifOpen" class="absolute bottom-full left-3 right-3 z-40 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                                        <GifPickerPanel :open="gifOpen" :search-url="apiRoute('gifs')" @select="onGifSelected" @close="gifOpen = false" />
+                                    </div>
+                                </Transition>
+                                <div
+                                    v-if="showQuickReplies"
+                                    class="mb-2 max-h-28 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/90 p-2 xl:hidden"
+                                >
+                                    <SupportChatQuickTemplates
+                                        :templates="messageTemplates"
+                                        :disabled="sending || ending"
+                                        @select-opening="onTemplateOpening"
+                                        @select-closing="onTemplateClosing"
+                                    />
+                                </div>
+                                <p
+                                    v-if="composerHint"
+                                    class="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950"
+                                    role="status"
+                                >
+                                    {{ composerHint }}
+                                </p>
+                                <form class="relative rounded-xl border border-slate-200 bg-white shadow-sm" @submit.prevent="send">
                             <div v-if="pendingGif || pendingFiles.length" class="flex flex-wrap gap-2 border-b border-slate-100 px-3 py-2">
                                 <span v-if="pendingGif" class="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-2 py-1 text-xs">
                                     <img :src="pendingGif.preview || pendingGif.url" alt="" class="h-8 w-8 rounded object-cover" /> GIF
@@ -277,9 +303,10 @@
                                 <button type="button" class="rounded-lg px-2 py-1 text-[10px] font-black uppercase" :class="noteMode ? 'bg-amber-100 text-amber-900' : 'text-slate-500'" @mousedown.prevent="noteMode = !noteMode">{{ noteMode ? 'Internal note' : 'Reply' }}</button>
                             </div>
                             <textarea
+                                ref="composerEl"
                                 v-model="composer"
-                                rows="4"
-                                class="block w-full resize-none border-0 bg-transparent px-3 py-3 text-sm leading-relaxed focus:outline-none"
+                                :rows="composerRows"
+                                class="block w-full resize-none border-0 bg-transparent px-3 py-2.5 text-sm leading-relaxed focus:outline-none"
                                 :placeholder="noteMode ? 'Internal note… (Enter to send, Shift+Enter for new line)' : 'Reply… (Enter to send, Shift+Enter for new line)'"
                                 @keydown="onComposerKeydown"
                                 @input="onComposerInput"
@@ -295,18 +322,40 @@
                                     Send
                                 </button>
                             </div>
-                        </form>
-                    </footer>
-                    <p v-if="selected.chat_status === 'closed'" class="border-t border-slate-100 px-4 py-6 text-center text-sm font-semibold text-slate-500">
-                        Session ended. The customer can no longer send messages and will see a feedback prompt in their chat.
-                    </p>
+                                </form>
+                            </footer>
+                            <p v-if="selected.chat_status === 'closed'" class="border-t border-slate-100 px-4 py-6 text-center text-sm font-semibold text-slate-500">
+                                Session ended. The customer can no longer send messages and will see a feedback prompt in their chat.
+                            </p>
+                        </div>
+
+                        <aside
+                            v-if="showQuickReplies"
+                            class="hidden min-h-0 w-52 shrink-0 flex-col overflow-y-auto border-t border-slate-100 bg-slate-50/90 p-3 xl:flex xl:border-t-0 xl:border-l"
+                        >
+                            <SupportChatQuickTemplates
+                                :templates="messageTemplates"
+                                :disabled="sending || ending"
+                                @select-opening="onTemplateOpening"
+                                @select-closing="onTemplateClosing"
+                            />
+                            <p v-if="messageTemplates?.agent_signature" class="mt-3 text-[10px] font-semibold text-slate-500">
+                                Signs as <strong class="text-slate-700">{{ messageTemplates.agent_signature }}</strong>
+                            </p>
+                        </aside>
+                    </div>
                 </template>
                 <div v-else class="flex flex-1 flex-col items-center justify-center p-8 text-center text-sm text-slate-500">
-                    <p class="font-black text-slate-700">Select a chat from the queue</p>
-                    <p class="mt-1 max-w-xs">
-                        <template v-if="isSuperAdmin">All live chats appear in the sidebar — filter, sort, and open any conversation.</template>
-                        <template v-else>Use <strong>My chats</strong> for conversations assigned to you.</template>
+                    <p v-if="loadError" class="max-w-sm rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">
+                        {{ loadError }}
                     </p>
+                    <template v-else>
+                        <p class="font-black text-slate-700">Select a chat from the queue</p>
+                        <p class="mt-1 max-w-xs">
+                            <template v-if="isSuperAdmin">All live chats appear in the sidebar — filter, sort, and open any conversation.</template>
+                            <template v-else>Use <strong>My chats</strong> for conversations assigned to you.</template>
+                        </p>
+                    </template>
                 </div>
             </section>
         </div>
@@ -315,7 +364,7 @@
         <CustomerSupportUserSlideOver
             :open="profileSlideOpen"
             :context="userContext"
-            :current-ticket-id="selected?.id"
+            :current-ticket-ref="selected?.uuid"
             @close="profileSlideOpen = false"
             @open-chat="openTicketFromProfile"
         />
@@ -340,42 +389,6 @@
             @confirm="confirmEndChat"
         />
 
-        <Teleport to="body">
-            <Transition name="fade">
-                <div
-                    v-if="closingTemplateModalOpen"
-                    class="fixed inset-0 z-[100] flex items-end justify-center bg-slate-900/50 p-3 backdrop-blur-sm sm:items-center sm:p-4"
-                    role="dialog"
-                    aria-modal="true"
-                    @click.self="closingTemplateModalOpen = false"
-                >
-                    <div class="max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:rounded-xl">
-                        <h2 class="font-display text-lg font-bold text-slate-900">Send closing message & end session?</h2>
-                        <p class="mt-1 text-sm font-medium text-slate-600">
-                            This sends your closing message to the customer, then ends the live chat. They will be prompted for feedback.
-                        </p>
-                        <pre class="mt-4 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm font-medium leading-relaxed text-slate-800">{{ closingPreviewMessage }}</pre>
-                        <div class="mt-5 flex flex-wrap justify-end gap-3">
-                            <button
-                                type="button"
-                                class="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
-                                @click="closingTemplateModalOpen = false"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                class="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-bold text-white shadow-md hover:bg-rose-700 disabled:opacity-60"
-                                :disabled="sending || ending"
-                                @click="confirmClosingTemplate"
-                            >
-                                Send & end session
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </Transition>
-        </Teleport>
     </component>
 </template>
 
@@ -390,12 +403,13 @@ import SupportChatQuickTemplates from '@/Components/Support/SupportChatQuickTemp
 import PortfolioConfirmModal from '@/Components/Portfolio/PortfolioConfirmModal.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
 import CustomerSupportUserSlideOver from '@/Pages/Admin/CustomerSupport/Components/CustomerSupportUserSlideOver.vue';
-import { ensureEcho } from '@/utils/ensureEcho';
+import { ensureEcho, safeEchoLeave } from '@/utils/ensureEcho';
 import { broadcastConfigFromPage } from '@/utils/broadcastConfig';
 import { formatChatMessageTime, groupMessagesByChatDay } from '@/utils/chatMessageDates';
 import { useSupportChatRealtime } from '@/composables/useSupportChatRealtime';
 import { useChatComposer } from '@/composables/useChatComposer';
 import { useMessagingViewPresence } from '@/composables/useMessagingViewPresence';
+import { supportChatReadHttp } from '@/utils/supportChatHttp';
 
 const props = defineProps({
     routeNamespace: { type: String, default: 'admin' },
@@ -410,6 +424,14 @@ const props = defineProps({
     isSuperAdmin: { type: Boolean, default: false },
     viewerId: { type: Number, default: null },
     categories: { type: Object, default: () => ({}) },
+    messageTemplates: {
+        type: Object,
+        default: () => ({
+            agent_signature: '',
+            opening: [],
+            closing: [],
+        }),
+    },
 });
 
 const page = usePage();
@@ -419,7 +441,7 @@ const supportChangedEvent = computed(() => (props.routeNamespace === 'operations
 const notificationsChangedEvent = computed(() => (props.routeNamespace === 'operations' ? 'operations:notifications-changed' : 'admin:notifications-changed'));
 
 const sections = ref(props.queuePanels.sections ?? []);
-const activeSection = ref(props.queuePanels.active_section ?? 'all');
+const activeSection = ref(props.queuePanels.active_section ?? (props.isSuperAdmin ? 'all' : 'mine'));
 const queue = ref(props.queuePanels.items ?? []);
 const selected = ref(props.selectedTicket);
 const messages = ref([...props.messages]);
@@ -438,10 +460,9 @@ const historyArchived = ref([]);
 const historyRetentionDays = ref(30);
 const historyLoading = ref(false);
 const endModalOpen = ref(false);
-const closingTemplateModalOpen = ref(false);
-const pendingClosingTemplate = ref(null);
+const composerHint = ref('');
 const mobileView = ref(props.selectedTicket ? 'chat' : 'queue');
-const profileSlideOpen = ref(!!props.selectedTicket);
+const profileSlideOpen = ref(false);
 const showReassign = ref(false);
 const reassignPickId = ref(null);
 const reassignModalOpen = ref(false);
@@ -459,8 +480,16 @@ const pendingGif = ref(null);
 const pendingFiles = ref([]);
 const noteMode = ref(false);
 const scrollEl = ref(null);
+const composerEl = ref(null);
 const typingUsers = ref({});
 const loadError = ref('');
+const ticketLoading = ref(false);
+
+/** @type {Map<string, { ticket: object, messages: object[], at: number }>} */
+const ticketCache = new Map();
+const TICKET_CACHE_TTL_MS = 45_000;
+let openRequestToken = 0;
+let openAbortController = null;
 
 let typingStartDebounce = null;
 let typingIdleTimer = null;
@@ -479,10 +508,32 @@ function liveBroadcastConfig() {
     return broadcastConfigFromPage(page);
 }
 
+function supportPollIntervals() {
+    const cfg = liveBroadcastConfig();
+
+    return {
+        pollVisibleMs: cfg?.pollVisibleMs ?? 500,
+        pollHiddenMs: cfg?.pollHiddenMs ?? 2000,
+    };
+}
+
 const chatRealtime = useSupportChatRealtime({
     reverbConfig: liveBroadcastConfig,
+    ...supportPollIntervals(),
     normalizeMessage: normalizeStaffMessage,
     getMessageCutoff: () => selected.value?.message_cutoff_id ?? null,
+    pollMessages: async (afterId) => {
+        const ticketRef = selected.value?.uuid;
+        if (!ticketRef || !afterId) {
+            return [];
+        }
+
+        const { data } = await window.axios.get(apiRoute('messages', { ticket: ticketRef }), {
+            params: { after_id: afterId },
+        });
+
+        return (data.items ?? []).map(normalizeStaffMessage);
+    },
     onMessage: (msg) => {
         if (messages.value.some((m) => m.id === msg.id)) {
             return false;
@@ -492,8 +543,8 @@ const chatRealtime = useSupportChatRealtime({
             clearCustomerTyping();
         }
         scrollBottom();
-        emitSupportChanged();
-        debouncedQueueRefresh();
+        refreshTicketCache();
+        patchQueueFromMessage(selected.value?.id, msg);
         scheduleMarkRead();
 
         return true;
@@ -508,7 +559,6 @@ const chatRealtime = useSupportChatRealtime({
             sidebarTab.value = 'history';
             void loadHistory();
         }
-        debouncedQueueRefresh();
     },
     onTyping: (e) => applyCustomerTyping(e),
 });
@@ -528,18 +578,32 @@ function isTypingActive(value) {
     return value === true || value === 1 || value === '1' || value === 'true';
 }
 
+function isCustomerTypingEvent(payload) {
+    const side = String(payload.side ?? '').toLowerCase();
+    if (side === 'admin') {
+        return false;
+    }
+    if (side === 'customer') {
+        return true;
+    }
+
+    const viewerId = props.viewerId || page.props.auth?.user?.id;
+    const actorId = payload.user_id ?? payload.userId;
+
+    return actorId != null && Number(actorId) !== Number(viewerId);
+}
+
 function applyCustomerTyping(payload) {
     if (!payload || typeof payload !== 'object' || !selected.value) {
         return;
     }
 
-    const side = String(payload.side ?? '').toLowerCase();
-    if (side === 'admin') {
+    const ticketId = payload.ticket_id ?? payload.ticketId;
+    if (ticketId != null && Number(ticketId) !== Number(selected.value.id)) {
         return;
     }
 
-    const ticketId = payload.ticket_id ?? payload.ticketId;
-    if (ticketId != null && Number(ticketId) !== Number(selected.value.id)) {
+    if (!isCustomerTypingEvent(payload)) {
         return;
     }
 
@@ -551,16 +615,30 @@ function applyCustomerTyping(payload) {
         return;
     }
 
-    const displayName = payload.name || payload.first_name || selected.value?.customer?.name || 'Customer';
+    const displayName = payload.first_name || payload.name || selected.value?.customer?.name || 'Customer';
     typingUsers.value = { customer: displayName };
-    scrollBottom();
     typingClearTimer = setTimeout(() => {
         clearCustomerTyping();
-    }, 4500);
+    }, 5000);
 }
 
 const canCompose = computed(() => selected.value?.can_compose === true);
 const handoffNotice = computed(() => selected.value?.handoff_notice || '');
+
+const showQuickReplies = computed(() => (
+    selected.value
+    && selected.value.chat_status !== 'closed'
+    && canCompose.value
+    && !noteMode.value
+));
+
+const composerRows = computed(() => {
+    if (typeof window === 'undefined') {
+        return 3;
+    }
+
+    return window.matchMedia('(min-width: 1280px)').matches ? 4 : 2;
+});
 
 const sortOptions = [
     { value: 'activity', label: 'Last activity' },
@@ -610,10 +688,13 @@ const reassignConfirmMessage = computed(() => {
 const priorityRank = { urgent: 0, high: 1, normal: 2, low: 3 };
 
 const displayQueue = computed(() => {
-    let items = [...queue.value];
     if (!isSuperAdmin) {
-        return items;
+        const section = sections.value.find((s) => s.key === activeSection.value);
+
+        return section?.items?.length ? [...section.items] : [...queue.value];
     }
+
+    let items = [...queue.value];
     if (queueFilterStatus.value) {
         items = items.filter((i) => i.chat_status === queueFilterStatus.value);
     }
@@ -668,45 +749,100 @@ function clearTicketUnreadInQueue(ticketId) {
     }));
 }
 
+function patchQueueFromMessage(ticketId, msg) {
+    if (!ticketId || !msg) {
+        return;
+    }
+
+    const preview = String(msg.body ?? '').slice(0, 80);
+    const at = msg.created_at ?? new Date().toISOString();
+    const isInbound = msg.is_customer || msg.sender_type === 'customer';
+    const patch = (item) => {
+        if (Number(item.id) !== Number(ticketId)) {
+            return item;
+        }
+
+        return {
+            ...item,
+            last_message_preview: preview || item.last_message_preview,
+            last_activity_at: at,
+            unread_count: Number(selected.value?.id) === Number(ticketId) ? 0 : (isInbound ? (Number(item.unread_count) || 0) + 1 : item.unread_count),
+        };
+    };
+
+    queue.value = queue.value.map(patch);
+    sections.value = sections.value.map((sec) => ({
+        ...sec,
+        items: (sec.items ?? []).map(patch),
+    }));
+}
+
+let lastQueueRefreshAt = 0;
+const QUEUE_REFRESH_MIN_MS = 30_000;
+
 const chatPresence = useMessagingViewPresence(async () => {
     if (!selected.value?.id) {
         return;
     }
     const last = [...messages.value].reverse().find((m) => m.is_customer || m.sender_type === 'customer');
-    await window.axios.post(apiRoute('read', { ticket: selected.value.id }), {
-        last_message_id: last?.id ?? undefined,
-    });
+    if (!last?.id) {
+        return;
+    }
+
+    try {
+        await supportChatReadHttp.post(
+            apiRoute('read', { ticket: selected.value.uuid }),
+            { last_message_id: last.id },
+        );
+    } catch {
+        /* non-blocking */
+    }
     clearTicketUnreadInQueue(selected.value.id);
-    emitSupportChanged();
-    emitNotificationsChanged();
 });
 
 onMounted(() => {
     ensureEcho(liveBroadcastConfig());
     bindStaffQueueChannel();
-    if (isSuperAdmin) {
+    if (!isSuperAdmin) {
+        activeSection.value = props.queuePanels.active_section ?? 'mine';
+        const section = sections.value.find((s) => s.key === activeSection.value);
+        if (section?.items?.length) {
+            queue.value = [...section.items];
+        }
+    } else {
         activeSection.value = 'all';
     }
-    if (selected.value) {
-        subscribe(selected.value.id);
-        chatPresence.start();
-        scrollBottom();
-    }
     bindAssignmentNotifications();
-    void window.axios.post(apiRoute('reconcile-notifications')).then(() => {
-        emitSupportChanged();
-        emitNotificationsChanged();
-    }).catch(() => {});
+
+    const reconcileKey = `hs_support_reconciled_${props.routeNamespace}`;
+    const lastReconcile = Number(sessionStorage.getItem(reconcileKey) || 0);
+    if (!lastReconcile || Date.now() - lastReconcile > 10 * 60 * 1000) {
+        void window.axios.post(apiRoute('reconcile-notifications'), {}, { timeout: 10_000 }).then(() => {
+            sessionStorage.setItem(reconcileKey, String(Date.now()));
+            emitSupportChanged();
+            emitNotificationsChanged();
+        }).catch(() => {});
+    }
+
     const params = new URLSearchParams(window.location.search);
-    const ticketId = params.get('ticket');
-    if (ticketId && !selected.value) {
-        const hit = queue.value.find((q) => String(q.id) === ticketId);
-        if (hit) selectTicket(hit);
-        else openTicketById(ticketId);
+    const ticketRef = params.get('ticket');
+    if (props.selectedTicket?.uuid) {
+        void activateTicket(props.selectedTicket);
+    } else if (ticketRef) {
+        const hit = queue.value.find((q) => q.uuid === ticketRef || String(q.id) === ticketRef);
+        if (hit) {
+            void activateTicket(hit);
+        } else {
+            void openTicketByRef(ticketRef);
+        }
     }
 });
 
 onBeforeUnmount(() => {
+    if (openAbortController) {
+        openAbortController.abort();
+        openAbortController = null;
+    }
     clearTimeout(markReadTimer);
     chatPresence.stop();
     leaveChannel();
@@ -742,7 +878,9 @@ function bindAssignmentNotifications() {
 
 function leaveUserChannel() {
     const uid = props.viewerId || page.props.auth?.user?.id;
-    if (uid && window.Echo) window.Echo.leave(`App.Models.User.${uid}`);
+    if (uid) {
+        safeEchoLeave(`App.Models.User.${uid}`);
+    }
     userChannel = null;
 }
 
@@ -783,8 +921,7 @@ function bindStaffQueueChannel() {
         }
         chatRealtime.setLastMessageId(msg.id);
         scrollBottom();
-        emitSupportChanged();
-        debouncedQueueRefresh();
+        patchQueueFromMessage(ticketId, msg);
         scheduleMarkRead();
     };
 
@@ -808,9 +945,7 @@ function bindStaffQueueChannel() {
 }
 
 function leaveStaffChannel() {
-    if (window.Echo) {
-        window.Echo.leave('customer-support.staff');
-    }
+    safeEchoLeave('customer-support.staff');
     staffChannel = null;
 }
 
@@ -825,7 +960,11 @@ function hasMessage(msg) {
 
 function switchSection(key) {
     activeSection.value = key;
-    debouncedQueueRefresh();
+    const section = sections.value.find((s) => s.key === key);
+    if (section?.items) {
+        queue.value = [...section.items];
+    }
+    debouncedQueueRefresh({ force: true });
 }
 
 function initials(name) {
@@ -908,10 +1047,19 @@ function attUrl(att) {
     return att?.url || att?.path || '';
 }
 
-function syncTicketUrl(ticketId) {
+function ticketPublicRef(ticketOrRef) {
+    if (typeof ticketOrRef === 'string') {
+        return ticketOrRef;
+    }
+
+    return ticketOrRef?.uuid ?? '';
+}
+
+function syncTicketUrl(ticketOrRef) {
     const url = new URL(window.location.href);
-    if (ticketId) {
-        url.searchParams.set('ticket', String(ticketId));
+    const ref = ticketPublicRef(ticketOrRef);
+    if (ref) {
+        url.searchParams.set('ticket', ref);
     } else {
         url.searchParams.delete('ticket');
     }
@@ -939,59 +1087,164 @@ function openUserProfile() {
     }
 }
 
-async function openTicketFromProfile(ticketId) {
+async function openTicketFromProfile(ticketRef) {
     profileSlideOpen.value = false;
     sidebarTab.value = 'history';
     mobileView.value = 'chat';
-    await openTicketById(ticketId);
+    await openTicketByRef(ticketRef);
 }
 
-async function openTicketById(ticketId) {
+function queueTicketPreview(item) {
+    if (!item || item.id == null) {
+        return null;
+    }
+
+    return {
+        ...item,
+        id: item.id,
+        customer: item.customer ?? null,
+        can_compose: item.can_compose ?? true,
+    };
+}
+
+function applyCachedTicket(ticketUuid) {
+    const cached = ticketCache.get(ticketUuid);
+    if (!cached || Date.now() - cached.at > TICKET_CACHE_TTL_MS) {
+        return false;
+    }
+
+    selected.value = cached.ticket;
+    messages.value = cached.messages.map(normalizeStaffMessage);
+    syncLastMessageId();
+
+    return true;
+}
+
+function cacheTicketPayload(ticketUuid, ticket, rawMessages) {
+    if (!ticketUuid) {
+        return;
+    }
+
+    ticketCache.set(ticketUuid, {
+        ticket,
+        messages: (rawMessages || []).map(normalizeStaffMessage),
+        at: Date.now(),
+    });
+}
+
+function refreshTicketCache() {
+    const ticketUuid = selected.value?.uuid;
+    if (!ticketUuid) {
+        return;
+    }
+    cacheTicketPayload(ticketUuid, selected.value, messages.value);
+}
+
+async function activateTicket(item, { ticketRef: explicitRef } = {}) {
+    const ticketUuid = ticketPublicRef(explicitRef ?? item);
+    if (!ticketUuid) {
+        return;
+    }
+
+    if (selected.value?.uuid === ticketUuid && !ticketLoading.value && messages.value.length) {
+        mobileView.value = 'chat';
+        return;
+    }
+
+    const previousUuid = selected.value?.uuid ?? null;
+    const token = ++openRequestToken;
+
+    if (openAbortController) {
+        openAbortController.abort();
+    }
+    openAbortController = new AbortController();
+    const { signal } = openAbortController;
+
     loadError.value = '';
+    ticketLoading.value = true;
     clearCustomerTyping();
+    clearTimeout(typingStartDebounce);
+    clearTimeout(typingIdleTimer);
+    if (previousUuid && previousUuid !== ticketUuid) {
+        stopTypingForTicket(previousUuid);
+    }
+    typingActive = false;
+    leaveChannel();
+
+    composer.value = '';
+    composerHint.value = '';
+    mobileView.value = 'chat';
+
+    if (item) {
+        selected.value = queueTicketPreview(item);
+    }
+
+    const hadCache = applyCachedTicket(ticketUuid);
+    if (!hadCache) {
+        messages.value = [];
+    }
+
+    syncTicketUrl(ticketUuid);
+    void nextTick(() => scrollBottom());
+
     try {
-        const { data } = await window.axios.get(apiRoute('open', { ticket: ticketId }));
+        const { data } = await fetchTicketOpen(ticketUuid, signal);
+        if (token !== openRequestToken) {
+            return;
+        }
+
         selected.value = data.ticket;
         messages.value = (data.messages || []).map(normalizeStaffMessage);
+        cacheTicketPayload(ticketUuid, data.ticket, data.messages);
         userContext.value = null;
-        mobileView.value = 'chat';
         syncLastMessageId();
-        subscribe(ticketId);
-        syncTicketUrl(ticketId);
-        await nextTick();
-        scrollBottom();
-        emitSupportChanged();
-    } catch {
-        loadError.value = 'Could not open this conversation.';
+        subscribe(data.ticket.id);
+        chatPresence.markNow();
+        void nextTick(() => scrollBottom());
+    } catch (error) {
+        const cancelled = error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError';
+        if (cancelled || token !== openRequestToken) {
+            return;
+        }
+
+        const status = error?.response?.status;
+        loadError.value = status === 403
+            ? 'You do not have access to this chat.'
+            : status === 404
+                ? 'This chat could not be found.'
+                : item
+                    ? 'Could not load messages. Check your connection and try again.'
+                    : 'Could not open this conversation.';
+        if (!hadCache) {
+            selected.value = item ? queueTicketPreview(item) : null;
+            if (!item) {
+                messages.value = [];
+            }
+        }
+    } finally {
+        if (token === openRequestToken) {
+            ticketLoading.value = false;
+        }
     }
+}
+
+async function openTicketByRef(ticketRef) {
+    await activateTicket(null, { ticketRef });
 }
 
 async function selectTicket(item) {
-    mobileView.value = 'chat';
-    loadError.value = '';
-    clearCustomerTyping();
-    try {
-        const { data } = await window.axios.get(apiRoute('open', { ticket: item.id }));
-        selected.value = data.ticket;
-        messages.value = (data.messages || []).map(normalizeStaffMessage);
-        userContext.value = null;
-        syncLastMessageId();
-        subscribe(item.id);
-        syncTicketUrl(item.id);
-        await nextTick();
-        scrollBottom();
-        emitSupportChanged();
-    } catch {
-        loadError.value = 'Could not load this chat. Try again.';
-        selected.value = null;
-        messages.value = [];
-    }
+    await activateTicket(item);
 }
 
-async function refreshQueueNow() {
+async function refreshQueueNow({ force = false } = {}) {
     if (sidebarTab.value !== 'live') {
         return;
     }
+
+    if (!force && Date.now() - lastQueueRefreshAt < QUEUE_REFRESH_MIN_MS) {
+        return;
+    }
+
     const section = isSuperAdmin ? 'all' : activeSection.value;
     try {
         const { data } = await window.axios.get(apiRoute('queue'), {
@@ -1000,18 +1253,21 @@ async function refreshQueueNow() {
                 section,
                 admin_id: filterAdminId.value ? Number(filterAdminId.value) : undefined,
             },
+            timeout: 15_000,
         });
+        lastQueueRefreshAt = Date.now();
         sections.value = data.sections ?? [];
-        queue.value = data.items ?? [];
         activeSection.value = data.active_section ?? activeSection.value;
+        const matched = sections.value.find((s) => s.key === activeSection.value);
+        queue.value = matched?.items?.length ? [...matched.items] : (data.items ?? []);
     } catch {
         /* ignore */
     }
 }
 
-async function debouncedQueueRefresh() {
+async function debouncedQueueRefresh({ force = false } = {}) {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(refreshQueueNow, 900);
+    searchTimer = setTimeout(() => refreshQueueNow({ force }), force ? 0 : 900);
 }
 
 function syncLastMessageId() {
@@ -1022,7 +1278,7 @@ function scheduleMarkRead() {
     clearTimeout(markReadTimer);
     markReadTimer = setTimeout(() => {
         chatPresence.markNow();
-    }, 400);
+    }, 500);
 }
 
 function stopTypingPoll() {
@@ -1032,20 +1288,25 @@ function stopTypingPoll() {
     }
 }
 
+function typingPollIntervalMs() {
+    return chatRealtime.wsConnected.value ? 2000 : 700;
+}
+
 function startTypingPoll() {
     stopTypingPoll();
     if (!selected.value?.id) {
         return;
     }
     const poll = async () => {
-        if (!selected.value?.id) {
+        const ticketUuid = selected.value?.uuid;
+        if (!ticketUuid) {
             return;
         }
         try {
-            const { data } = await window.axios.get(apiRoute('typing-state', { ticket: selected.value.id }));
+            const { data } = await window.axios.get(apiRoute('typing-state', { ticket: ticketUuid }));
             const t = data?.typing;
-            if (t && isTypingActive(t.typing) && String(t.side ?? '').toLowerCase() === 'customer') {
-                applyCustomerTyping({ ...t, typing: true });
+            if (t && isTypingActive(t.typing)) {
+                applyCustomerTyping({ ...t, ticket_id: selected.value?.id, typing: true });
             } else {
                 clearCustomerTyping();
             }
@@ -1054,13 +1315,14 @@ function startTypingPoll() {
         }
     };
     void poll();
-    typingPollTimer = window.setInterval(poll, 1500);
+    typingPollTimer = window.setInterval(poll, typingPollIntervalMs());
 }
 
 function subscribe(ticketId) {
     clearCustomerTyping();
     chatRealtime.subscribe(ticketId, messages.value);
     startTypingPoll();
+    chatPresence.stop();
     chatPresence.start();
     scheduleMarkRead();
 }
@@ -1069,6 +1331,42 @@ function leaveChannel() {
     chatRealtime.teardown();
     stopTypingPoll();
     chatPresence.stop();
+    clearTimeout(markReadTimer);
+    markReadTimer = null;
+}
+
+function stopTypingForTicket(ticketUuid) {
+    if (!ticketUuid || !typingActive) {
+        typingActive = false;
+
+        return;
+    }
+
+    typingActive = false;
+    window.axios.post(apiRoute('typing', { ticket: ticketUuid }), { typing: false }).catch(() => {});
+}
+
+async function fetchTicketOpen(ticketUuid, signal, attempt = 0) {
+    try {
+        return await window.axios.get(apiRoute('open', { ticket: ticketUuid }), {
+            signal,
+            timeout: 20_000,
+        });
+    } catch (error) {
+        const cancelled = error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError';
+        if (cancelled) {
+            throw error;
+        }
+
+        const retryable = !error?.response || error.response.status >= 500 || error.code === 'ECONNABORTED';
+        if (retryable && attempt < 1) {
+            await new Promise((resolve) => window.setTimeout(resolve, 300));
+
+            return fetchTicketOpen(ticketUuid, signal, attempt + 1);
+        }
+
+        throw error;
+    }
 }
 
 function scrollBottom() {
@@ -1106,6 +1404,15 @@ watch(
     { flush: 'post' },
 );
 
+watch(
+    () => [chatRealtime.wsConnected.value, selected.value?.id],
+    () => {
+        if (selected.value?.id) {
+            startTypingPoll();
+        }
+    },
+);
+
 function onGifSelected(gif) {
     pendingGif.value = gif;
     gifOpen.value = false;
@@ -1125,10 +1432,10 @@ function onComposerInput() {
     typingStartDebounce = setTimeout(() => {
         if (!typingActive) {
             typingActive = true;
-            window.axios.post(apiRoute('typing', { ticket: selected.value.id }), { typing: true }).catch(() => {});
+            window.axios.post(apiRoute('typing', { ticket: selected.value.uuid }), { typing: true }).catch(() => {});
         }
-    }, 300);
-    typingIdleTimer = setTimeout(stopTyping, 300);
+    }, 250);
+    typingIdleTimer = setTimeout(stopTyping, 2800);
 }
 
 function stopTyping() {
@@ -1138,7 +1445,7 @@ function stopTyping() {
         return;
     }
     typingActive = false;
-    window.axios.post(apiRoute('typing', { ticket: selected.value.id }), { typing: false }).catch(() => {});
+    window.axios.post(apiRoute('typing', { ticket: selected.value.uuid }), { typing: false }).catch(() => {});
 }
 
 async function onMessageReact({ message, emoji }) {
@@ -1147,7 +1454,7 @@ async function onMessageReact({ message, emoji }) {
     }
     try {
         const { data } = await window.axios.post(
-            apiRoute('react', { ticket: selected.value.id, message: message.id }),
+            apiRoute('react', { ticket: selected.value.uuid, message: message.id }),
             { emoji },
         );
         const idx = messages.value.findIndex((m) => m.id === message.id);
@@ -1175,13 +1482,6 @@ function resolveTemplateBody(body) {
         .replace(/\{\{customer_name\}\}/g, customer)
         .replace(/\{\{agent_signature\}\}/g, signature);
 }
-
-const closingPreviewMessage = computed(() => {
-    if (!pendingClosingTemplate.value?.body) {
-        return '';
-    }
-    return resolveTemplateBody(pendingClosingTemplate.value.body);
-});
 
 async function postComposerMessage({ body, visibility, attachments, gifUrl, restoreOnFail }) {
     if (!selected.value || !canCompose.value) {
@@ -1222,14 +1522,14 @@ async function postComposerMessage({ body, visibility, attachments, gifUrl, rest
     scrollBottom();
     sending.value = true;
     try {
-        const { data } = await window.axios.post(apiRoute('send', { ticket: selected.value.id }), fd);
+        const { data } = await window.axios.post(apiRoute('send', { ticket: selected.value.uuid }), fd, { timeout: 20_000 });
         messages.value = messages.value.filter((m) => m.id !== optimisticId);
         if (!hasMessage(data.message)) {
             messages.value.push(normalizeStaffMessage(data.message));
             chatRealtime.setLastMessageId(data.message.id);
         }
         scrollBottom();
-        emitSupportChanged();
+        refreshTicketCache();
         return true;
     } catch {
         messages.value = messages.value.filter((m) => m.id !== optimisticId);
@@ -1242,40 +1542,29 @@ async function postComposerMessage({ body, visibility, attachments, gifUrl, rest
     }
 }
 
-async function sendPublicBody(body) {
-    const trimmed = String(body ?? '').trim();
-    if (!trimmed || noteMode.value) {
-        return false;
-    }
-    return postComposerMessage({ body: trimmed, visibility: 'public' });
-}
-
-async function onTemplateOpening(template) {
+function insertTemplateIntoComposer(template, { isClosing = false } = {}) {
     if (!template?.body || sending.value || ending.value) {
         return;
     }
-    await sendPublicBody(resolveTemplateBody(template.body));
+
+    noteMode.value = false;
+    composer.value = resolveTemplateBody(template.body);
+    composerHint.value = isClosing
+        ? 'Closing reply loaded — edit if needed, send when ready, then use End session.'
+        : '';
+    void nextTick(() => {
+        composerEl.value?.focus();
+        const length = composer.value.length;
+        composerEl.value?.setSelectionRange?.(length, length);
+    });
+}
+
+function onTemplateOpening(template) {
+    insertTemplateIntoComposer(template);
 }
 
 function onTemplateClosing(template) {
-    if (!template?.body || sending.value || ending.value) {
-        return;
-    }
-    pendingClosingTemplate.value = template;
-    closingTemplateModalOpen.value = true;
-}
-
-async function confirmClosingTemplate() {
-    if (!pendingClosingTemplate.value || !selected.value) {
-        return;
-    }
-    const body = resolveTemplateBody(pendingClosingTemplate.value.body);
-    closingTemplateModalOpen.value = false;
-    const sent = await sendPublicBody(body);
-    pendingClosingTemplate.value = null;
-    if (sent) {
-        await confirmEndChat();
-    }
+    insertTemplateIntoComposer(template, { isClosing: true });
 }
 
 async function send() {
@@ -1289,6 +1578,7 @@ async function send() {
 
     const snap = { body, gif: pendingGif.value, files: [...pendingFiles.value] };
     composer.value = '';
+    composerHint.value = '';
     pendingGif.value = null;
     pendingFiles.value = [];
 
@@ -1320,15 +1610,14 @@ async function confirmEndChat() {
     }
     ending.value = true;
     loadError.value = '';
-    const ticketId = selected.value.id;
     try {
-        const { data } = await window.axios.post(apiRoute('end', { ticket: ticketId }));
+        const { data } = await window.axios.post(apiRoute('end', { ticket: selected.value.uuid }));
         selected.value = data.ticket;
         moveClosedTicketToHistory(data.ticket);
         endModalOpen.value = false;
         sidebarTab.value = 'history';
         try {
-            const { data: openData } = await window.axios.get(apiRoute('open', { ticket: ticketId }));
+            const { data: openData } = await window.axios.get(apiRoute('open', { ticket: selected.value.uuid }));
             selected.value = openData.ticket ?? data.ticket;
             messages.value = (openData.messages ?? []).map(normalizeStaffMessage);
             syncLastMessageId();
@@ -1357,11 +1646,11 @@ async function confirmReassign() {
     }
     reassigning.value = true;
     try {
-        const { data } = await window.axios.post(apiRoute('reassign', { ticket: selected.value.id }), {
+        const { data } = await window.axios.post(apiRoute('reassign', { ticket: selected.value.uuid }), {
             admin_id: Number(reassignPickId.value),
         });
         selected.value = data.ticket;
-        const openRes = await window.axios.get(apiRoute('open', { ticket: selected.value.id }));
+        const openRes = await window.axios.get(apiRoute('open', { ticket: selected.value.uuid }));
         messages.value = (openRes.data.messages || []).map(normalizeStaffMessage);
         syncLastMessageId();
         showReassign.value = false;

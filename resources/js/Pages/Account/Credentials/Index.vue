@@ -113,7 +113,7 @@ defineProps({
 function sectionHint(type) {
     const hints = {
         insurance: 'NAICOM-backed policies, PI cover, equipment insurance — one row per policy.',
-        professional_licence: 'COREN, ARCON, NIM, MDCN, and similar — one row per licence.',
+        professional_licence: 'COREN, ARCON, NIM, MDCN, and similar — one row per qualification.',
         qualification: 'Degrees, diplomas, and formal programmes — one row each.',
         certification: 'Vendor badges, cloud certs, safety cards — one row each.',
     };

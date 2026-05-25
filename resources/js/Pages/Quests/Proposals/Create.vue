@@ -31,6 +31,16 @@
                 </div>
             </section>
 
+            <section
+                v-if="submitFeedback"
+                ref="errorBannerRef"
+                class="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-950 ring-1 ring-rose-200"
+                role="alert"
+            >
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-rose-800">Could not save proposal</p>
+                <p class="mt-2 leading-relaxed">{{ submitFeedback }}</p>
+            </section>
+
             <section v-if="hintLine" class="rounded-xl border border-sky-200 bg-sky-50/90 px-4 py-3 text-sm font-semibold text-sky-950 ring-1 ring-sky-100">
                 {{ hintLine }}
             </section>
@@ -189,9 +199,15 @@
 
                 <section class="space-y-2 rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-6">
                     <div class="flex flex-wrap items-center justify-between gap-2">
-                        <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
-                            Materials & parts
-                        </h2>
+                        <div>
+                            <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
+                                Materials & parts
+                                <span class="ml-1.5 text-[10px] font-bold normal-case tracking-normal text-slate-400">(optional)</span>
+                            </h2>
+                            <p class="mt-1 text-xs font-semibold text-slate-500">
+                                Add lines only if this quote includes physical parts, licences, or pass-through costs.
+                            </p>
+                        </div>
                         <button
                             type="button"
                             class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-slate-800 hover:border-primary-200"
@@ -200,7 +216,13 @@
                             + Add line
                         </button>
                     </div>
-                    <div class="space-y-2">
+                    <p
+                        v-if="!form.materials.length"
+                        class="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-3 text-xs font-semibold text-slate-600"
+                    >
+                        No materials added — your quote can be professional fee, travel, and taxes only.
+                    </p>
+                    <div v-else class="space-y-2">
                         <div
                             v-for="(row, idx) in form.materials"
                             :key="idx"
@@ -230,7 +252,6 @@
                                 </div>
                             </div>
                             <button
-                                v-if="form.materials.length > 1"
                                 type="button"
                                 class="mb-1 rounded-full p-2 text-rose-600 hover:bg-rose-50"
                                 aria-label="Remove row"
@@ -414,7 +435,10 @@ import UiSelect from '@/Components/Ui/UiSelect.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { computed, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
+
+const errorBannerRef = ref(null);
+const submitFeedback = ref('');
 
 const progressReportOptions = [
     { value: '', label: 'Select…' },
@@ -475,7 +499,7 @@ function buildInitialForm() {
             corrections_included: Boolean(e.corrections_included),
             corrections_rounds: e.corrections_rounds ?? 2,
             progress_report_frequency: e.progress_report_frequency || 'weekly',
-            materials: Array.isArray(e.materials) && e.materials.length ? e.materials : [{ label: '', quantity: '1', unit_price_ngn: 0 }],
+            materials: Array.isArray(e.materials) && e.materials.length ? e.materials : [],
             pricing: {
                 professional_fee_ngn: e.pricing?.professional_fee_ngn ?? 0,
                 vat_applies: e.pricing?.vat_applies !== false,
@@ -501,7 +525,7 @@ function buildInitialForm() {
         corrections_included: false,
         corrections_rounds: 2,
         progress_report_frequency: 'weekly',
-        materials: [{ label: '', quantity: '1', unit_price_ngn: 0 }],
+        materials: [],
         pricing: {
             professional_fee_ngn: Math.round((props.quest.budget_minor || 0) / 100 * 0.85),
             vat_applies: true,
@@ -616,7 +640,13 @@ const materialsSubtotalNgn = computed(() =>
     form.materials.reduce((sum, row) => sum + materialLineNgn(row), 0),
 );
 
-const platformFeePercent = computed(() => Math.max(0, Math.min(100, Number(props.platform_fee_percent) || 12)));
+const platformFeePercent = computed(() => {
+    const fromPage = Number(page.props.platform_fee_percent);
+    const fromProps = Number(props.platform_fee_percent);
+    const pct = Number.isFinite(fromPage) && fromPage >= 0 ? fromPage : fromProps;
+
+    return Math.max(0, Math.min(100, pct || 12));
+});
 
 const pricingSubtotalNgn = computed(() => {
     const prof = Math.max(0, Math.round(Number(form.pricing.professional_fee_ngn) || 0));
@@ -686,9 +716,15 @@ function addMaterialRow() {
 
 function removeMaterialRow(i) {
     form.materials.splice(i, 1);
-    if (!form.materials.length) {
-        form.materials.push({ label: '', quantity: '1', unit_price_ngn: 0 });
-    }
+}
+
+function materialRowsForSubmit(rows) {
+    return (rows || []).filter((row) => {
+        const label = String(row?.label ?? '').trim();
+        const unit = Math.max(0, Math.round(Number(row?.unit_price_ngn) || 0));
+
+        return label !== '' || unit > 0;
+    });
 }
 
 function formatBudget(minor) {
@@ -703,18 +739,64 @@ function formatNgn(n) {
     return `₦${v.toLocaleString('en-NG')}`;
 }
 
+function firstError(errors) {
+    if (!errors || typeof errors !== 'object') {
+        return '';
+    }
+
+    for (const value of Object.values(errors)) {
+        if (Array.isArray(value) && value.length) {
+            return String(value[0]);
+        }
+        if (typeof value === 'string' && value.trim() !== '') {
+            return value;
+        }
+    }
+
+    return '';
+}
+
+function scrollToErrorBanner() {
+    nextTick(() => {
+        errorBannerRef.value?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+}
+
 function submit() {
+    submitFeedback.value = '';
+
     const transform = (data) => ({
         ...data,
+        materials: materialRowsForSubmit(data.materials),
         pricing: {
             ...data.pricing,
             vat_applies: !!data.pricing?.vat_applies,
+            grand_total_ngn: computedGrandNgn.value,
+            platform_fee_ngn: form.pricing.platform_fee_ngn,
         },
         accepted_terms: data.accepted_terms ? true : false,
         confirm_revision: data.confirm_revision ? true : false,
     });
 
-const visitOpts = { preserveScroll: true, timeout: 180000 };
+    const visitOpts = {
+        preserveScroll: true,
+        timeout: 180000,
+        onSuccess: () => {
+            submitFeedback.value = '';
+        },
+        onError: (errors) => {
+            submitFeedback.value =
+                firstError(errors) ||
+                'Your proposal could not be saved. Review the highlighted fields below (pitch, scope, materials, pricing, and agreement).';
+            scrollToErrorBanner();
+        },
+        onFinish: () => {
+            if (Object.keys(form.errors || {}).length > 0 && !submitFeedback.value) {
+                submitFeedback.value = firstError(form.errors) || 'Please fix the highlighted fields and try again.';
+                scrollToErrorBanner();
+            }
+        },
+    };
 
     if (isEditMode.value) {
         form.transform(transform).put(route('quests.proposals.update', [props.quest.route_key, props.proposal_edit.offer_id]), visitOpts);

@@ -5,15 +5,23 @@ export function useMessagingViewPresence(markReadFn) {
     let heartbeatTimer = null;
 
     function markNow() {
-        if (typeof markReadFn === 'function') {
-            void markReadFn();
+        if (typeof markReadFn !== 'function') {
+            return;
         }
+
+        void Promise.resolve()
+            .then(() => markReadFn())
+            .catch(() => {
+                /* read is best-effort */
+            });
     }
 
-    function start() {
+    function start({ immediate = false } = {}) {
         stop();
-        markNow();
-        heartbeatTimer = setInterval(markNow, 45000);
+        if (immediate) {
+            markNow();
+        }
+        heartbeatTimer = setInterval(markNow, 60_000);
     }
 
     function stop() {

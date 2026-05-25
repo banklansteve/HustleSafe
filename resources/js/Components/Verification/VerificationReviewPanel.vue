@@ -93,7 +93,63 @@
             </dl>
         </section>
 
-        <section v-if="canDecide && isPending" class="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+        <section v-if="canDecide && isApproved" class="space-y-4 rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
+            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">Re-review approved submission</p>
+            <p class="text-xs font-semibold text-violet-950">
+                This verification is already approved. You can revoke approval or ask the user to submit corrections again.
+            </p>
+
+            <div class="grid gap-2 sm:grid-cols-2">
+                <button
+                    v-for="option in reReviewOptions"
+                    :key="option.value"
+                    type="button"
+                    class="rounded-2xl border px-3 py-3 text-left text-xs font-black transition"
+                    :class="decisionAction === option.value ? option.activeClass : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'"
+                    @click="decisionAction = option.value"
+                >
+                    {{ option.label }}
+                </button>
+            </div>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs font-black uppercase tracking-wide text-slate-500">Reason for user</label>
+                    <select
+                        v-model="reasonCode"
+                        class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                        required
+                    >
+                        <option value="">Select a reason…</option>
+                        <option v-for="reason in decisionReasons" :key="reason.value" :value="reason.value">
+                            {{ reason.label }}
+                        </option>
+                    </select>
+                    <p v-if="selectedReasonHint" class="mt-1 text-xs font-semibold text-slate-600">{{ selectedReasonHint }}</p>
+                </div>
+                <UiTextarea
+                    v-model="reasonNote"
+                    :label="reasonCode === 'other' ? 'Explain (required)' : 'Additional note (optional)'"
+                    :placeholder="reasonCode === 'other' ? 'Tell the user exactly what to fix…' : 'Optional detail for the user notification…'"
+                    :required="reasonCode === 'other'"
+                    :min-rows="2"
+                    :max-rows="6"
+                    :error="decisionError"
+                />
+            </div>
+
+            <button
+                type="button"
+                class="w-full rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-wide text-white shadow-sm disabled:opacity-50"
+                :class="submitClass"
+                :disabled="deciding || !canSubmitDecision"
+                @click="submitDecision"
+            >
+                {{ deciding ? 'Saving decision…' : submitLabel }}
+            </button>
+        </section>
+
+        <section v-if="canDecide && isReviewable" class="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
             <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">Reviewer decision</p>
 
             <div class="grid gap-2 sm:grid-cols-3">
@@ -204,14 +260,21 @@ const decisionError = ref('');
 const deciding = ref(false);
 const decisionBanner = ref(null);
 
-const pendingStatuses = ['pending', 'in_review', 'flagged', 'unverified'];
+const reviewableStatuses = ['pending', 'in_review', 'flagged', 'unverified', 'rejected'];
+const approvedStatuses = ['approved', 'verified'];
 
-const isPending = computed(() => pendingStatuses.includes(props.presentation?.status));
+const isReviewable = computed(() => reviewableStatuses.includes(props.presentation?.status));
+const isApproved = computed(() => approvedStatuses.includes(props.presentation?.status));
 
 const decisionOptions = [
     { value: 'approve', label: 'Approve', activeClass: 'border-emerald-300 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-100' },
     { value: 'request_corrections', label: 'Request corrections', activeClass: 'border-amber-300 bg-amber-50 text-amber-900 ring-2 ring-amber-100' },
     { value: 'reject', label: 'Reject', activeClass: 'border-rose-300 bg-rose-50 text-rose-900 ring-2 ring-rose-100' },
+];
+
+const reReviewOptions = [
+    { value: 'request_corrections', label: 'Request corrections again', activeClass: 'border-amber-300 bg-amber-50 text-amber-900 ring-2 ring-amber-100' },
+    { value: 'reject', label: 'Revoke approval', activeClass: 'border-rose-300 bg-rose-50 text-rose-900 ring-2 ring-rose-100' },
 ];
 
 const selectedReasonHint = computed(() => props.decisionReasons.find((r) => r.value === reasonCode.value)?.hint || '');
@@ -221,9 +284,9 @@ const submitLabel = computed(() => {
         return 'Approve verification';
     }
     if (decisionAction.value === 'request_corrections') {
-        return 'Request corrections';
+        return isApproved.value ? 'Request corrections again' : 'Request corrections';
     }
-    return 'Reject verification';
+    return isApproved.value ? 'Revoke approval' : 'Reject verification';
 });
 
 const submitClass = computed(() => {
@@ -257,7 +320,7 @@ watch(
         reasonNote.value = '';
         reasonCode.value = '';
         decisionError.value = '';
-        decisionAction.value = 'approve';
+        decisionAction.value = approvedStatuses.includes(props.presentation?.status) ? 'request_corrections' : 'approve';
     },
 );
 
