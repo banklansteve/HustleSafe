@@ -92,5 +92,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('operations:process-onboarding-assistance')->dailyAt('06:30');
         $schedule->command('customer-support:close-inactive')->everyFiveMinutes();
         $schedule->command('customer-support:send-rating-emails')->everyFiveMinutes();
+        $schedule->command('conversation-monitoring:analyze-systematic')->everySixHours();
+        $schedule->command('review-manipulation:refresh')->dailyAt('02:15');
+        $schedule->command('review-amendments:expire')->hourly();
     })
     ->create();

@@ -118,7 +118,6 @@ class AdminVerificationEngineController extends Controller
             'escrow_enforcement_threshold_minor' => ['required', 'integer', 'min:0'],
             'milestone_enforcement_threshold_minor' => ['required', 'integer', 'min:0'],
             'minimum_milestone_count' => ['required', 'integer', 'min:1', 'max:20'],
-            'new_account_cooldown_days' => ['required', 'integer', 'min:0', 'max:365'],
             'quest_repost_limit' => ['required', 'integer', 'min:0', 'max:20'],
             'high_value_arbitration_threshold_minor' => ['required', 'integer', 'min:0'],
             'anomaly_new_account_days' => ['required', 'integer', 'min:0', 'max:90'],

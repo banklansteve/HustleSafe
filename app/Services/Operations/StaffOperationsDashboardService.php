@@ -14,6 +14,7 @@ use App\Models\QuestOffer;
 use App\Models\Review;
 use App\Models\User;
 use App\Models\UserVerification;
+use App\Services\TrustRisk\UserRiskMonitoringService;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -68,6 +69,7 @@ class StaffOperationsDashboardService
             $this->tile('disputes', 'Active disputes', QuestDispute::query()->whereIn('status', $this->openDisputeStatuses())->count(), 'Open mediation and ruling queue.', route('operations.disputes.index'), 'rose'),
             $this->tile('kyc', 'Pending verifications', UserVerification::query()->whereIn('status', ['pending', 'in_review', 'flagged'])->count(), 'KYC, BVN, NIN, utility, identity, and credential reviews.', route('operations.verifications.index'), 'emerald'),
             $this->tile('users_flagged', 'Users flagged', $this->flaggedUsers(), 'Accounts with bans, suspensions, restrictions, or active concerns.', route('operations.users.index', ['quick' => 'flagged']), 'slate'),
+            $this->tile('risk_queue', 'Risk queue', app(UserRiskMonitoringService::class)->queueCount(), 'Users above the monitoring threshold with live composite risk scores.', route('operations.trust.index', ['tab' => 'queue']), 'rose'),
         ];
     }
 
@@ -151,6 +153,8 @@ class StaffOperationsDashboardService
     public function quickActions(): array
     {
         return [
+            ['label' => 'Onboarding quality control', 'href' => route('operations.onboarding-quality.index'), 'description' => 'Review new signups within 48 hours for profile authenticity and completeness.'],
+            ['label' => 'Flagged profiles', 'href' => route('operations.onboarding-quality.flagged'), 'description' => 'Accounts flagged for monitoring during onboarding review.'],
             ['label' => 'Open My Tasks', 'href' => route('operations.tasks.index'), 'description' => 'See assigned flags, referrals, KYC items, disputes, and escalations.'],
             ['label' => 'Manage Quests', 'href' => route('operations.quests.index'), 'description' => 'Review quest queues, flags, notices, and moderation context.'],
             ['label' => 'Triage Proposals', 'href' => route('operations.proposals.index'), 'description' => 'Review flagged proposals and operational proposal risk signals.'],
@@ -158,6 +162,8 @@ class StaffOperationsDashboardService
             ['label' => 'Review KYC Queue', 'href' => route('operations.verifications.index'), 'description' => 'Approve, reject, request correction, or escalate submissions.'],
             ['label' => 'Open Support hub', 'href' => route('operations.support.index'), 'description' => 'Tickets, quest-thread chats, disputes, and user context.'],
             ['label' => 'Open CS Inbox', 'href' => route('operations.communications.index'), 'description' => 'Legacy communications and enquiry threads.'],
+            ['label' => 'Trust & risk monitoring', 'href' => route('operations.trust.index'), 'description' => 'Risk queue, watchlist feed, and fraud network investigation.'],
+            ['label' => 'Conversation monitoring', 'href' => route('operations.conversation-monitoring.index'), 'description' => 'Review automatically flagged quest thread messages.'],
         ];
     }
 

@@ -4,9 +4,14 @@ namespace App\Providers;
 
 use App\Listeners\RecordUserLogin;
 use App\Models\Portfolio;
+use App\Models\ModerationCase;
+use App\Models\PaymentEscrow;
 use App\Models\Quest;
+use App\Models\QuestConversationThread;
 use App\Models\QuestDispute;
 use App\Models\QuestOffer;
+use App\Services\TrustRisk\TrustRiskActivityHook;
+use App\Support\TrustRisk\UserRiskScoreDispatcher;
 use App\Models\Review;
 use App\Models\User;
 use App\Models\UserVerification;
@@ -69,6 +74,8 @@ class AppServiceProvider extends ServiceProvider
         Portfolio::observe(PortfolioObserver::class);
         UserVerification::observe(UserVerificationObserver::class);
 
+        $this->registerTrustRiskModelHooks();
+
         Event::listen(Login::class, RecordUserLogin::class);
 
         Event::listen(Verified::class, function (Verified $event): void {
@@ -94,6 +101,43 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('auth', function (Request $request) {
             return Limit::perMinute(10)->by((string) $request->ip().'|'.$request->path());
+        });
+    }
+
+    private function registerTrustRiskModelHooks(): void
+    {
+        $hook = fn () => app(TrustRiskActivityHook::class);
+
+        Quest::created(function (Quest $quest) use ($hook): void {
+            $hook()->questPosted($quest);
+        });
+
+        QuestOffer::created(function (QuestOffer $offer) use ($hook): void {
+            $hook()->proposalSubmitted($offer);
+        });
+
+        QuestConversationThread::created(function (QuestConversationThread $thread) use ($hook): void {
+            $hook()->conversationStarted($thread);
+        });
+
+        QuestDispute::created(function (QuestDispute $dispute) use ($hook): void {
+            $hook()->disputeOpened($dispute);
+        });
+
+        ModerationCase::created(function (ModerationCase $case): void {
+            if ($case->subject_user_id) {
+                UserRiskScoreDispatcher::dispatch((int) $case->subject_user_id);
+            }
+        });
+
+        PaymentEscrow::saved(function (PaymentEscrow $escrow) use ($hook): void {
+            if ($escrow->wasChanged('funded_at') && $escrow->funded_at !== null) {
+                $hook()->contractInitiated(
+                    (int) $escrow->client_id,
+                    (int) $escrow->freelancer_id,
+                    (int) $escrow->id,
+                );
+            }
         });
     }
 }

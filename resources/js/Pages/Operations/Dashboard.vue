@@ -67,6 +67,25 @@
                         </article>
                         <p v-if="!payload.my_tasks?.length" class="rounded-2xl border border-dashed border-slate-200 p-5 text-center text-sm font-bold text-slate-500 md:col-span-2">No assigned tasks. Use the quick queues below to self-assign work.</p>
                     </div>
+                    <div class="mt-5">
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-primary-700">Moderation tools</p>
+                        <div class="mt-3 grid gap-3 md:grid-cols-2">
+                            <Link
+                                :href="route('operations.onboarding-quality.index')"
+                                class="rounded-2xl border border-primary-100 bg-primary-50/70 p-4 shadow-sm hover:border-primary-200 hover:bg-primary-50"
+                            >
+                                <p class="font-black text-slate-950">Onboarding quality control</p>
+                                <p class="mt-1 text-sm font-semibold text-slate-600">Review new signups within 48 hours for profile quality and authenticity.</p>
+                            </Link>
+                            <Link
+                                :href="route('operations.onboarding-quality.flagged')"
+                                class="rounded-2xl border border-amber-100 bg-amber-50/60 p-4 shadow-sm hover:border-amber-200"
+                            >
+                                <p class="font-black text-slate-950">Flagged profiles</p>
+                                <p class="mt-1 text-sm font-semibold text-slate-600">Accounts flagged for monitoring — not bannable, but worth watching.</p>
+                            </Link>
+                        </div>
+                    </div>
                     <div class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                         <Link v-for="action in payload.quick_actions" :key="action.label" :href="action.href" class="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm hover:border-primary-200 hover:bg-primary-50">
                             <p class="font-black text-slate-950">{{ action.label }}</p>

@@ -33,6 +33,8 @@ class RatingAggregationService
     {
         $questColumn = $party === 'freelancer' ? 'quests.freelancer_id' : 'quests.client_id';
 
+        $briefWeight = (float) config('review_moderation.quality.brief_rating_weight', 0.4);
+
         $row = DB::table('reviews')
             ->join('quests', 'quests.id', '=', 'reviews.quest_id')
             ->where($questColumn, $userId)
@@ -40,7 +42,12 @@ class RatingAggregationService
             ->where('reviews.review_type', ReviewType::Full->value)
             ->whereNotNull('reviews.rating')
             ->where('reviews.status', ReviewStatus::Published->value)
-            ->selectRaw('AVG(reviews.rating) as avg_rating, COUNT(*) as cnt')
+            ->selectRaw(
+                'SUM(CASE WHEN reviews.is_brief = 1 THEN reviews.rating * ? ELSE reviews.rating END) /
+                NULLIF(SUM(CASE WHEN reviews.is_brief = 1 THEN ? ELSE 1 END), 0) as avg_rating,
+                COUNT(*) as cnt',
+                [$briefWeight, $briefWeight],
+            )
             ->first();
 
         $avg = $row && $row->avg_rating !== null ? round((float) $row->avg_rating, 2) : null;

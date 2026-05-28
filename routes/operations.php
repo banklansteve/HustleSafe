@@ -7,10 +7,13 @@ use App\Http\Controllers\Operations\OperationsEscalationController;
 use App\Http\Controllers\Operations\OperationsModerationController;
 use App\Http\Controllers\Operations\OperationsNotificationsController;
 use App\Http\Controllers\Operations\OperationsOnboardingController;
+use App\Http\Controllers\Operations\OperationsOnboardingQualityController;
 use App\Http\Controllers\Operations\OperationsPatrolController;
+use App\Http\Controllers\Operations\OperationsPaymentMonitoringController;
 use App\Http\Controllers\Operations\OperationsPayoutExceptionsController;
 use App\Http\Controllers\Operations\OperationsQualityController;
 use App\Http\Controllers\Operations\OperationsTrustController;
+use App\Http\Controllers\Operations\OperationsConversationMonitoringController;
 use App\Http\Controllers\Operations\OperationsPaymentsController;
 use App\Http\Controllers\Operations\OperationsPortfoliosController;
 use App\Http\Controllers\Operations\OperationsProposalsController;
@@ -44,11 +47,28 @@ Route::patch('/api/notifications/{notification}/read', [OperationsNotificationsC
 Route::patch('/api/notifications/{notification}/actioned', [OperationsNotificationsController::class, 'markActioned'])->middleware('throttle:120,1')->name('api.notifications.actioned');
 
 Route::get('/trust', [OperationsTrustController::class, 'index'])->name('trust.index');
+Route::get('/api/trust/risk-queue', [OperationsTrustController::class, 'riskQueue'])->name('api.trust.risk-queue');
 Route::get('/api/trust/watchlist', [OperationsTrustController::class, 'watchlist'])->name('api.trust.watchlist');
+Route::get('/api/trust/feed', [OperationsTrustController::class, 'feed'])->name('api.trust.feed');
 Route::get('/api/trust/clusters', [OperationsTrustController::class, 'clusters'])->name('api.trust.clusters');
+Route::get('/api/trust/users/{user}', [OperationsTrustController::class, 'userRisk'])->name('api.trust.users.show');
+Route::get('/api/trust/users/{user}/network', [OperationsTrustController::class, 'networkGraph'])->name('api.trust.users.network');
+Route::get('/api/trust/users/{user}/network-notes', [OperationsTrustController::class, 'networkNotes'])->name('api.trust.users.network-notes');
 Route::post('/api/trust/watchlist', [OperationsTrustController::class, 'storeWatchlist'])->middleware('throttle:60,1')->name('api.trust.watchlist.store');
 Route::get('/api/trust/watchlist/{item}', [OperationsTrustController::class, 'watchlistDetail'])->name('api.trust.watchlist.detail');
 Route::delete('/api/trust/watchlist/{item}', [OperationsTrustController::class, 'destroyWatchlist'])->middleware('throttle:60,1')->name('api.trust.watchlist.destroy');
+
+Route::get('/conversation-monitoring', [OperationsConversationMonitoringController::class, 'index'])->name('conversation-monitoring.index');
+Route::get('/api/conversation-monitoring/summary', [OperationsConversationMonitoringController::class, 'summary'])->name('api.conversation-monitoring.summary');
+Route::get('/api/conversation-monitoring/queue', [OperationsConversationMonitoringController::class, 'moderationQueue'])->name('api.conversation-monitoring.queue');
+Route::get('/api/conversation-monitoring/systematic', [OperationsConversationMonitoringController::class, 'systematicQueue'])->name('api.conversation-monitoring.systematic');
+Route::get('/api/conversation-monitoring/reviews/{review}', [OperationsConversationMonitoringController::class, 'threadDetail'])->name('api.conversation-monitoring.reviews.show');
+Route::get('/api/conversation-monitoring/systematic/{escalation}', [OperationsConversationMonitoringController::class, 'systematicDetail'])->name('api.conversation-monitoring.systematic.show');
+Route::post('/api/conversation-monitoring/reviews/{review}/dismiss', [OperationsConversationMonitoringController::class, 'dismiss'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.dismiss');
+Route::post('/api/conversation-monitoring/reviews/{review}/warn', [OperationsConversationMonitoringController::class, 'warn'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.warn');
+Route::post('/api/conversation-monitoring/reviews/{review}/escalate', [OperationsConversationMonitoringController::class, 'escalate'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.escalate');
+Route::post('/api/conversation-monitoring/reviews/{review}/flag-risk', [OperationsConversationMonitoringController::class, 'flagRisk'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.flag-risk');
+Route::post('/api/conversation-monitoring/systematic/{escalation}/dismiss', [OperationsConversationMonitoringController::class, 'dismissSystematic'])->middleware('throttle:30,1')->name('api.conversation-monitoring.systematic.dismiss');
 
 Route::get('/quality', [OperationsQualityController::class, 'index'])->name('quality.index');
 Route::get('/api/quality', [OperationsQualityController::class, 'listing'])->name('api.quality.listing');
@@ -77,6 +97,13 @@ Route::get('/api/onboarding/records/{record}', [OperationsOnboardingController::
 Route::post('/api/onboarding/records/{record}/outreach', [OperationsOnboardingController::class, 'outreach'])->middleware('throttle:30,1')->name('api.onboarding.outreach');
 Route::post('/api/onboarding/records/{record}/resolve', [OperationsOnboardingController::class, 'resolve'])->middleware('throttle:30,1')->name('api.onboarding.resolve');
 Route::post('/api/onboarding/records/{record}/ticket', [OperationsOnboardingController::class, 'createTicket'])->middleware('throttle:30,1')->name('api.onboarding.ticket');
+
+Route::get('/onboarding-quality', [OperationsOnboardingQualityController::class, 'index'])->name('onboarding-quality.index');
+Route::get('/onboarding-quality/flagged-profiles', [OperationsOnboardingQualityController::class, 'flaggedProfiles'])->name('onboarding-quality.flagged');
+Route::get('/api/onboarding-quality', [OperationsOnboardingQualityController::class, 'listing'])->name('api.onboarding-quality.listing');
+Route::get('/api/onboarding-quality/flagged-profiles', [OperationsOnboardingQualityController::class, 'flaggedListing'])->name('api.onboarding-quality.flagged');
+Route::get('/api/onboarding-quality/reviews/{review}', [OperationsOnboardingQualityController::class, 'detail'])->name('api.onboarding-quality.detail');
+Route::post('/api/onboarding-quality/reviews/{review}/actions', [OperationsOnboardingQualityController::class, 'action'])->middleware('throttle:60,1')->name('api.onboarding-quality.action');
 Route::get('/exports/dashboard-metrics.csv', [OperationsDashboardController::class, 'export'])->name('dashboard.export');
 Route::post('/escalations', OperationsEscalationController::class)->middleware('throttle:20,1')->name('escalations.store');
 
@@ -151,6 +178,10 @@ Route::post('/api/disputes/{dispute}/evidence', [OperationsDisputesController::c
 Route::patch('/api/disputes/{dispute}/tier', [OperationsDisputesController::class, 'tier'])->middleware('throttle:60,1')->name('api.disputes.tier');
 Route::post('/api/disputes/{dispute}/ruling', [OperationsDisputesController::class, 'ruling'])->middleware('throttle:20,1')->name('api.disputes.ruling');
 
+Route::get('/payment-monitoring', [OperationsPaymentMonitoringController::class, 'index'])->name('payment-monitoring.index');
+Route::get('/api/payment-monitoring', [OperationsPaymentMonitoringController::class, 'listing'])->name('api.payment-monitoring.listing');
+Route::post('/api/payment-monitoring/flags', [OperationsPaymentMonitoringController::class, 'flag'])->middleware('throttle:60,1')->name('api.payment-monitoring.flag');
+
 Route::get('/payments', [OperationsPaymentsController::class, 'index'])->name('payments.index');
 Route::get('/payments/export', [OperationsPaymentsController::class, 'export'])->name('payments.export');
 Route::get('/api/payments', [OperationsPaymentsController::class, 'listing'])->name('api.payments.listing');
@@ -166,10 +197,14 @@ Route::get('/api/verifications/{verification}/document', [OperationsVerification
 
 Route::get('/reviews', [OperationsReviewsController::class, 'index'])->name('reviews.index');
 Route::get('/api/reviews', [OperationsReviewsController::class, 'listing'])->name('api.reviews.listing');
+Route::get('/api/reviews/manipulation/{freelancer}/breakdown', [OperationsReviewsController::class, 'manipulationBreakdown'])->name('api.reviews.manipulation.breakdown');
+Route::get('/api/reviews/manipulation/export/{reportType}', [OperationsReviewsController::class, 'exportManipulation'])->name('api.reviews.manipulation.export');
+Route::get('/api/reviews/clusters/{cluster}', [OperationsReviewsController::class, 'clusterDetail'])->name('api.reviews.clusters.detail');
 Route::get('/api/reviews/{review}', [OperationsReviewsController::class, 'detail'])->name('api.reviews.detail');
 Route::post('/api/reviews/{review}/approve', [OperationsReviewsController::class, 'approve'])->middleware('throttle:60,1')->name('api.reviews.approve');
 Route::post('/api/reviews/{review}/remove', [OperationsReviewsController::class, 'remove'])->middleware('throttle:30,1')->name('api.reviews.remove');
 Route::post('/api/reviews/{review}/revision', [OperationsReviewsController::class, 'requestRevision'])->middleware('throttle:60,1')->name('api.reviews.revision');
+Route::post('/api/reviews/{review}/amendment', [OperationsReviewsController::class, 'requestAmendment'])->middleware('throttle:60,1')->name('api.reviews.amendment');
 Route::post('/api/reviews/{review}/flag', [OperationsReviewsController::class, 'flag'])->middleware('throttle:60,1')->name('api.reviews.flag');
 Route::post('/api/reviews/appeals/{appeal}/resolve', [OperationsReviewsController::class, 'resolveAppeal'])->middleware('throttle:30,1')->name('api.reviews.appeals.resolve');
 

@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Events\QuestConversationMessageSent;
 use App\Events\QuestConversationTyping;
 use App\Http\Requests\Quests\StoreQuestConversationMessageRequest;
-use App\Jobs\ScanContentForModerationJob;
+use App\Jobs\ScanConversationMessageJob;
 use App\Models\Quest;
 use App\Models\QuestConversationMessage;
 use App\Models\QuestConversationThread;
@@ -158,7 +158,7 @@ class QuestConversationController extends Controller
             'user_id' => $user->id,
             'body' => $request->validated()['body'],
         ]);
-        ScanContentForModerationJob::dispatch(QuestConversationMessage::class, (int) $message->id)->afterResponse();
+        ScanConversationMessageJob::dispatch((int) $message->id)->afterResponse();
 
         $thread->increment('messages_count');
         $thread->forceFill(['last_message_at' => now()])->save();

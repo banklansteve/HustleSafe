@@ -18,7 +18,17 @@ class EnsureOperationsStaff
     {
         $slug = $request->user()?->role?->slug;
         if ($slug === 'super_admin') {
-            return redirect()->route('admin.dashboard');
+            $routeName = (string) ($request->route()?->getName() ?? '');
+            $allowedForSuperAdmin = str_starts_with($routeName, 'operations.moderation')
+                || str_starts_with($routeName, 'operations.api.moderation')
+                || str_starts_with($routeName, 'operations.trust')
+                || str_starts_with($routeName, 'operations.api.trust')
+                || str_starts_with($routeName, 'operations.conversation-monitoring')
+                || str_starts_with($routeName, 'operations.api.conversation-monitoring');
+
+            if (! $allowedForSuperAdmin) {
+                return redirect()->route('admin.dashboard');
+            }
         }
 
         if ($slug !== 'admin') {

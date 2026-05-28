@@ -193,7 +193,7 @@
             </AdminTabPanel>
 
             <AdminTabPanel :current-tab="activeTab" value="safeguards" id-prefix="verification-engine">
-                <AdminPanel title="Safeguard Configuration" description="Escrow, milestones, cooldowns, reposting, arbitration, and anomaly detection thresholds.">
+                <AdminPanel title="Safeguard Configuration" description="Escrow, milestones, reposting, arbitration, and anomaly detection thresholds.">
                     <form class="grid gap-3 md:grid-cols-2 xl:grid-cols-3" @submit.prevent="saveSafeguards">
                         <div v-for="field in safeguardFields" :key="field.key" class="rounded-3xl border p-4" :class="shell.card">
                             <div class="flex items-start justify-between gap-3">
@@ -680,7 +680,6 @@ const safeguardFields = [
     ['escrow_enforcement_threshold_minor', 'Escrow threshold', 'Quest value above this amount requires escrow funding before work starts.'],
     ['milestone_enforcement_threshold_minor', 'Milestone threshold', 'Quest value above this amount requires milestones.'],
     ['minimum_milestone_count', 'Minimum milestones', 'Required count when milestone rule applies.'],
-    ['new_account_cooldown_days', 'New account cooldown', 'Days to cap earned level by one.'],
     ['quest_repost_limit', 'Quest repost limit', 'Duplicate quest count before flagging.'],
     ['high_value_arbitration_threshold_minor', 'Arbitration threshold', 'Quest value requiring both-party arbitration consent.'],
     ['anomaly_new_account_days', 'New account anomaly days', 'Age window for new-account risk rules.'],

@@ -36,6 +36,8 @@ return [
         'admin_referral' => ['category' => 'referral', 'default_in_app' => true, 'default_email' => true],
         'task_overdue' => ['category' => 'task', 'default_in_app' => true, 'default_email' => true],
         'quality_alert' => ['category' => 'quality', 'default_in_app' => true, 'default_email' => false],
+        'watchlist_urgent' => ['category' => 'quality', 'default_in_app' => true, 'default_email' => false],
+        'watchlist_tier_change' => ['category' => 'quality', 'default_in_app' => true, 'default_email' => false],
         'payment_exception' => ['category' => 'payment', 'default_in_app' => true, 'default_email' => true],
         'team_chat_message' => ['category' => 'team_chat', 'default_in_app' => true, 'default_email' => false],
     ],

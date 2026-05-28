@@ -101,7 +101,6 @@ return [
         'escrow_enforcement_threshold_minor' => 100,
         'milestone_enforcement_threshold_minor' => 100_000_000,
         'minimum_milestone_count' => 2,
-        'new_account_cooldown_days' => 30,
         'quest_repost_limit' => 2,
         'high_value_arbitration_threshold_minor' => 100_000_000,
         'anomaly_new_account_days' => 7,

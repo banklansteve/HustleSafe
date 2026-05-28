@@ -67,7 +67,6 @@ class FreelancerWorkspaceReadinessService
         $verification = app(VerificationEngineService::class);
         $proposalLimitMinor = $verification->freelancerProposalLimitMinor($user);
         $effectiveLevel = $verification->effectiveLevel($user);
-        $cooldown = $verification->cooldown($user);
 
         $activeOffers = QuestOffer::query()
             ->where('freelancer_id', $user->id)
@@ -162,7 +161,6 @@ class FreelancerWorkspaceReadinessService
             'high_value_quest_budget_minor' => $proposalLimitMinor,
             'verification_effective_level' => $effectiveLevel,
             'verification_proposal_limit_minor' => $proposalLimitMinor,
-            'verification_cooldown' => $cooldown,
             'active_offer_count' => $activeOffers,
             'limited_slots_remaining' => 0,
             'can_submit_proposals' => $canSubmit,
@@ -198,6 +196,8 @@ class FreelancerWorkspaceReadinessService
      */
     public function assertCanSubmitOffer(User $user, Quest $quest, ?int $quotedAmountMinor = null): void
     {
+        app(\App\Services\Onboarding\OnboardingPostingGateService::class)->assertCanPost($user, 'proposal');
+
         if ($user->role?->slug !== 'freelancer') {
             throw ValidationException::withMessages([
                 'proposal' => [__('Only freelancer accounts can submit proposals.')],
@@ -296,7 +296,6 @@ class FreelancerWorkspaceReadinessService
             'high_value_quest_budget_minor' => 0,
             'verification_effective_level' => 0,
             'verification_proposal_limit_minor' => 0,
-            'verification_cooldown' => ['active' => false],
             'active_offer_count' => 0,
             'limited_slots_remaining' => 0,
             'can_submit_proposals' => false,

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Services\ClientOutstandingActionsService;
+use App\Services\ReviewModeration\ReviewAmendmentService;
 use App\Services\Support\CustomerSupportService;
 use App\Services\Admin\ContentManagementService;
 use App\Support\Admin\AdminManagementRegistry;
@@ -139,6 +140,14 @@ class HandleInertiaRequests extends Middleware
             'impersonation' => fn () => $impersonation,
             'broadcast' => static fn () => $request->user() ? BroadcastClientConfig::forRequest() : null,
             'reverb' => static fn () => $request->user() ? BroadcastClientConfig::forRequest() : null,
+            'review_amendment_prompts' => static function () use ($request) {
+                $user = $request->user();
+                if ($user === null || ! in_array($user->role?->slug, ['client', 'freelancer'], true)) {
+                    return [];
+                }
+
+                return app(ReviewAmendmentService::class)->pendingPromptsFor($user);
+            },
             'customer_support_widget' => static function () use ($request) {
                 $user = $request->user();
                 if ($user === null || ! in_array($user->role?->slug, ['client', 'freelancer'], true)) {

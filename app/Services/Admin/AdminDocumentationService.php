@@ -148,7 +148,7 @@ class AdminDocumentationService
                 ], ['document review', 'regularisation', 'referral']),
                 $this->section('Trust Levels and Limits', [
                     'Earned level is based on completed verification requirements.',
-                    'Effective level may be lower when safeguards such as new-account cooldown apply.',
+                    'Effective level matches the stored verification level unless an admin override or custom per-user limit applies.',
                     'Posting and proposal limits are calculated from effective level unless a super admin override exists.',
                 ], ['earned level', 'effective level', 'limits']),
                 $this->section('Troubleshooting', [

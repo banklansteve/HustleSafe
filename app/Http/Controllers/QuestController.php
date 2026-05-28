@@ -101,7 +101,6 @@ class QuestController extends Controller
             'maxBudgetMinor' => max(10_000, min(100_000_000, $clientLimit > 0 ? $clientLimit : 100_000_000)),
             'minBudgetMinor' => 10_000,
             'verificationLimit' => $clientLimit,
-            'verificationCooldown' => app(VerificationEngineService::class)->cooldown($user),
             'fieldProfileUrl' => route('quests.field-profile'),
             'freelancersYouFollow' => $this->questCreateFreelancerNetworkFollowing($user),
             'freelancersFollowingYou' => $this->questCreateFreelancerNetworkFollowers($user),
@@ -119,6 +118,7 @@ class QuestController extends Controller
     ): RedirectResponse {
         $user = $request->user();
         $data = $request->validated();
+        app(\App\Services\Onboarding\OnboardingPostingGateService::class)->assertCanPost($user, 'budget_amount_minor');
         $verificationEngine->assertClientCanPostQuest($user, (int) ($data['budget_amount_minor'] ?? 0));
         $publish = $request->boolean('publish_now', true);
         $category = QuestCategory::query()->with('parent')->find((int) $data['quest_category_id']);
@@ -459,8 +459,8 @@ class QuestController extends Controller
                 'effective_level' => $verificationEngine->effectiveLevel($user),
                 'proposal_limit_minor' => $freelancerLimit,
                 'earned_proposal_limit_minor' => $verificationEngine->limitAtLevel($user, $verificationEngine->storedLevel($user)),
-                'limit_capped' => $freelancerLimit < $verificationEngine->limitAtLevel($user, $verificationEngine->storedLevel($user)),
-                'cooldown' => $verificationEngine->cooldown($user),
+                'limit_capped' => $user->custom_freelancer_proposal_limit_minor !== null
+                    && $freelancerLimit < $verificationEngine->limitAtLevel($user, $verificationEngine->storedLevel($user)),
                 'can_submit_for_budget' => $verificationCanOffer,
             ] : null,
             'workspace' => $summary ? array_merge(['enabled' => true], $summary) : ['enabled' => false],

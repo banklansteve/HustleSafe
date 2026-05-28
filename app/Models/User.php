@@ -289,6 +289,22 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * @return HasOne<OnboardingQualityReview, $this>
+     */
+    public function onboardingQualityReview(): HasOne
+    {
+        return $this->hasOne(OnboardingQualityReview::class);
+    }
+
+    /**
+     * @return HasMany<LoginEvent, $this>
+     */
+    public function loginEvents(): HasMany
+    {
+        return $this->hasMany(LoginEvent::class);
+    }
+
+    /**
      * Portfolios this user has favourited.
      *
      * @return BelongsToMany<Portfolio, $this>

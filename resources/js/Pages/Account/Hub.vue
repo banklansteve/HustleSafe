@@ -160,9 +160,6 @@
                             <p v-if="verificationEngine.next_hint" class="mt-2 text-sm font-semibold text-primary-900">
                                 {{ verificationEngine.next_hint }}
                             </p>
-                            <p v-if="verificationEngine.cooldown?.active" class="mt-2 text-sm font-black text-amber-700">
-                                New-account cool-down active until {{ dateLabel(verificationEngine.cooldown.expires_at) }}.
-                            </p>
                             <p v-if="verificationEngine.restricted" class="mt-2 text-sm font-black text-rose-700">
                                 Verification restriction: {{ verificationEngine.restriction_reason || 'Admin review in progress' }}
                             </p>
@@ -186,19 +183,12 @@
                             <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">{{ verificationEngine.limit_label || (verificationEngine.is_freelancer ? 'Proposal limit' : 'Quest posting limit') }}</p>
                             <p class="mt-1 text-lg font-black text-slate-950">{{ verificationEngine.limit_formatted || money(verificationEngine.limit_minor) }}</p>
                             <p v-if="verificationEngine.limit_capped && verificationEngine.earned_limit_formatted" class="mt-2 text-xs font-semibold text-amber-800">
-                                Earned {{ verificationEngine.current_label }} limit:
-                                {{ verificationEngine.earned_limit_formatted }}
-                                <span v-if="verificationEngine.cooldown?.active"> (after cooldown)</span>
+                                Tier limit at {{ verificationEngine.current_label }}:
+                                {{ verificationEngine.earned_limit_formatted }}.
+                                Your account has a lower custom cap.
                             </p>
                             <p v-else-if="verificationEngine.limit_description" class="mt-2 text-xs font-semibold text-slate-600">
                                 {{ verificationEngine.limit_description }}
-                            </p>
-                            <p
-                                v-if="verificationEngine.limit_capped && verificationEngine.cooldown?.active"
-                                class="mt-2 text-xs font-black text-amber-700"
-                            >
-                                Active limit uses {{ verificationEngine.effective_label || ('L' + verificationEngine.effective_level) }}
-                                until {{ formatWhen(verificationEngine.cooldown.expires_at) }}.
                             </p>
                         </div>
                     </div>

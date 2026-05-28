@@ -192,7 +192,6 @@ class AdvancedUserManagementService
             'verification_engine' => [
                 'earned_level' => $verificationEngine->storedLevel($user),
                 'effective_level' => $verificationEngine->effectiveLevel($user),
-                'cooldown' => $verificationEngine->cooldown($user),
                 'client_posting_limit_minor' => $verificationEngine->clientPostingLimitMinor($user),
                 'freelancer_proposal_limit_minor' => $verificationEngine->freelancerProposalLimitMinor($user),
                 'override' => [

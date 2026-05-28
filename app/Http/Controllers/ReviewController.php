@@ -6,7 +6,9 @@ use App\Enums\ReviewStatus;
 use App\Enums\ReviewType;
 use App\Http\Requests\Review\StoreReviewRequest;
 use App\Http\Requests\Review\UpdateReviewRequest;
+use App\Jobs\ProcessReviewAuthenticityJob;
 use App\Jobs\ScanContentForModerationJob;
+use App\Services\ReviewModeration\ReviewAmendmentService;
 use App\Models\ActivityLog;
 use App\Models\Quest;
 use App\Models\Review;
@@ -79,7 +81,7 @@ class ReviewController extends Controller
                 'title' => $request->input('title'),
                 'comment' => $request->input('comment'),
                 'tags' => $request->input('tags'),
-                'status' => ReviewStatus::Published,
+                'status' => ReviewStatus::PendingReview,
                 'edit_window_ends_at' => now()->addHours($hours),
             ]);
 
@@ -101,7 +103,7 @@ class ReviewController extends Controller
             return $model;
         });
 
-        $this->trustScores->recalculate($reviewee->fresh());
+        ProcessReviewAuthenticityJob::dispatch((int) $review->id, $request->ip())->afterResponse();
         ScanContentForModerationJob::dispatch(Review::class, (int) $review->id)->afterResponse();
 
         ActivityLog::query()->create([
@@ -139,7 +141,7 @@ class ReviewController extends Controller
             );
         }
 
-        return back()->with('success', __('Thanks — your feedback strengthens trust on HustleSafe.'));
+        return back()->with('success', __('Thanks — your feedback is being verified and will appear once cleared.'));
     }
 
     public function update(UpdateReviewRequest $request, Review $review): RedirectResponse
@@ -162,11 +164,20 @@ class ReviewController extends Controller
             $review->rating = (int) $request->input('rating');
         }
 
+        $wasAmendment = $review->status === ReviewStatus::AmendmentPending;
         $review->save();
 
-        $this->trustScores->recalculate($review->reviewee->fresh());
+        if ($wasAmendment) {
+            app(ReviewAmendmentService::class)->respond($review, $request->user());
+            ProcessReviewAuthenticityJob::dispatch((int) $review->id, $request->ip())->afterResponse();
+        } else {
+            $this->trustScores->recalculate($review->reviewee->fresh());
+        }
+
         ScanContentForModerationJob::dispatch(Review::class, (int) $review->id)->afterResponse();
 
-        return back()->with('success', __('Review updated.'));
+        return back()->with('success', $wasAmendment
+            ? __('Review updated — we are re-checking it before publication.')
+            : __('Review updated.'));
     }
 }

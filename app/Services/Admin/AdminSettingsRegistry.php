@@ -249,6 +249,22 @@ class AdminSettingsRegistry
                 $this->setting('providers.sms_api_key', 'SMS provider API key', 'password', '', 'Masked SMS provider key.', ['sensitive' => true]),
                 $this->setting('providers.sms_low_balance_threshold', 'SMS low balance threshold', 'number', 500, 'Alerts Super Admins below this balance.'),
             ]),
+            $this->section('conversation_monitoring', 'Conversation Monitoring', 'Health score threshold for automatic Trust & Risk queue surfacing.', [
+                $this->setting('conversation_monitoring.health_risk_threshold', 'Conversation health risk threshold', 'number', 45, 'Users below this conversation health score are surfaced in Trust & Risk with Conversation Risk signal.'),
+            ]),
+            $this->section('review_moderation', 'Review & Rating Moderation', 'Default actions when amendment requests expire without a reviewer response.', [
+                $this->setting('review_moderation.default_action.velocity_cluster', 'Velocity cluster — expired amendment', 'select', 'auto_remove', 'Action if reviewer does not amend.', ['options' => ['auto_publish' => 'Auto-publish', 'auto_remove' => 'Auto-remove']]),
+                $this->setting('review_moderation.default_action.sentiment_mismatch', 'Sentiment mismatch — expired amendment', 'select', 'auto_publish', 'Action if reviewer does not amend.', ['options' => ['auto_publish' => 'Auto-publish', 'auto_remove' => 'Auto-remove']]),
+                $this->setting('review_moderation.default_action.reciprocal_pair', 'Reciprocal pair — expired amendment', 'select', 'auto_remove', 'Action if reviewer does not amend.', ['options' => ['auto_publish' => 'Auto-publish', 'auto_remove' => 'Auto-remove']]),
+                $this->setting('review_moderation.default_action.ip_cluster', 'IP cluster — expired amendment', 'select', 'auto_remove', 'Action if reviewer does not amend.', ['options' => ['auto_publish' => 'Auto-publish', 'auto_remove' => 'Auto-remove']]),
+                $this->setting('review_moderation.default_action.blacklisted_keyword', 'Blacklisted keyword — expired amendment', 'select', 'auto_remove', 'Action if reviewer does not amend.', ['options' => ['auto_publish' => 'Auto-publish', 'auto_remove' => 'Auto-remove']]),
+            ]),
+            $this->section('trust_risk', 'Trust & Risk Monitoring', 'Composite risk score tier boundaries and automatic Risk Queue threshold.', [
+                $this->setting('trust_risk.tier_low_max', 'Low risk maximum (0–N)', 'number', 39, 'Scores at or below this value are Low tier (green).'),
+                $this->setting('trust_risk.tier_medium_max', 'Medium risk maximum', 'number', 69, 'Scores above Low max and at or below this are Medium (amber).'),
+                $this->setting('trust_risk.tier_high_max', 'High risk maximum', 'number', 84, 'Scores above Medium max and at or below this are High (orange). Critical is above High max.'),
+                $this->setting('trust_risk.monitoring_queue_min_score', 'Risk Queue auto-enrol threshold', 'number', 40, 'Users at or above this composite score appear in the Staff Risk Queue.'),
+            ]),
             $this->section('moderation', 'Content & Moderation', 'Keywords, external links, budget anomaly thresholds and image/review moderation.', [
                 $this->setting('moderation.prohibited_keywords', 'Prohibited keywords', 'tags', 'whatsapp,telegram,pay outside', 'Words/phrases that trigger flags.'),
                 $this->setting('moderation.link_whitelist', 'External link whitelist', 'tags', 'linkedin.com,github.com,behance.net,dribbble.com,figma.com', 'Allowed domains.'),
@@ -339,6 +355,20 @@ class AdminSettingsRegistry
 
     private function validateTierMonotonic(string $sectionKey, array $values): void
     {
+        if ($sectionKey === 'trust_risk') {
+            $low = (int) ($values['trust_risk.tier_low_max'] ?? 39);
+            $medium = (int) ($values['trust_risk.tier_medium_max'] ?? 69);
+            $high = (int) ($values['trust_risk.tier_high_max'] ?? 84);
+
+            if ($low >= $medium || $medium >= $high || $high >= 100) {
+                throw ValidationException::withMessages([
+                    'trust_risk.tier_medium_max' => 'Risk tiers must increase: low max < medium max < high max < 100.',
+                ]);
+            }
+
+            return;
+        }
+
         if ($sectionKey !== 'verification') {
             return;
         }

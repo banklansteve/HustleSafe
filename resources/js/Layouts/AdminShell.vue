@@ -464,6 +464,7 @@ import HustleSafeLogo from '@/Components/Brand/HustleSafeLogo.vue';
 import { useBrandFavicon } from '@/composables/useBrandFavicon';
 import { provideAdminTheme } from '@/composables/useAdminTheme';
 import { useAdminSidebar } from '@/composables/useAdminSidebar';
+import { matchPathPrefix } from '@/utils/navPathMatch';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
@@ -766,16 +767,21 @@ const visibleManagementNav = computed(() =>
 
 const expandedManagement = reactive({});
 
-const expandedNavGroups = reactive({
-    Home: false,
-    'Revenue & growth': false,
-    'Customer support': false,
-    Marketplace: false,
-    'Risk & compliance': false,
-    Communications: false,
-    'Data registry': false,
-    Platform: false,
-});
+const expandedNavGroups = reactive(
+    Object.fromEntries(
+        [
+            'Home',
+            'Revenue & growth',
+            'Customer support',
+            'Moderation',
+            'Marketplace',
+            'Risk & compliance',
+            'Communications',
+            'Data registry',
+            'Platform',
+        ].map((label) => [label, false]),
+    ),
+);
 
 function currentManagementResource() {
     const path = page.url.split('?')[0] || '';
@@ -850,7 +856,8 @@ const navGroups = [
         collapsible: true,
         items: [
             { label: 'Payments & Escrow', href: route('admin.payments-escrow.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/payments-escrow') },
-            { label: 'Financial Control', href: route('admin.financial.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial') },
+            { label: 'Financial review queue', href: route('admin.financial-review.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial-review') },
+            { label: 'Financial Control', href: route('admin.financial.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial') && !p.startsWith('/admin/financial-review') },
             { label: 'Treasury', href: route('admin.treasury.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/treasury') },
             { label: 'Reports & analytics', href: route('admin.reports.index'), icon: ChartBarSquareIcon, match: (p) => p.startsWith('/admin/reports') },
             { label: 'Promotions & Growth', href: route('admin.promotions.index'), icon: RocketLaunchIcon, match: (p) => p.startsWith('/admin/promotions') },
@@ -868,23 +875,26 @@ const navGroups = [
         ],
     },
     {
+        label: 'Moderation',
+        collapsible: true,
+        items: [
+            { label: 'Onboarding quality control', href: route('admin.onboarding-quality.index'), icon: ShieldCheckIcon, match: (p) => matchPathPrefix(p, '/admin/onboarding-quality', { exclude: ['/admin/onboarding-quality/flagged-profiles'] }) },
+            { label: 'Flagged profiles', href: route('admin.onboarding-quality.flagged'), icon: ShieldCheckIcon, match: (p) => matchPathPrefix(p, '/admin/onboarding-quality/flagged-profiles') },
+            { label: 'Quest & proposal review', href: route('operations.moderation.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/operations/moderation') },
+            { label: 'Content Moderation', href: route('admin.content-moderation.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/content-moderation') },
+            { label: 'Conversation monitoring', href: route('admin.conversation-monitoring.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/conversation-monitoring') },
+        ],
+    },
+    {
         label: 'Marketplace',
         collapsible: true,
         items: [
             { label: 'Quests', href: route('admin.quests.index'), icon: BriefcaseIcon, match: (p) => p.startsWith('/admin/quests') },
             { label: 'Proposals', href: route('admin.proposals.index'), icon: ClipboardDocumentCheckIcon, match: (p) => p.startsWith('/admin/proposals') },
-            {
-                label: 'Quest & proposal review',
-                hint: 'Slide-in moderation for all quests and proposals',
-                href: route('operations.moderation.index'),
-                icon: ShieldCheckIcon,
-                match: (p) => p.startsWith('/operations/moderation'),
-            },
             { label: 'Categories', href: route('admin.categories.index'), icon: Squares2X2Icon, match: (p) => p.startsWith('/admin/categories') },
             { label: 'Users', href: route('admin.users.index'), icon: UsersIcon, match: (p) => p.startsWith('/admin/users') },
             { label: 'Verification Engine', href: route('admin.verification-engine.index'), icon: IdentificationIcon, match: (p) => p.startsWith('/admin/verification-engine') || p.startsWith('/admin/kyc') },
             { label: 'Portfolio review', href: route('admin.portfolio-review.index'), icon: PhotoIcon, match: (p) => p.startsWith('/admin/portfolio-review') },
-            { label: 'Content Moderation', href: route('admin.content-moderation.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/content-moderation') },
             { label: 'Disputes', href: route('admin.disputes.index'), icon: ExclamationTriangleIcon, match: (p) => p.startsWith('/admin/disputes') },
         ],
     },
@@ -893,7 +903,7 @@ const navGroups = [
         collapsible: true,
         items: [
             { label: 'User Intelligence', href: route('admin.intelligence.index'), icon: UserGroupIcon, match: (p) => p.startsWith('/admin/intelligence') },
-            { label: 'Fraud & Risk', href: route('admin.fraud.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/fraud-risk') },
+            { label: 'Trust & risk', href: route('admin.trust-risk.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/trust-risk') || p.startsWith('/admin/fraud-risk') },
             { label: 'Compliance', href: route('admin.compliance.index'), icon: DocumentTextIcon, match: (p) => p.startsWith('/admin/compliance') },
         ],
     },
@@ -951,8 +961,12 @@ function findActiveNavGroupLabel() {
 }
 
 function openOnlyNavGroup(label) {
-    for (const key of Object.keys(expandedNavGroups)) {
-        expandedNavGroups[key] = label !== null && key === label;
+    for (const group of navGroups) {
+        if (! group.collapsible) {
+            continue;
+        }
+
+        expandedNavGroups[group.label] = label !== null && group.label === label;
     }
 }
 

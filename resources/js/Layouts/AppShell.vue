@@ -336,6 +336,7 @@
             <slot />
         </main>
 
+        <ReviewAmendmentPrompt />
         <CustomerSupportBubble
             v-if="showSupportBubble"
             :bootstrap="customerSupportWidget"
@@ -345,6 +346,7 @@
 
 <script setup>
 import HustleSafeLogo from '@/Components/Brand/HustleSafeLogo.vue';
+import ReviewAmendmentPrompt from '@/Components/Reviews/ReviewAmendmentPrompt.vue';
 import CustomerSupportBubble from '@/Components/Support/CustomerSupportBubble.vue';
 import NavUserMenu from '@/Components/Layout/NavUserMenu.vue';
 import AppToastHost from '@/Components/Ui/AppToastHost.vue';

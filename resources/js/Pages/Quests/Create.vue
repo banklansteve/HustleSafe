@@ -325,7 +325,6 @@
                                         class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-black leading-relaxed text-amber-800"
                                     >
                                         Your current verification level caps Quest budgets at {{ formatNgn(verificationLimit) }}.
-                                        <span v-if="verificationCooldown?.active"> Your new-account cool-down ends {{ formatDate(verificationCooldown.expires_at) }}.</span>
                                     </p>
                                     <p
                                         v-if="budgetGuidanceCopy"
@@ -679,7 +678,6 @@ const props = defineProps({
     startTimingOptions: { type: Array, required: true },
     maxBudgetMinor: { type: Number, default: 100_000_000 },
     verificationLimit: { type: Number, default: null },
-    verificationCooldown: { type: Object, default: null },
     minBudgetMinor: { type: Number, default: 10_000 },
     fieldProfileUrl: { type: String, required: true },
     freelancersYouFollow: { type: Array, default: () => [] },

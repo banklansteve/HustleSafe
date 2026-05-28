@@ -3,6 +3,33 @@
         title="Command overview"
         subtitle="Live KPIs on white cards over the teal canvas. Toggle chart mode from the sidebar."
     >
+        <AdminPanel eyebrow="Moderation tools" title="Onboarding & trust">
+            <div class="grid gap-3 sm:grid-cols-2">
+                <Link
+                    :href="route('admin.onboarding-quality.index')"
+                    prefetch="false"
+                    class="rounded-2xl border border-primary-100 bg-primary-50/60 p-4 transition hover:border-primary-200 hover:bg-primary-50"
+                    :class="shell.card"
+                >
+                    <p class="text-sm font-black" :class="shell.cardTitle">Onboarding quality control</p>
+                    <p class="mt-1 text-xs font-semibold leading-relaxed" :class="shell.cardMuted">
+                        Review new client and freelancer signups within 48 hours.
+                    </p>
+                </Link>
+                <Link
+                    :href="route('admin.onboarding-quality.flagged')"
+                    prefetch="false"
+                    class="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 transition hover:border-amber-200"
+                    :class="shell.card"
+                >
+                    <p class="text-sm font-black" :class="shell.cardTitle">Flagged profiles</p>
+                    <p class="mt-1 text-xs font-semibold leading-relaxed" :class="shell.cardMuted">
+                        Accounts flagged for monitoring during onboarding review.
+                    </p>
+                </Link>
+            </div>
+        </AdminPanel>
+
         <AdminPanel eyebrow="Quick actions" title="Data interchange">
             <template #actions>
                 <AdminQuickActions

@@ -236,9 +236,6 @@
                                     <p class="mt-1 text-sm font-bold text-slate-500">
                                         Earned L{{ profile.overview.verification_engine?.earned_level ?? 0 }} · Effective L{{ profile.overview.verification_engine?.effective_level ?? 0 }}
                                     </p>
-                                    <p v-if="profile.overview.verification_engine?.cooldown?.active" class="mt-2 text-xs font-black text-amber-600">
-                                        Cool-down active until {{ dateLabel(profile.overview.verification_engine.cooldown.expires_at) }}
-                                    </p>
                                     <p v-if="profile.overview.verification_engine?.restriction?.active" class="mt-2 text-xs font-black text-rose-600">
                                         Restricted: {{ profile.overview.verification_engine.restriction.reason }}
                                     </p>

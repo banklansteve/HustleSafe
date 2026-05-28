@@ -749,12 +749,12 @@
                                 Your active limit is L{{ verification_access.effective_level }}
                                 (up to <span class="font-black">{{ formatBudget(verification_access.proposal_limit_minor) }}</span>).
                                 <template v-if="verification_access.limit_capped && verification_access.earned_proposal_limit_minor">
-                                    You earned L{{ verification_access.earned_level }}
-                                    (up to {{ formatBudget(verification_access.earned_proposal_limit_minor) }}).
+                                    Your tier allows up to {{ formatBudget(verification_access.earned_proposal_limit_minor) }}; an admin custom cap applies.
                                 </template>
-                                Complete more verification to unlock this quest.
+                                <template v-else>
+                                    Complete more verification to unlock this quest.
+                                </template>
                             </span>
-                            <span v-if="verification_access.cooldown?.active"> Cool-down ends {{ formatWhen(verification_access.cooldown.expires_at) }}.</span>
                         </template>
                         <template v-else-if="workspacePanelItems.length">
                             <span v-if="!workspace.can_submit_proposals">Use the <span class="font-black">Freelancer workspace</span> checklist above to unlock proposals.</span>

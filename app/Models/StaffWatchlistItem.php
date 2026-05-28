@@ -10,12 +10,23 @@ class StaffWatchlistItem extends Model
 {
     protected $fillable = [
         'staff_user_id',
+        'visibility',
         'watchable_type',
         'watchable_id',
         'label',
+        'reason',
+        'review_by_date',
+        'severity',
         'notes',
         'priority',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'review_by_date' => 'date',
+        ];
+    }
 
     public function staff(): BelongsTo
     {

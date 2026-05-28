@@ -129,7 +129,6 @@ class PublicFreelancerProfileController extends Controller
                 'earned_level' => $verificationEngine->storedLevel($user),
                 'effective_level' => $verificationEngine->effectiveLevel($user),
                 'proposal_limit_minor' => $verificationEngine->freelancerProposalLimitMinor($user),
-                'cooldown' => $verificationEngine->cooldown($user),
                 'portfolio_verified' => in_array('portfolio_review', $completedVerificationTypes, true),
             ],
             'trust_score' => $user->trust_score,

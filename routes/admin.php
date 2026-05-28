@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\AdminDisputesController;
 use App\Http\Controllers\Admin\AdminEngagementPolicyController;
 use App\Http\Controllers\Admin\AdminEmailBroadcastController;
 use App\Http\Controllers\Admin\AdminFinancialControlController;
+use App\Http\Controllers\Admin\AdminFinancialReviewController;
 use App\Http\Controllers\Admin\AdminPlatformFeeLedgerController;
 use App\Http\Controllers\Admin\AdminQuestCompletionEventsController;
 use App\Http\Controllers\Admin\AdminQuestReleaseController;
@@ -21,6 +22,8 @@ use App\Http\Controllers\Shared\UserVerificationDocumentController;
 use App\Http\Controllers\Admin\AdminContractReceiptController;
 use App\Http\Controllers\Admin\AdminPaymentsEscrowController;
 use App\Http\Controllers\Admin\AdminFraudRiskController;
+use App\Http\Controllers\Admin\AdminTrustRiskController;
+use App\Http\Controllers\Admin\AdminConversationMonitoringController;
 use App\Http\Controllers\Admin\AdminInsightsController;
 use App\Http\Controllers\Admin\AdminIntelligenceController;
 use App\Http\Controllers\Admin\AdminKycCentreController;
@@ -29,6 +32,7 @@ use App\Http\Controllers\Admin\AdminManagementController;
 use App\Http\Controllers\Admin\AdminMessagesController;
 use App\Http\Controllers\Admin\AdminStaffActivitySummaryController;
 use App\Http\Controllers\Admin\AdminNotificationCentreController;
+use App\Http\Controllers\Admin\AdminOnboardingQualityController;
 use App\Http\Controllers\Admin\AdminPromotionsGrowthController;
 use App\Http\Controllers\Admin\AdminPortfolioReviewController;
 use App\Http\Controllers\Admin\AdminProposalsController;
@@ -100,6 +104,32 @@ Route::patch('/tasks/{task}/status', [AdminTaskController::class, 'status'])->mi
 Route::get('/intelligence', AdminIntelligenceController::class)->name('intelligence.index');
 Route::get('/treasury', AdminTreasuryController::class)->name('treasury.index');
 Route::get('/fraud-risk', AdminFraudRiskController::class)->name('fraud.index');
+Route::get('/trust-risk', [AdminTrustRiskController::class, 'index'])->name('trust-risk.index');
+Route::get('/api/trust-risk/risk-queue', [AdminTrustRiskController::class, 'riskQueue'])->name('api.trust-risk.risk-queue');
+Route::get('/api/trust-risk/watchlists', [AdminTrustRiskController::class, 'allWatchlists'])->name('api.trust-risk.watchlists');
+Route::get('/api/trust-risk/feed', [AdminTrustRiskController::class, 'feed'])->name('api.trust-risk.feed');
+Route::get('/api/trust-risk/users/{user}', [AdminTrustRiskController::class, 'userRisk'])->name('api.trust-risk.users.show');
+Route::get('/api/trust-risk/users/{user}/network', [AdminTrustRiskController::class, 'networkGraph'])->name('api.trust-risk.users.network');
+Route::get('/api/trust-risk/users/{user}/network-notes', [AdminTrustRiskController::class, 'networkNotes'])->name('api.trust-risk.users.network-notes');
+Route::post('/api/trust-risk/users/{user}/network-notes', [AdminTrustRiskController::class, 'storeNetworkNote'])->middleware('throttle:30,1')->name('api.trust-risk.users.network-notes.store');
+Route::post('/api/trust-risk/watchlist', [AdminTrustRiskController::class, 'storeWatchlist'])->middleware('throttle:60,1')->name('api.trust-risk.watchlist.store');
+Route::delete('/api/trust-risk/watchlist/{item}', [AdminTrustRiskController::class, 'destroyWatchlist'])->middleware('throttle:60,1')->name('api.trust-risk.watchlist.destroy');
+
+Route::get('/conversation-monitoring', [AdminConversationMonitoringController::class, 'index'])->name('conversation-monitoring.index');
+Route::get('/api/conversation-monitoring/queue', [AdminConversationMonitoringController::class, 'moderationQueue'])->name('api.conversation-monitoring.queue');
+Route::get('/api/conversation-monitoring/systematic', [AdminConversationMonitoringController::class, 'systematicQueue'])->name('api.conversation-monitoring.systematic');
+Route::get('/api/conversation-monitoring/reviews/{review}', [AdminConversationMonitoringController::class, 'threadDetail'])->name('api.conversation-monitoring.reviews.show');
+Route::get('/api/conversation-monitoring/systematic/{escalation}', [AdminConversationMonitoringController::class, 'systematicDetail'])->name('api.conversation-monitoring.systematic.show');
+Route::post('/api/conversation-monitoring/reviews/{review}/dismiss', [AdminConversationMonitoringController::class, 'dismiss'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.dismiss');
+Route::post('/api/conversation-monitoring/reviews/{review}/warn', [AdminConversationMonitoringController::class, 'warn'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.warn');
+Route::post('/api/conversation-monitoring/reviews/{review}/escalate', [AdminConversationMonitoringController::class, 'escalate'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.escalate');
+Route::post('/api/conversation-monitoring/reviews/{review}/flag-risk', [AdminConversationMonitoringController::class, 'flagRisk'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.flag-risk');
+Route::post('/api/conversation-monitoring/systematic/{escalation}/resolve', [AdminConversationMonitoringController::class, 'resolveSystematic'])->middleware('throttle:20,1')->name('api.conversation-monitoring.systematic.resolve');
+Route::get('/api/conversation-monitoring/terms', [AdminConversationMonitoringController::class, 'terms'])->name('api.conversation-monitoring.terms');
+Route::post('/api/conversation-monitoring/terms', [AdminConversationMonitoringController::class, 'storeTerm'])->middleware('throttle:30,1')->name('api.conversation-monitoring.terms.store');
+Route::patch('/api/conversation-monitoring/terms/{term}', [AdminConversationMonitoringController::class, 'updateTerm'])->middleware('throttle:30,1')->name('api.conversation-monitoring.terms.update');
+Route::delete('/api/conversation-monitoring/terms/{term}', [AdminConversationMonitoringController::class, 'destroyTerm'])->middleware('throttle:30,1')->name('api.conversation-monitoring.terms.destroy');
+
 Route::get('/compliance', [AdminComplianceCentreController::class, 'index'])->name('compliance.index');
 Route::post('/compliance/requests', [AdminComplianceCentreController::class, 'store'])->middleware('throttle:20,1')->name('compliance.requests.store');
 Route::get('/reports', [AdminReportsController::class, 'index'])->name('reports.index');
@@ -123,6 +153,12 @@ Route::post('/payments-escrow/users/{user}/wallet/lock', [AdminPaymentsEscrowCon
 Route::post('/payments-escrow/users/{user}/wallet/unlock', [AdminPaymentsEscrowController::class, 'unlockWallet'])
     ->middleware('throttle:20,1')
     ->name('payments-escrow.wallet.unlock');
+
+Route::get('/financial-review', [AdminFinancialReviewController::class, 'index'])->name('financial-review.index');
+Route::get('/api/financial-review', [AdminFinancialReviewController::class, 'listing'])->name('api.financial-review.listing');
+Route::post('/api/financial-review/flags/{flag}/resolve', [AdminFinancialReviewController::class, 'resolve'])
+    ->middleware('throttle:60,1')
+    ->name('api.financial-review.resolve');
 
 Route::get('/financial', [AdminFinancialControlController::class, 'index'])->name('financial.index');
 Route::get('/financial/summary', [AdminFinancialControlController::class, 'summary'])->name('financial.summary');
@@ -344,6 +380,15 @@ Route::get('/portfolio-review/{portfolio}', [AdminPortfolioReviewController::cla
 Route::patch('/portfolio-review/{portfolio}', [AdminPortfolioReviewController::class, 'update'])
     ->middleware('throttle:40,1')
     ->name('portfolio-review.update');
+
+Route::get('/onboarding-quality', [AdminOnboardingQualityController::class, 'index'])->name('onboarding-quality.index');
+Route::get('/onboarding-quality/flagged-profiles', [AdminOnboardingQualityController::class, 'flaggedProfiles'])->name('onboarding-quality.flagged');
+Route::get('/api/onboarding-quality', [AdminOnboardingQualityController::class, 'listing'])->name('api.onboarding-quality.listing');
+Route::get('/api/onboarding-quality/flagged-profiles', [AdminOnboardingQualityController::class, 'flaggedListing'])->name('api.onboarding-quality.flagged');
+Route::get('/api/onboarding-quality/reviews/{review}', [AdminOnboardingQualityController::class, 'detail'])->name('api.onboarding-quality.detail');
+Route::post('/api/onboarding-quality/reviews/{review}/actions', [AdminOnboardingQualityController::class, 'action'])
+    ->middleware('throttle:60,1')
+    ->name('api.onboarding-quality.action');
 
 Route::get('/content-moderation', [AdminContentModerationController::class, 'index'])->name('content-moderation.index');
 Route::get('/content-moderation/cases/{case}', [AdminContentModerationController::class, 'show'])->name('content-moderation.cases.show');

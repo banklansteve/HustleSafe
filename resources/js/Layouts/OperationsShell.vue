@@ -287,6 +287,8 @@ onBeforeUnmount(() => {
     }
 });
 
+import { matchPathPrefix } from '@/utils/navPathMatch';
+
 const flashSuccess = computed(() => page.props.flash?.success ?? '');
 const firstError = computed(() => {
     const errors = page.props.errors || {};
@@ -316,9 +318,11 @@ const navGroups = [
     {
         label: 'Moderation',
         items: [
+            { label: 'Onboarding quality control', hint: '48-hour signup profile quality reviews', href: route('operations.onboarding-quality.index'), match: (p) => matchPathPrefix(p, '/operations/onboarding-quality', { exclude: ['/operations/onboarding-quality/flagged-profiles'] }) },
+            { label: 'Flagged profiles', hint: 'Accounts flagged for monitoring during onboarding', href: route('operations.onboarding-quality.flagged'), match: (p) => p.startsWith('/operations/onboarding-quality/flagged-profiles') },
             { label: 'Moderation centre', hint: 'Tabbed quest & proposal queues with slide-in actions', href: route('operations.moderation.index'), match: (p) => p.startsWith('/operations/moderation') },
             { label: 'Portfolio review', hint: 'Review freelancer portfolios and media for fraud or abuse', href: route('operations.portfolio-review.index'), match: (p) => p.startsWith('/operations/portfolio-review') },
-            { label: 'Reviews', hint: 'Review moderation and appeals triage', href: route('operations.reviews.index'), match: (p) => p.startsWith('/operations/reviews') },
+            { label: 'Reviews', hint: 'Authenticity engine, amendments, manipulation dashboard', href: route('operations.reviews.index'), match: (p) => p.startsWith('/operations/reviews') },
             { label: 'Review integrity', hint: 'Coordinated review manipulation patterns', href: route('operations.review-integrity.index'), match: (p) => p.startsWith('/operations/review-integrity') },
             { label: 'Content patrol', hint: 'Proactive sampled Quest & proposal review', href: route('operations.patrol.index'), match: (p) => p.startsWith('/operations/patrol') },
             { label: 'Badge requests', hint: 'Manual Top Rated & talent badge reviews', href: route('operations.badge-requests.index'), match: (p) => p.startsWith('/operations/badge-requests') },
@@ -329,9 +333,10 @@ const navGroups = [
         items: [
             { label: 'Users', hint: 'User context, warnings, and 72-hour suspensions', href: route('operations.users.index'), match: (p) => p.startsWith('/operations/users') },
             { label: 'Verifications', hint: 'KYC, BVN, NIN, and utility review queue', href: route('operations.verifications.index'), match: (p) => p.startsWith('/operations/verifications') },
-            { label: 'Trust monitoring', hint: 'Watchlist and risk cluster investigation', href: route('operations.trust.index'), match: (p) => p.startsWith('/operations/trust') },
+            { label: 'Trust & risk', hint: 'Risk queue, watchlist, fraud network graph', href: route('operations.trust.index'), match: (p) => p.startsWith('/operations/trust') },
+            { label: 'Conversation monitoring', hint: 'Automated message scanning and escalation queue', href: route('operations.conversation-monitoring.index'), match: (p) => p.startsWith('/operations/conversation-monitoring') },
             { label: 'Freelancer quality', hint: 'Performance trends and coaching actions', href: route('operations.quality.index'), match: (p) => p.startsWith('/operations/quality') },
-            { label: 'Onboarding assist', hint: 'Stuck users and retention outreach', href: route('operations.onboarding.index'), match: (p) => p.startsWith('/operations/onboarding') },
+            { label: 'Onboarding assist', hint: 'Stuck users and retention outreach', href: route('operations.onboarding.index'), match: (p) => matchPathPrefix(p, '/operations/onboarding', { exclude: ['/operations/onboarding-quality'] }) },
         ],
     },
     {
@@ -340,7 +345,8 @@ const navGroups = [
             { label: 'Disputes', hint: 'Mediation queue and evidence review', href: route('operations.disputes.index'), match: (p) => p.startsWith('/operations/disputes') },
             { label: 'Escrow anomalies', hint: 'Stalled contracts before formal disputes', href: route('operations.escrow-anomalies.index'), match: (p) => p.startsWith('/operations/escrow-anomalies') },
             { label: 'Sanction appeals', hint: 'Warnings, restrictions, and suspensions', href: route('operations.sanction-appeals.index'), match: (p) => p.startsWith('/operations/sanction-appeals') },
-            { label: 'Payments', hint: 'Limited escrow and payout support view', href: route('operations.payments.index'), match: (p) => p.startsWith('/operations/payments') },
+            { label: 'Payment monitoring', hint: 'Anomaly detection queue for escrow and payouts', href: route('operations.payment-monitoring.index'), match: (p) => p.startsWith('/operations/payment-monitoring') },
+            { label: 'Payments', hint: 'Limited escrow and payout support view', href: route('operations.payments.index'), match: (p) => p.startsWith('/operations/payments') && !p.includes('payment-monitoring') },
             { label: 'Payout exceptions', hint: 'Failed payouts and Super Admin escalations', href: route('operations.payout-exceptions.index'), match: (p) => p.startsWith('/operations/payout-exceptions') },
         ],
     },

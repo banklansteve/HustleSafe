@@ -8,6 +8,8 @@ use App\Models\ModerationCase;
 use App\Models\Review;
 use App\Models\User;
 use App\Services\AdminActivityLogger;
+use App\Services\ReviewModeration\ReviewModerationActionLogger;
+use App\Services\ReviewModeration\ReviewModerationPipelineService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -16,7 +18,11 @@ use Illuminate\Validation\ValidationException;
 
 class StaffReviewModerationService
 {
-    public function __construct(private readonly AdminActivityLogger $logger) {}
+    public function __construct(
+        private readonly AdminActivityLogger $logger,
+        private readonly ReviewModerationPipelineService $pipeline,
+        private readonly ReviewModerationActionLogger $reviewLogger,
+    ) {}
 
     public function listing(Request $request): LengthAwarePaginator
     {
@@ -32,7 +38,7 @@ class StaffReviewModerationService
             'removed' => $query->where('status', ReviewStatus::Removed),
             'flagged' => $query->whereHas('moderationCases', fn (Builder $sub) => $sub->whereIn('status', ['open', 'in_review'])),
             'appeals' => $query->whereHas('moderationCases.appeals', fn (Builder $sub) => $sub->where('status', 'open')),
-            default => $query->whereIn('status', [ReviewStatus::PendingReview, ReviewStatus::Draft]),
+            default => $query->whereIn('status', [ReviewStatus::PendingReview, ReviewStatus::Draft, ReviewStatus::AmendmentPending]),
         };
 
         if ($q !== '') {
@@ -103,9 +109,9 @@ class StaffReviewModerationService
             $review->fill(array_filter([
                 'title' => $data['title'] ?? null,
                 'comment' => $data['comment'] ?? null,
-                'status' => ReviewStatus::Published,
             ], fn ($v) => $v !== null))->save();
 
+            $this->pipeline->publish($review, $staff, 'staff_approved');
             $this->closeModerationCase($review, $staff, 'approve', $data['reason'] ?? 'Approved by staff.');
             $this->logger->log($staff, 'operations.review.approved', Review::class, $review->id, [], $request);
 
@@ -116,9 +122,10 @@ class StaffReviewModerationService
     public function remove(Review $review, User $staff, array $data, Request $request): Review
     {
         return DB::transaction(function () use ($review, $staff, $data, $request): Review {
-            $review->forceFill(['status' => ReviewStatus::Removed])->save();
+            $this->pipeline->remove($review, $staff, 'staff_removed', $data['reason']);
             $this->closeModerationCase($review, $staff, 'remove', $data['reason']);
             $this->logger->log($staff, 'operations.review.removed', Review::class, $review->id, ['reason' => $data['reason']], $request);
+            $this->reviewLogger->log($review, $staff, 'staff_removed', $data['reason']);
 
             return $review->fresh();
         });
@@ -167,11 +174,15 @@ class StaffReviewModerationService
         });
     }
 
-    private function row(Review $review): array
+    public function row(Review $review): array
     {
         return [
             'id' => $review->id,
             'status' => $review->status?->value ?? (string) $review->status,
+            'authenticity_flag' => $review->authenticity_flag?->value ?? (string) ($review->authenticity_flag ?? 'clean'),
+            'quality_score' => $review->quality_score,
+            'is_brief' => (bool) $review->is_brief,
+            'cluster_id' => $review->moderation_cluster_id,
             'rating' => $review->rating,
             'title' => $review->title,
             'comment' => str((string) $review->comment)->limit(160)->toString(),
