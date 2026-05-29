@@ -4,6 +4,7 @@ use App\Http\Middleware\ApplyRoleSessionLifetime;
 use App\Http\Middleware\EnsureApplicationAvailable;
 use App\Http\Middleware\EnsureFreelancer;
 use App\Http\Middleware\EnsureOperationsStaff;
+use App\Http\Middleware\EnsureStaffRoleGroupAccess;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\RedirectOperationsStaffFromAdminConsole;
 use App\Http\Middleware\ForceHttps;
@@ -56,6 +57,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'freelancer' => EnsureFreelancer::class,
             'super_admin' => EnsureSuperAdmin::class,
             'operations_staff' => EnsureOperationsStaff::class,
+            'staff_role_group_access' => EnsureStaffRoleGroupAccess::class,
             'redirect_operations_staff_from_admin' => RedirectOperationsStaffFromAdminConsole::class,
             'platform_team' => \App\Http\Middleware\EnsurePlatformTeamMember::class,
         ]);
@@ -95,5 +97,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('conversation-monitoring:analyze-systematic')->everySixHours();
         $schedule->command('review-manipulation:refresh')->dailyAt('02:15');
         $schedule->command('review-amendments:expire')->hourly();
+        $schedule->command('hr:generate-alerts')->hourly();
     })
     ->create();

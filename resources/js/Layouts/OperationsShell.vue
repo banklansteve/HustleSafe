@@ -304,6 +304,7 @@ const navGroups = [
             { label: 'Dashboard', hint: 'Personal workload and active queues', href: route('operations.dashboard'), match: (p) => p === '/operations' || p === '/operations/' },
             { label: 'Alert centre', hint: 'Personal inbox, critical banners, preferences', href: route('operations.notifications.index'), match: (p) => p.startsWith('/operations/notifications') },
             { label: 'My Tasks', hint: 'Assigned flags, referrals, disputes, and escalations', href: route('operations.tasks.index'), match: (p) => p.startsWith('/operations/tasks') },
+            { label: 'Account', hint: 'Profile, security, privacy, leave and payroll', href: route('operations.account.index'), match: (p) => p.startsWith('/operations/account') || p.startsWith('/operations/hr') },
             { label: 'Knowledge base', hint: 'Policies, precedents, and how-to guides', href: route('operations.knowledge-base.index'), match: (p) => p.startsWith('/operations/knowledge-base') },
         ],
     },

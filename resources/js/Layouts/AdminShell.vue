@@ -455,11 +455,13 @@
             </Transition>
         </Teleport>
 
+        <OperationsToastHost />
     </div>
 </template>
 
 <script setup>
 import AdminThemeToggle from '@/Components/Admin/AdminThemeToggle.vue';
+import OperationsToastHost from '@/Pages/Operations/Components/OperationsToastHost.vue';
 import HustleSafeLogo from '@/Components/Brand/HustleSafeLogo.vue';
 import { useBrandFavicon } from '@/composables/useBrandFavicon';
 import { provideAdminTheme } from '@/composables/useAdminTheme';
@@ -771,6 +773,7 @@ const expandedNavGroups = reactive(
     Object.fromEntries(
         [
             'Home',
+            'HR management',
             'Revenue & growth',
             'Customer support',
             'Moderation',
@@ -849,6 +852,16 @@ const navGroups = [
             { label: 'Alert Centre', href: route('admin.alerts.index'), icon: BellIcon, match: (p) => p.startsWith('/admin/alerts') },
             { label: 'Tasks', href: route('admin.tasks.index'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/tasks') },
             { label: 'Platform settings', href: route('admin.settings.index'), icon: Cog6ToothIcon, matchFull: (url) => url.startsWith('/admin/settings') && !url.includes('section=maintenance'), match: (p) => p.startsWith('/admin/settings') },
+        ],
+    },
+    {
+        label: 'HR management',
+        collapsible: true,
+        items: [
+            { label: 'Role management', href: route('admin.hr.roles.index'), icon: UserGroupIcon, match: (p) => p.startsWith('/admin/hr/roles') },
+            { label: 'Leave management', href: route('admin.hr.leave.index'), icon: UserGroupIcon, match: (p) => p.startsWith('/admin/hr/leave') },
+            { label: 'Payment management', href: route('admin.hr.payments.index'), icon: UserGroupIcon, match: (p) => p.startsWith('/admin/hr/payments') },
+            { label: 'Monthly payroll', href: route('admin.hr.payroll-monthly.index'), icon: UserGroupIcon, match: (p) => p.startsWith('/admin/hr/payroll-monthly') },
         ],
     },
     {

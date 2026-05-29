@@ -26,6 +26,9 @@ use App\Http\Controllers\Operations\OperationsUsersController;
 use App\Http\Controllers\Operations\OperationsVerificationsController;
 use App\Http\Controllers\Operations\OperationsReviewIntegrityController;
 use App\Http\Controllers\Operations\OperationsEscrowAnomaliesController;
+use App\Http\Controllers\Operations\OperationsAccountController;
+use App\Http\Controllers\Operations\OperationsHrExportController;
+use App\Http\Controllers\Operations\OperationsHrSelfServiceController;
 use App\Http\Controllers\Operations\OperationsSanctionAppealsController;
 use App\Http\Controllers\Operations\OperationsCommunicationsViewerController;
 use App\Http\Controllers\Operations\OperationsKnowledgeBaseController;
@@ -36,6 +39,16 @@ use App\Http\Controllers\Operations\OperationsTeamChatController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', OperationsDashboardController::class)->name('dashboard');
+Route::get('/account', [OperationsAccountController::class, 'show'])->name('account.index');
+Route::patch('/account/details', [OperationsAccountController::class, 'updateDetails'])->name('account.details');
+Route::patch('/account/visibility', [OperationsAccountController::class, 'updateVisibility'])->name('account.visibility');
+Route::post('/account/avatar', [OperationsAccountController::class, 'updateAvatar'])->middleware('throttle:20,1')->name('account.avatar');
+Route::post('/account/leave-requests', [OperationsAccountController::class, 'storeLeaveRequest'])->middleware('throttle:20,1')->name('account.leave-requests.store');
+Route::get('/account/payslips/{payslip}/download', [OperationsAccountController::class, 'downloadPayslip'])->name('account.payslips.download');
+Route::get('/account/payslips/download', [OperationsAccountController::class, 'downloadPayslipByPeriod'])->name('account.payslips.download-by-period');
+Route::get('/hr', [OperationsHrSelfServiceController::class, 'index'])->name('hr.index');
+Route::post('/hr/leave-requests', [OperationsHrSelfServiceController::class, 'storeLeaveRequest'])->middleware('throttle:20,1')->name('hr.leave-requests.store');
+Route::get('/hr/exports/performance.pdf', [OperationsHrExportController::class, 'performanceReport'])->name('hr.exports.performance');
 
 Route::get('/notifications', [OperationsNotificationsController::class, 'index'])->name('notifications.index');
 Route::get('/notifications/{notification}/open', [OperationsNotificationsController::class, 'open'])->name('notifications.open');

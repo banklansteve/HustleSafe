@@ -343,7 +343,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('admin.')
         ->group(base_path('routes/admin.php'));
 
-    Route::middleware(['operations_staff', 'throttle:480,1'])
+    Route::middleware(['operations_staff', 'staff_role_group_access', 'throttle:480,1'])
         ->prefix('operations')
         ->name('operations.')
         ->group(base_path('routes/operations.php'));
