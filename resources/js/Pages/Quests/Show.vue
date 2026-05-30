@@ -45,6 +45,17 @@
         </div>
 
         <div
+            v-if="qualityGateIssues.length"
+            class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-950 ring-1 ring-rose-100"
+            role="alert"
+        >
+            <p class="font-bold">Fix these items before publishing</p>
+            <ul class="mt-2 list-disc space-y-1 pl-5 text-xs font-semibold leading-relaxed">
+                <li v-for="(issue, idx) in qualityGateIssues" :key="idx">{{ issue.message }}</li>
+            </ul>
+        </div>
+
+        <div
             v-if="is_quest_owner && quest.status === 'open' && quest.is_client_edit_locked"
             class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-950 ring-1 ring-amber-100"
             role="status"
@@ -615,6 +626,15 @@
                     <p class="mt-1 text-xs font-semibold text-emerald-950/80">
                         Payments and rulings activate once the gateway is connected — timers and evidence still run today.
                     </p>
+
+                    <div v-if="quest.commerce.escrow_timeline" class="mt-4">
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-900">Escrow timeline</p>
+                        <div class="mt-2">
+                            <EscrowTransparencyTimeline :timeline="quest.commerce.escrow_timeline" />
+                        </div>
+                    </div>
+
+                    <DisputePreventionPrompts v-if="quest.commerce.dispute_prevention_prompts?.length" class="mt-4" :prompts="quest.commerce.dispute_prevention_prompts" />
                     <div class="mt-4 flex flex-wrap gap-2">
                         <form
                             v-if="quest.commerce.show_fund_button && quest.commerce.funding_post_url"
@@ -862,6 +882,8 @@
 </template>
 
 <script setup>
+import EscrowTransparencyTimeline from '@/Components/Quests/EscrowTransparencyTimeline.vue';
+import DisputePreventionPrompts from '@/Components/Quests/DisputePreventionPrompts.vue';
 import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
 import QuestFileGallery from '@/Components/Quests/QuestFileGallery.vue';
@@ -900,6 +922,14 @@ const props = defineProps({
 });
 
 const page = usePage();
+const qualityGateIssues = computed(() => {
+    const flash = page.props.flash?.quality_gate_issues;
+    if (Array.isArray(flash) && flash.length) {
+        return flash;
+    }
+
+    return Array.isArray(props.quest?.quality_gate_feedback) ? props.quest.quality_gate_feedback : [];
+});
 const isFreelancer = computed(() => page.props.auth?.user?.role?.slug === 'freelancer');
 const isStaffRole = computed(() => ['admin', 'super_admin'].includes(page.props.auth?.user?.role?.slug ?? ''));
 const localBookmarked = ref(props.is_bookmarked);

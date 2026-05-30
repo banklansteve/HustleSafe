@@ -118,8 +118,8 @@
                             <option value="system">System generated</option>
                             <option value="admin">Admin initiated</option>
                         </select>
-                        <input v-model="ledgerFilters.from" type="date" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @change="applyLedgerFilters" />
-                        <input v-model="ledgerFilters.to" type="date" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @change="applyLedgerFilters" />
+                        <AdminDateInput v-model="ledgerFilters.from" button-class="rounded-2xl border px-4 py-3 text-sm font-semibold" @change="applyLedgerFilters" />
+                        <AdminDateInput v-model="ledgerFilters.to" button-class="rounded-2xl border px-4 py-3 text-sm font-semibold" @change="applyLedgerFilters" />
                         <input v-model="ledgerFilters.amount_min" type="number" min="0" placeholder="Min amount" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @change="applyLedgerFilters" />
                         <input v-model="ledgerFilters.amount_max" type="number" min="0" placeholder="Max amount" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @change="applyLedgerFilters" />
                     </div>
@@ -275,7 +275,7 @@
                     <p v-if="escrowAction.action === 'partial_refund'" class="rounded-2xl bg-slate-50 p-3 text-xs font-black dark:bg-white/5">
                         Split total: {{ splitTotalLabel }}. Held balance: {{ escrowLedger.controls.held }}.
                     </p>
-                    <input v-model="escrowAction.expected_resolution_at" type="date" class="w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
+                    <AdminDateInput v-model="escrowAction.expected_resolution_at" button-class="w-full rounded-2xl border px-4 py-3 text-sm font-semibold" />
                     <textarea v-model="escrowAction.reason" rows="3" required minlength="10" placeholder="Mandatory audit reason" class="w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
                     <button type="submit" class="w-full rounded-2xl px-4 py-3 text-sm font-black uppercase" :class="shell.btnPrimary">Review and execute</button>
                 </form>
@@ -296,6 +296,7 @@
 </template>
 
 <script setup>
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminPlatformFeesPanel from '@/Components/Admin/AdminPlatformFeesPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';

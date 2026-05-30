@@ -70,11 +70,20 @@
                                     {{ formatStatus(p.status) }}
                                 </span>
                             </div>
-                            <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-slate-600">
+                            <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-semibold text-slate-600">
                                 <span class="font-black text-primary-800">{{ formatMoney(p.quoted_amount_minor) }}</span>
                                 <span>Submitted {{ formatWhen(p.created_at) }}</span>
                                 <span v-if="p.client_pinned_at" class="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase text-violet-900">Pinned</span>
                                 <span v-if="p.shortlisted_at" class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-black uppercase text-sky-900">Shortlisted</span>
+                            </div>
+                            <div v-if="p.status === 'submitted'" class="mt-3 flex gap-2">
+                                <button
+                                    type="button"
+                                    class="rounded-full bg-sky-600 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white hover:bg-sky-700"
+                                    @click.prevent="shortlistProposal(p)"
+                                >
+                                    Shortlist
+                                </button>
                             </div>
                         </div>
                     </Link>
@@ -103,7 +112,7 @@ import ListSearchSortBar from '@/Components/Ui/ListSearchSortBar.vue';
 import BackChevronLink from '@/Components/Ui/BackChevronLink.vue';
 import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
 import AppShell from '@/Layouts/AppShell.vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
 const props = defineProps({
@@ -118,10 +127,15 @@ const pageSize = 12;
 
 const sortOptions = [
     { value: 'submitted_desc', label: 'Newest submitted' },
+    { value: 'shortlisted_first', label: 'Shortlisted first' },
     { value: 'amount_desc', label: 'Highest quote' },
     { value: 'status_asc', label: 'Status A–Z' },
     { value: 'name_asc', label: 'Freelancer A–Z' },
 ];
+
+function shortlistProposal(p) {
+    router.post(route('quests.proposals.shortlist', [props.quest.route_key, p.id]), { confirm: true }, { preserveScroll: true });
+}
 
 function ts(iso) {
     if (!iso) {
@@ -193,6 +207,13 @@ const filtered = computed(() => {
     }
     const sk = sortKey.value;
     rows.sort((a, b) => {
+        if (sk === 'shortlisted_first') {
+            const aS = a.status === 'shortlisted' || a.shortlisted_at ? 1 : 0;
+            const bS = b.status === 'shortlisted' || b.shortlisted_at ? 1 : 0;
+            if (aS !== bS) {
+                return bS - aS;
+            }
+        }
         if (sk === 'amount_desc') {
             return (Number(b.quoted_amount_minor) || 0) - (Number(a.quoted_amount_minor) || 0);
         }

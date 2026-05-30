@@ -125,8 +125,8 @@
                                 <option v-for="preset in catalog.presets" :key="preset.key" :value="preset.key">{{ preset.label }}</option>
                             </select>
                             <div class="grid grid-cols-2 gap-2">
-                                <input v-model="dateFrom" type="date" class="rounded-xl border px-3 py-2 text-sm font-semibold" :class="shell.input" @change="refreshPreview" />
-                                <input v-model="dateTo" type="date" class="rounded-xl border px-3 py-2 text-sm font-semibold" :class="shell.input" @change="refreshPreview" />
+                                <AdminDateInput v-model="dateFrom" @change="refreshPreview" />
+                                <AdminDateInput v-model="dateTo" @change="refreshPreview" />
                             </div>
                             <select v-model="grain" class="w-full rounded-xl border px-3 py-2 text-sm font-semibold" :class="shell.input" @change="refreshPreview">
                                 <option v-for="item in catalog.grains" :key="item.key" :value="item.key">{{ item.label }} aggregates</option>
@@ -221,6 +221,7 @@
 </template>
 
 <script setup>
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import AdminKpiTile from '@/Components/Admin/AdminKpiTile.vue';
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';

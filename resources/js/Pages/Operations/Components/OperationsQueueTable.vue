@@ -49,8 +49,9 @@
                     <tr
                         v-for="row in rows"
                         :key="rowKey(row)"
-                        class="cursor-pointer transition hover:bg-primary-50/60"
-                        @click="emit('open', row)"
+                        class="transition"
+                        :class="rowClickable ? 'cursor-pointer hover:bg-primary-50/60' : 'hover:bg-slate-50/80'"
+                        @click="rowClickable && emit('open', row)"
                     >
                         <td v-for="col in columns" :key="col.key" class="px-4 py-3" :class="col.class">
                             <slot :name="`cell-${col.key}`" :row="row">
@@ -96,6 +97,7 @@ const props = defineProps({
     rowKeyField: { type: String, default: 'id' },
     showSearch: { type: Boolean, default: true },
     showPerPage: { type: Boolean, default: true },
+    rowClickable: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['update:search', 'update:perPage', 'sort', 'page', 'open']);

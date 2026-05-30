@@ -27,8 +27,8 @@ use App\Models\StaffPayrollProfile;
 use App\Models\StaffPayslip;
 use App\Models\StaffRoleAssignment;
 use App\Models\User;
-use App\Notifications\StaffLeaveRequestReviewedNotification;
 use App\Services\Hr\HrAuditTrailService;
+use App\Services\Hr\StaffHrImpactNotificationService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -44,7 +44,10 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class AdminHrManagementController extends Controller
 {
-    public function __construct(private readonly HrAuditTrailService $auditTrail) {}
+    public function __construct(
+        private readonly HrAuditTrailService $auditTrail,
+        private readonly StaffHrImpactNotificationService $staffNotifications,
+    ) {}
 
     public function index(Request $request): SymfonyResponse
     {
@@ -220,41 +223,84 @@ class AdminHrManagementController extends Controller
     {
         $data = $request->validated();
         $actor = $request->user();
+        $staffUserId = (int) $data['staff_user_id'];
+        $selectedGroups = array_values(array_unique($data['role_groups']));
 
         $existing = StaffRoleAssignment::query()
-            ->where('staff_user_id', $data['staff_user_id'])
+            ->where('staff_user_id', $staffUserId)
             ->where('status', 'active')
             ->get();
 
+        $existingByGroup = $existing->keyBy('role_group');
+        $created = [];
+        $updated = [];
+        $revoked = [];
+
         foreach ($existing as $row) {
-            $row->update([
-                'status' => 'revoked',
-                'revoked_at' => now(),
-                'revoked_by_user_id' => $actor->id,
-                'revoked_reason' => 'Superseded by a new role-group assignment.',
-            ]);
+            if (! in_array($row->role_group, $selectedGroups, true)) {
+                $row->update([
+                    'status' => 'revoked',
+                    'revoked_at' => now(),
+                    'revoked_by_user_id' => $actor->id,
+                    'revoked_reason' => 'Removed from staff role-group assignment.',
+                ]);
+                $revoked[] = $row->role_group;
+            }
         }
 
-        $assignment = StaffRoleAssignment::query()->create([
-            'staff_user_id' => $data['staff_user_id'],
-            'role_group' => $data['role_group'],
-            'starts_on' => $data['starts_on'],
-            'ends_on' => $data['ends_on'] ?? null,
-            'status' => 'active',
-            'reason' => $data['reason'],
-            'assigned_by_user_id' => $actor->id,
-        ]);
+        foreach ($selectedGroups as $roleGroup) {
+            if ($existingByGroup->has($roleGroup)) {
+                $assignment = $existingByGroup->get($roleGroup);
+                $assignment->update([
+                    'starts_on' => $data['starts_on'],
+                    'ends_on' => $data['ends_on'] ?? null,
+                    'reason' => $data['reason'],
+                ]);
+                $updated[] = $assignment->fresh()->toArray();
+
+                continue;
+            }
+
+            $assignment = StaffRoleAssignment::query()->create([
+                'staff_user_id' => $staffUserId,
+                'role_group' => $roleGroup,
+                'starts_on' => $data['starts_on'],
+                'ends_on' => $data['ends_on'] ?? null,
+                'status' => 'active',
+                'reason' => $data['reason'],
+                'assigned_by_user_id' => $actor->id,
+            ]);
+            $created[] = $assignment->toArray();
+        }
 
         $this->auditTrail->log(
             actor: $actor,
             actionType: 'hr.role_assignment.changed',
-            targetStaffUserId: (int) $assignment->staff_user_id,
-            after: $assignment->toArray(),
+            targetStaffUserId: $staffUserId,
+            after: [
+                'staff_user_id' => $staffUserId,
+                'role_groups' => $selectedGroups,
+                'created' => $created,
+                'updated' => $updated,
+                'revoked' => $revoked,
+            ],
             metadata: ['reason' => $data['reason']],
             request: $request,
         );
 
-        return redirect()->back()->with('success', __('Role group assignment saved.'));
+        $staff = User::query()->find($staffUserId);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyRoleAssignmentChanged(
+                $staff,
+                $selectedGroups,
+                $created,
+                $revoked,
+                $data['starts_on'],
+                $data['ends_on'] ?? null,
+            );
+        }
+
+        return redirect()->back()->with('success', __('Role group assignments saved.'));
     }
 
     public function reviewLeaveRequest(ReviewStaffLeaveRequest $request, StaffLeaveRequest $leaveRequest): RedirectResponse
@@ -289,7 +335,11 @@ class AdminHrManagementController extends Controller
             $balance->increment(StaffLeaveBalance::usedColumnFor($leaveType), $leaveRequest->days_requested);
         }
 
-        $leaveRequest->staff?->notify(new StaffLeaveRequestReviewedNotification($leaveRequest->fresh()));
+        $leaveRequest->refresh();
+        $leaveRequest->staff?->loadMissing('role:id,slug');
+        if ($leaveRequest->staff !== null) {
+            $this->staffNotifications->notifyLeaveRequestReviewed($leaveRequest);
+        }
 
         $this->auditTrail->log(
             actor: $actor,
@@ -376,6 +426,18 @@ class AdminHrManagementController extends Controller
             request: $request,
         );
 
+        $staff = User::query()->find($data['staff_user_id']);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyLeaveBalanceChanged(
+                $staff,
+                $data['leave_type'],
+                $data['mode'] === 'allocate' ? 'allocate' : ($data['adjustment_direction'] ?? 'remove'),
+                $data['days'],
+                $data['year'],
+                $data['reason'],
+            );
+        }
+
         return redirect()->back()->with('success', $message);
     }
 
@@ -412,6 +474,15 @@ class AdminHrManagementController extends Controller
             request: $request,
         );
 
+        $staff = User::query()->find($data['staff_user_id']);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyPayrollProfileUpdated(
+                $staff,
+                (float) $data['base_salary'],
+                $effectiveFrom,
+            );
+        }
+
         return redirect()->back()->with('success', __('Payroll profile updated.'));
     }
 
@@ -438,6 +509,17 @@ class AdminHrManagementController extends Controller
             after: $adjustment->toArray(),
             request: $request,
         );
+
+        $staff = User::query()->find($data['staff_user_id']);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyPayrollAdjustmentCreated(
+                $staff,
+                $data['type'],
+                (float) $data['amount'],
+                $data['reason'],
+                $data['effective_date'],
+            );
+        }
 
         return redirect()->back()->with('success', __('Payroll adjustment logged.'));
     }
@@ -467,6 +549,17 @@ class AdminHrManagementController extends Controller
             request: $request,
         );
 
+        $staff = User::query()->find($allowance->staff_user_id);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyPayrollAllowanceChanged(
+                $staff,
+                $data['title'],
+                (float) $data['amount'],
+                'created',
+                $effectiveFrom,
+            );
+        }
+
         return redirect()->back()->with('success', __('Allowance added.'));
     }
 
@@ -494,6 +587,17 @@ class AdminHrManagementController extends Controller
             request: $request,
         );
 
+        $staff = User::query()->find($allowance->staff_user_id);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyPayrollAllowanceChanged(
+                $staff,
+                $data['title'],
+                (float) $data['amount'],
+                'updated',
+                $effectiveFrom,
+            );
+        }
+
         return redirect()->back()->with('success', __('Allowance updated.'));
     }
 
@@ -503,6 +607,8 @@ class AdminHrManagementController extends Controller
         $actor = $request->user();
         $before = $allowance->toArray();
         $targetStaffUserId = (int) $allowance->staff_user_id;
+        $allowanceTitle = (string) ($allowance->reference ?? 'Allowance');
+        $allowanceAmount = (float) $allowance->amount;
         $allowance->delete();
 
         $this->auditTrail->log(
@@ -512,6 +618,17 @@ class AdminHrManagementController extends Controller
             before: $before,
             request: $request,
         );
+
+        $staff = User::query()->find($targetStaffUserId);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyPayrollAllowanceChanged(
+                $staff,
+                $allowanceTitle,
+                $allowanceAmount,
+                'deleted',
+                (string) ($before['effective_date'] ?? now()->toDateString()),
+            );
+        }
 
         return redirect()->back()->with('success', __('Allowance removed.'));
     }
@@ -523,7 +640,6 @@ class AdminHrManagementController extends Controller
         $mode = $data['deduction_mode'];
         $supportsAdvancedColumns = $this->supportsAdvancedDeductionColumns();
         $resolvedAmount = $this->resolveDeductionAmount($data);
-        $effectiveFrom = CarbonImmutable::createFromDate((int) $data['wef_year'], (int) $data['wef_month'], 1)->toDateString();
         $effectiveFrom = CarbonImmutable::createFromDate((int) $data['wef_year'], (int) $data['wef_month'], 1)->toDateString();
 
         $deduction = StaffPayrollAdjustment::query()->create([
@@ -543,6 +659,16 @@ class AdminHrManagementController extends Controller
             'created_by_user_id' => $actor->id,
         ]);
 
+        $staff = User::query()->find($data['staff_user_id']);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyPayrollDeductionChanged(
+                $staff,
+                $data['title'],
+                'created',
+                $effectiveFrom,
+            );
+        }
+
         return redirect()->back()->with('success', __('Deduction added.'));
     }
 
@@ -553,6 +679,7 @@ class AdminHrManagementController extends Controller
         $mode = $data['deduction_mode'];
         $supportsAdvancedColumns = $this->supportsAdvancedDeductionColumns();
         $resolvedAmount = $this->resolveDeductionAmount($data);
+        $effectiveFrom = CarbonImmutable::createFromDate((int) $data['wef_year'], (int) $data['wef_month'], 1)->toDateString();
 
         $deduction->update([
             'deduction_mode' => $supportsAdvancedColumns ? $mode : null,
@@ -567,13 +694,30 @@ class AdminHrManagementController extends Controller
             'effective_date' => $effectiveFrom,
         ]);
 
+        $staff = User::query()->find($deduction->staff_user_id);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyPayrollDeductionChanged(
+                $staff,
+                $data['title'],
+                'updated',
+                $effectiveFrom,
+            );
+        }
+
         return redirect()->back()->with('success', __('Deduction updated.'));
     }
 
     public function destroyPayrollDeduction(StaffPayrollAdjustment $deduction): RedirectResponse
     {
         abort_unless($deduction->type === 'deduction' && $deduction->is_recurring, 404);
+        $staffUserId = (int) $deduction->staff_user_id;
+        $title = (string) ($deduction->reference ?? 'Deduction');
         $deduction->delete();
+
+        $staff = User::query()->find($staffUserId);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyPayrollDeductionChanged($staff, $title, 'deleted');
+        }
 
         return redirect()->back()->with('success', __('Deduction removed.'));
     }
@@ -600,6 +744,15 @@ class AdminHrManagementController extends Controller
             request: $request,
         );
 
+        $staff = User::query()->find($data['staff_user_id']);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyComplianceCaseOpened(
+                $staff,
+                $data['severity'],
+                $data['incident_note'],
+            );
+        }
+
         return redirect()->route('admin.hr.index')->with('success', __('Compliance case opened.'));
     }
 
@@ -625,6 +778,15 @@ class AdminHrManagementController extends Controller
             request: $request,
         );
 
+        $staff = User::query()->find($case->staff_user_id);
+        if ($staff !== null) {
+            $this->staffNotifications->notifyComplianceCaseStatusUpdated(
+                $staff,
+                $status,
+                $request->validated('note'),
+            );
+        }
+
         return redirect()->route('admin.hr.index')->with('success', __('Compliance case updated.'));
     }
 
@@ -649,6 +811,15 @@ class AdminHrManagementController extends Controller
             after: $flag->toArray(),
             request: $request,
         );
+
+        $staff = User::query()->find($data['staff_user_id']);
+        if ($staff !== null) {
+            $this->staffNotifications->notifySuspiciousActivityFlagged(
+                $staff,
+                $data['pattern'],
+                $data['note'] ?? null,
+            );
+        }
 
         return redirect()->route('admin.hr.index')->with('success', __('Suspicious activity flag logged.'));
     }

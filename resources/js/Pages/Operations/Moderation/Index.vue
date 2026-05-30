@@ -1,5 +1,5 @@
 <template>
-    <OperationsShell title="Moderation centre" subtitle="Tabbed quest and proposal queues with slide-in review panels. Search and sort happen on the loaded queue without extra page reloads.">
+    <component :is="shellComponent" title="Moderation centre" subtitle="Tabbed quest and proposal queues with slide-in review panels. Search and sort happen on the loaded queue without extra page reloads.">
         <div class="mb-4 flex flex-wrap gap-2">
             <button
                 v-for="mod in modules"
@@ -52,6 +52,16 @@
                     {{ labelize(row.admin_status?.value || row.admin_status) }}
                 </span>
             </template>
+            <template #cell-health_score="{ row }">
+                <span
+                    v-if="row.health_score != null"
+                    class="rounded-full px-2 py-1 text-[10px] font-black tabular-nums"
+                    :class="row.health_score < 50 ? 'bg-rose-100 text-rose-800 ring-1 ring-rose-200' : row.health_score < 75 ? 'bg-amber-100 text-amber-900 ring-1 ring-amber-200' : 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200'"
+                >
+                    {{ row.health_score }}
+                </span>
+                <span v-else class="text-xs font-semibold text-slate-400">—</span>
+            </template>
             <template #actions="{ row }">
                 <div class="inline-flex gap-1">
                     <button type="button" class="rounded-lg bg-primary-700 px-2 py-1 text-[10px] font-black uppercase text-white" @click.stop="openDetail(row)">Open</button>
@@ -88,6 +98,45 @@
                 </section>
 
                 <OperationsContextStats :heading="slideTitle" :stats="moderationStats" :chips="moderationChips" :links="moderationLinks" />
+
+                <section
+                    v-if="activeModule === 'quests' && detail.health"
+                    class="rounded-xl border border-slate-200 bg-white p-4"
+                >
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Quest health</p>
+                    <p class="mt-2 text-sm font-bold text-slate-900">
+                        Score
+                        <span
+                            class="ml-2 rounded-full px-2 py-0.5 text-xs font-black tabular-nums"
+                            :class="detail.health.low ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-900'"
+                        >
+                            {{ detail.health.score ?? '—' }}
+                        </span>
+                    </p>
+                    <p v-if="detail.health.updated_at" class="mt-1 text-xs font-semibold text-slate-500">
+                        Updated {{ formatDateTime(detail.health.updated_at) }}
+                    </p>
+                </section>
+
+                <section
+                    v-if="activeModule === 'quests' && detail.nudge_logs?.length"
+                    class="rounded-xl border border-slate-200 bg-white p-4"
+                >
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Auto-nudge trail</p>
+                    <ul class="mt-3 space-y-2">
+                        <li
+                            v-for="log in detail.nudge_logs"
+                            :key="log.id"
+                            class="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-xs"
+                        >
+                            <p class="font-black text-slate-900">{{ log.subject }}</p>
+                            <p class="mt-0.5 font-semibold text-slate-600">
+                                {{ log.nudge_type }} · {{ log.recipient || 'Unknown' }} · {{ formatDateTime(log.sent_at) }}
+                            </p>
+                        </li>
+                    </ul>
+                </section>
+
                 <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Actions</p>
 
                 <OperationsExpandableAction
@@ -323,7 +372,7 @@
                 </OperationsExpandableAction>
             </div>
         </OperationsSlideOver>
-    </OperationsShell>
+    </component>
 </template>
 
 <script setup>
@@ -332,6 +381,7 @@ import OperationsExpandableAction from '@/Pages/Operations/Components/Operations
 import OperationsQueueTable from '@/Pages/Operations/Components/OperationsQueueTable.vue';
 import OperationsSlideOver from '@/Pages/Operations/Components/OperationsSlideOver.vue';
 import OperationsShell from '@/Layouts/OperationsShell.vue';
+import AdminShell from '@/Layouts/AdminShell.vue';
 import QuestRichDescriptionEditor from '@/Components/Quests/QuestRichDescriptionEditor.vue';
 import { useClientQueue } from '@/composables/useClientQueue';
 import { useOperationsToast } from '@/composables/useOperationsToast';
@@ -344,7 +394,39 @@ const props = defineProps({
     proposal_queues: { type: Array, required: true },
     options: { type: Object, required: true },
     capabilities: { type: Object, required: true },
+    route_prefix: { type: String, default: 'operations' },
+    use_admin_shell: { type: Boolean, default: false },
 });
+
+const shellComponent = computed(() => (props.use_admin_shell ? AdminShell : OperationsShell));
+
+function apiRoute(name, params = undefined) {
+    const prefix = props.route_prefix === 'admin' ? 'admin.api.moderation' : 'operations.api.moderation';
+
+    return route(`${prefix}.${name}`, params);
+}
+
+function formatDateTime(value) {
+    if (!value) {
+        return '—';
+    }
+
+    try {
+        return new Date(value).toLocaleString('en-NG', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+            timeZone: 'Africa/Lagos',
+        });
+    } catch {
+        return value;
+    }
+}
+
+function usersIndexUrl(email) {
+    return props.route_prefix === 'admin'
+        ? route('admin.users.index', { q: email })
+        : route('operations.users.index', { q: email });
+}
 
 const modules = [
     { key: 'quests', label: 'Quests' },
@@ -383,6 +465,7 @@ const tableColumns = computed(() =>
         ? [
               { key: 'id', label: 'ID', sortable: true },
               { key: 'title', label: 'Quest', sortable: true },
+              { key: 'health_score', label: 'Health', sortable: true },
               { key: 'admin_status', label: 'Admin status', sortable: true, path: 'admin_status.value' },
               { key: 'status', label: 'Status', sortable: true },
               { key: 'created_at', label: 'Created', sortable: true, format: 'date' },
@@ -583,7 +666,7 @@ const moderationLinks = computed(() => {
                 label: 'Client account',
                 title: client.name,
                 preview: client.email,
-                href: route('operations.users.index', { q: client.email }),
+                href: usersIndexUrl(client.email),
             });
         }
 
@@ -605,7 +688,7 @@ const moderationLinks = computed(() => {
                 label: 'Parent quest',
                 title: quest.title || `Quest #${quest.id}`,
                 preview: quest.reference_code,
-                href: quest.route_key ? route('quests.show', quest.route_key) : route('operations.moderation.index', { module: 'quests' }),
+                href: quest.route_key ? route('quests.show', quest.route_key) : (props.route_prefix === 'admin' ? route('admin.moderation.index', { module: 'quests' }) : route('operations.moderation.index', { module: 'quests' })),
                 external: Boolean(quest.route_key),
             });
         }
@@ -632,7 +715,7 @@ const moderationLinks = computed(() => {
                 label: 'Freelancer account',
                 title: freelancer.name,
                 preview: freelancer.email,
-                href: route('operations.users.index', { q: freelancer.email }),
+                href: usersIndexUrl(freelancer.email),
             });
         }
 
@@ -678,7 +761,7 @@ async function loadQueue(queueDef) {
     rawItems.value = [];
 
     const endpoint =
-        activeModule.value === 'quests' ? route('operations.api.moderation.quests') : route('operations.api.moderation.proposals');
+        activeModule.value === 'quests' ? apiRoute('quests') : apiRoute('proposals');
 
     try {
         const { data } = await window.axios.get(endpoint, { params: queueDef.filter ?? {} });
@@ -696,8 +779,8 @@ async function openDetail(row) {
 
     const url =
         activeModule.value === 'quests'
-            ? route('operations.api.moderation.quests.detail', row.id)
-            : route('operations.api.moderation.proposals.detail', row.id);
+            ? apiRoute('quests.detail', row.id)
+            : apiRoute('proposals.detail', row.id);
 
     try {
         const { data } = await window.axios.get(url);
@@ -750,8 +833,8 @@ async function saveAdminStatus() {
     if (!selectedRow.value) return;
     const url =
         activeModule.value === 'quests'
-            ? route('operations.api.moderation.quests.admin-status', selectedRow.value.id)
-            : route('operations.api.moderation.proposals.admin-status', selectedRow.value.id);
+            ? apiRoute('quests.admin-status', selectedRow.value.id)
+            : apiRoute('proposals.admin-status', selectedRow.value.id);
 
     await runAction('adminStatus', () => window.axios.patch(url, { ...actionForm }), 'Admin status updated.', async () => {
         await openDetail(selectedRow.value);
@@ -763,8 +846,8 @@ async function postNotice() {
     if (!selectedRow.value) return;
     const url =
         activeModule.value === 'quests'
-            ? route('operations.api.moderation.quests.notices', selectedRow.value.id)
-            : route('operations.api.moderation.proposals.notices', selectedRow.value.id);
+            ? apiRoute('quests.notices', selectedRow.value.id)
+            : apiRoute('proposals.notices', selectedRow.value.id);
 
     await runAction('notice', () => window.axios.post(url, { ...noticeForm }), 'Notice posted.', async () => {
         noticeForm.body = '';
@@ -776,8 +859,8 @@ async function postNote() {
     if (!selectedRow.value) return;
     const url =
         activeModule.value === 'quests'
-            ? route('operations.api.moderation.quests.notes', selectedRow.value.id)
-            : route('operations.api.moderation.proposals.notes', selectedRow.value.id);
+            ? apiRoute('quests.notes', selectedRow.value.id)
+            : apiRoute('proposals.notes', selectedRow.value.id);
 
     await runAction('note', () => window.axios.post(url, { ...noteForm }), 'Note saved.', async () => {
         noteForm.body = '';
@@ -787,7 +870,7 @@ async function postNote() {
 
 async function postQuestFlag() {
     if (!selectedRow.value || activeModule.value !== 'quests') return;
-    await runAction('questFlag', () => window.axios.post(route('operations.api.moderation.quests.flags', selectedRow.value.id), { ...flagForm }), 'Flag created.', async () => {
+    await runAction('questFlag', () => window.axios.post(apiRoute('quests.flags', selectedRow.value.id), { ...flagForm }), 'Flag created.', async () => {
         flagForm.description = '';
         await openDetail(selectedRow.value);
         await reloadActiveQueue();
@@ -796,7 +879,7 @@ async function postQuestFlag() {
 
 async function postProposalFlag() {
     if (!selectedRow.value || activeModule.value !== 'proposals') return;
-    await runAction('proposalFlag', () => window.axios.post(route('operations.api.moderation.proposals.flags', selectedRow.value.id), { ...proposalFlagForm }), 'Flag created.', async () => {
+    await runAction('proposalFlag', () => window.axios.post(apiRoute('proposals.flags', selectedRow.value.id), { ...proposalFlagForm }), 'Flag created.', async () => {
         proposalFlagForm.description = '';
         await openDetail(selectedRow.value);
         await reloadActiveQueue();
@@ -805,7 +888,7 @@ async function postProposalFlag() {
 
 async function saveQuestEdit(submitForApproval) {
     if (!selectedRow.value) return;
-    await runAction('edit', () => window.axios.patch(route('operations.api.moderation.quests.update', selectedRow.value.id), {
+    await runAction('edit', () => window.axios.patch(apiRoute('quests.update', selectedRow.value.id), {
         ...editForm,
         quest_category_id: editForm.quest_category_id || null,
         submit_for_approval: submitForApproval,
@@ -822,7 +905,7 @@ async function removeMedia(media) {
     const reason = window.prompt('Why is this media being removed? (min 10 characters)');
     if (!reason || reason.length < 10) return;
 
-    await runAction('media', () => window.axios.delete(route('operations.api.moderation.quests.files.destroy', [selectedRow.value.id, media.id]), { data: { reason } }), 'Media removed.', (response) => {
+    await runAction('media', () => window.axios.delete(apiRoute('quests.files.destroy', [selectedRow.value.id, media.id]), { data: { reason } }), 'Media removed.', (response) => {
         detail.value = response?.data?.quest ?? detail.value;
     });
 }
@@ -863,21 +946,21 @@ async function contactQuest(recipient) {
         payload.freelancer_id = contactForm.freelancer_id;
     }
 
-    await runAction('contact', () => window.axios.post(route('operations.api.moderation.quests.contact', selectedRow.value.id), payload), 'Message sent.', async () => {
+    await runAction('contact', () => window.axios.post(apiRoute('quests.contact', selectedRow.value.id), payload), 'Message sent.', async () => {
         contactForm.body = '';
     });
 }
 
 async function contactProposal() {
     if (!selectedRow.value) return;
-    await runAction('contact', () => window.axios.post(route('operations.api.moderation.proposals.contact', selectedRow.value.id), contactForm), 'Message sent.', async () => {
+    await runAction('contact', () => window.axios.post(apiRoute('proposals.contact', selectedRow.value.id), contactForm), 'Message sent.', async () => {
         contactForm.body = '';
     });
 }
 
 async function removeProposal() {
     if (!selectedRow.value || activeModule.value !== 'proposals') return;
-    await runAction('remove', () => window.axios.delete(route('operations.api.moderation.proposals.remove', selectedRow.value.id), { data: { ...removeForm } }), 'Proposal removed.', async () => {
+    await runAction('remove', () => window.axios.delete(apiRoute('proposals.remove', selectedRow.value.id), { data: { ...removeForm } }), 'Proposal removed.', async () => {
         slideOpen.value = false;
         await reloadActiveQueue();
     });

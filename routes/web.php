@@ -25,6 +25,8 @@ use App\Http\Controllers\Public\PublicFreelancerProfileController;
 use App\Http\Controllers\QuestClientProposalsController;
 use App\Http\Controllers\QuestBookmarkController;
 use App\Http\Controllers\QuestContentReportController;
+use App\Http\Controllers\ProposalClarificationController;
+use App\Http\Controllers\QuestBudgetGuidanceController;
 use App\Http\Controllers\QuestController;
 use App\Http\Controllers\Support\CustomerSupportChatController;
 use App\Http\Controllers\QuestConversationController;
@@ -179,6 +181,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/quests', [QuestController::class, 'store'])->name('quests.store');
     Route::get('/taggable-freelancers', UserFreelancerSearchController::class)->name('users.freelancers.search');
     Route::get('/quests/field-profile', QuestFieldProfileController::class)->name('quests.field-profile');
+    Route::get('/quests/budget-guidance', QuestBudgetGuidanceController::class)->name('quests.budget-guidance');
     Route::post('/quests/wizard/validate-step', [QuestWizardController::class, 'validateStep'])
         ->middleware('throttle:60,1')
         ->name('quests.wizard.validate-step');
@@ -233,6 +236,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('throttle:10,1')
         ->whereNumber('offer')
         ->name('quests.proposals.accept');
+    Route::post('/quests/{quest}/proposals/{offer}/confirm-award', [QuestProposalLifecycleController::class, 'confirmAward'])
+        ->middleware(['freelancer', 'throttle:10,1'])
+        ->whereNumber('offer')
+        ->name('quests.proposals.confirm-award');
+    Route::get('/quests/{quest}/proposals/{offer}/clarify', [ProposalClarificationController::class, 'show'])
+        ->whereNumber('offer')
+        ->name('quests.proposals.clarify');
+    Route::post('/quests/{quest}/proposals/{offer}/clarify/ask', [ProposalClarificationController::class, 'ask'])
+        ->middleware('throttle:30,1')
+        ->whereNumber('offer')
+        ->name('quests.proposals.clarify.ask');
+    Route::post('/quests/{quest}/proposals/{offer}/clarify/answer', [ProposalClarificationController::class, 'answer'])
+        ->middleware(['freelancer', 'throttle:30,1'])
+        ->whereNumber('offer')
+        ->name('quests.proposals.clarify.answer');
     Route::post('/quests/{quest}/proposals/{offer}/escrow-funded', [QuestProposalLifecycleController::class, 'markEscrowFunded'])
         ->middleware('throttle:10,1')
         ->whereNumber('offer')

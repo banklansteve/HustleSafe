@@ -188,12 +188,13 @@ class AdminActivityFeedService
     {
         return collect($items)
             ->filter(fn ($item) => ! empty($item['id']) && ! empty($item['label']))
-            ->map(fn ($item) => [
+            ->map(fn ($item) => array_filter([
                 'type' => $item['type'],
                 'id' => $item['id'],
                 'label' => (string) $item['label'],
-                'href' => $this->entityHref((string) $item['type'], (int) $item['id']),
-            ])
+                'href' => $item['href'] ?? $this->entityHref((string) $item['type'], (int) $item['id']),
+                'uuid' => $item['uuid'] ?? null,
+            ], fn ($value) => $value !== null))
             ->values()
             ->all();
     }
@@ -220,6 +221,9 @@ class AdminActivityFeedService
     private function actionsFor(AdminActivityFeedEvent $event): array
     {
         return match ($event->event_key) {
+            'support_ticket.created' => [
+                ['key' => 'view_ticket', 'label' => 'View ticket', 'method' => 'open'],
+            ],
             'dispute.raised' => [
                 ['key' => 'view_dispute', 'label' => 'View dispute', 'method' => 'open'],
                 ['key' => 'assign_to_me', 'label' => 'Assign to me', 'method' => 'post', 'enabled' => true],

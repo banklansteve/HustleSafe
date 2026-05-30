@@ -130,7 +130,7 @@
                             <label class="choice-pill"><input v-model="form.send_mode" type="radio" value="now" /> Send now</label>
                             <label class="choice-pill"><input v-model="form.send_mode" type="radio" value="schedule" /> Schedule for later</label>
                         </div>
-                        <PremiumDatePicker v-if="form.send_mode === 'schedule'" v-model="form.scheduled_for" placeholder="Pick send date and time" :min="today" include-time />
+                        <PremiumDatePicker v-if="form.send_mode === 'schedule'" v-model="form.scheduled_for" placeholder="DD/MM/YYYY, HH:mm" :min="today" include-time />
                         <p v-if="form.send_mode === 'schedule'" class="text-sm font-semibold text-slate-500">This email will be sent to {{ audienceCount }} users on {{ form.scheduled_for || 'the selected date and time' }} WAT.</p>
                     </div>
                     <div class="rounded-3xl border border-primary-100 bg-primary-50 p-4 text-primary-950 dark:border-primary-400/20 dark:bg-primary-500/10 dark:text-primary-100">

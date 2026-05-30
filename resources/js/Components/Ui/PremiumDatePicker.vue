@@ -5,6 +5,7 @@
             :id="resolvedId"
             :disabled="disabled"
             class="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-900 shadow-sm transition hover:border-primary-300 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/25 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+            :class="buttonClass"
             :aria-expanded="open"
             aria-haspopup="dialog"
             @click="toggle"
@@ -110,6 +111,7 @@
 
 <script setup>
 import InputError from '@/Components/InputError.vue';
+import { formatDatePickerDisplay } from '@/utils/adminDateTime';
 import { CalendarDaysIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/vue/24/outline';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
@@ -151,6 +153,10 @@ const props = defineProps({
         default: false,
     },
     wrapperClass: {
+        type: String,
+        default: '',
+    },
+    buttonClass: {
         type: String,
         default: '',
     },
@@ -230,16 +236,12 @@ const displayValue = computed(() => {
         return '';
     }
 
-    const day = String(p.d).padStart(2, '0');
-    const month = String(p.m).padStart(2, '0');
-
-    const date = new Date(p.y, p.m - 1, p.d);
-    const base = date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Lagos' });
+    const base = formatDatePickerDisplay(toYmd(p.y, p.m, p.d));
     if (!props.includeTime || !props.modelValue?.includes('T')) {
         return base;
     }
 
-    return `${base}, ${String(timeHour.value).padStart(2, '0')}:${String(timeMinute.value).padStart(2, '0')} WAT`;
+    return `${base}, ${String(timeHour.value).padStart(2, '0')}:${String(timeMinute.value).padStart(2, '0')}`;
 });
 
 const monthTitle = computed(() => {

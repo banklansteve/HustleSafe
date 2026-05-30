@@ -870,14 +870,52 @@ const completionStatsForSelection = computed(() => {
     return c?.sample_size ? c : props.quest_stats_hints?.global_completion ?? null;
 });
 
+const liveBudgetGuidance = ref(null);
+let budgetGuidanceTimer = null;
+
+async function fetchBudgetGuidance(categoryId) {
+    if (!categoryId) {
+        liveBudgetGuidance.value = null;
+
+        return;
+    }
+
+    try {
+        const { data } = await window.axios.get(route('quests.budget-guidance'), {
+            params: { quest_category_id: categoryId },
+        });
+        liveBudgetGuidance.value = data?.sample_size ? data : null;
+    } catch {
+        liveBudgetGuidance.value = null;
+    }
+}
+
 const budgetGuidanceCopy = computed(() => {
+    if (liveBudgetGuidance.value?.message) {
+        return liveBudgetGuidance.value.message;
+    }
+
     const b = budgetStatsForSelection.value;
     if (!b?.sample_size) {
         return '';
     }
 
-    return `Open quests with a similar subcategory often budget between ${formatNgn(b.min_minor)} and ${formatNgn(b.max_minor)} (average ${formatNgn(b.avg_minor)}, from ${b.sample_size} live listings). This is guidance only — set what fits your scope.`;
+    const low = b.p25_minor ?? b.min_minor;
+    const high = b.p75_minor ?? b.max_minor;
+
+    return `Similar quests on this platform typically budget ${formatNgn(low)}–${formatNgn(high)} (from ${b.sample_size} historical listings). This is guidance only — set what fits your scope.`;
 });
+
+watch(
+    () => form.quest_category_id,
+    (categoryId) => {
+        if (budgetGuidanceTimer) {
+            window.clearTimeout(budgetGuidanceTimer);
+        }
+        budgetGuidanceTimer = window.setTimeout(() => fetchBudgetGuidance(categoryId), 250);
+    },
+    { immediate: true },
+);
 
 const completionGuidanceCopy = computed(() => {
     const c = completionStatsForSelection.value;
@@ -1504,6 +1542,9 @@ function onDrop(e) {
 }
 
 onUnmounted(() => {
+    if (budgetGuidanceTimer) {
+        window.clearTimeout(budgetGuidanceTimer);
+    }
     for (const row of fileRows.value) {
         if (row.url) {
             URL.revokeObjectURL(row.url);

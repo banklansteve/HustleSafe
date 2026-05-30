@@ -848,6 +848,7 @@ const navGroups = [
         items: [
             { label: 'Dashboard', href: route('admin.dashboard'), icon: HomeIcon, match: (p) => p === '/admin' || p === '/admin/' },
             { label: 'Insights', href: route('admin.insights.index'), icon: ChartBarSquareIcon, match: (p) => p.startsWith('/admin/insights') },
+            { label: 'Lifecycle analytics', href: route('admin.lifecycle-analytics.index'), icon: ChartBarSquareIcon, match: (p) => p.startsWith('/admin/lifecycle-analytics') },
             { label: 'Live Activity', href: route('admin.live-activity.index'), icon: BoltIcon, match: (p) => p.startsWith('/admin/live-activity') },
             { label: 'Alert Centre', href: route('admin.alerts.index'), icon: BellIcon, match: (p) => p.startsWith('/admin/alerts') },
             { label: 'Tasks', href: route('admin.tasks.index'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/tasks') },
@@ -893,9 +894,11 @@ const navGroups = [
         items: [
             { label: 'Onboarding quality control', href: route('admin.onboarding-quality.index'), icon: ShieldCheckIcon, match: (p) => matchPathPrefix(p, '/admin/onboarding-quality', { exclude: ['/admin/onboarding-quality/flagged-profiles'] }) },
             { label: 'Flagged profiles', href: route('admin.onboarding-quality.flagged'), icon: ShieldCheckIcon, match: (p) => matchPathPrefix(p, '/admin/onboarding-quality/flagged-profiles') },
-            { label: 'Quest & proposal review', href: route('operations.moderation.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/operations/moderation') },
+            { label: 'Quest & proposal review', href: route('admin.moderation.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/moderation') },
             { label: 'Content Moderation', href: route('admin.content-moderation.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/content-moderation') },
             { label: 'Conversation monitoring', href: route('admin.conversation-monitoring.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/conversation-monitoring') },
+            { label: 'Proactive outreach', href: route('admin.outreach.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/outreach') },
+            { label: 'Response templates', href: route('admin.response-templates.index'), icon: DocumentTextIcon, match: (p) => p.startsWith('/admin/response-templates') },
         ],
     },
     {

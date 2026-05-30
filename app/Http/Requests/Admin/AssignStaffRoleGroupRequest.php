@@ -17,7 +17,8 @@ class AssignStaffRoleGroupRequest extends FormRequest
     {
         return [
             'staff_user_id' => ['required', 'integer', 'exists:users,id'],
-            'role_group' => ['required', Rule::in(StaffRoleGroup::values())],
+            'role_groups' => ['required', 'array', 'min:1'],
+            'role_groups.*' => ['required', 'string', 'distinct', Rule::in(StaffRoleGroup::values())],
             'starts_on' => ['required', 'date'],
             'ends_on' => ['nullable', 'date', 'after_or_equal:starts_on'],
             'reason' => ['required', 'string', 'max:2000'],

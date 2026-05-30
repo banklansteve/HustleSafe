@@ -124,10 +124,28 @@ class AppServiceProvider extends ServiceProvider
             $hook()->disputeOpened($dispute);
         });
 
+        QuestDispute::updated(function (QuestDispute $dispute): void {
+            if ($dispute->wasChanged('resolved_at') && $dispute->resolved_at !== null) {
+                app(\App\Services\Platform\PlatformSlaService::class)->resolveForSubject('dispute_resolution', $dispute);
+            }
+        });
+
         ModerationCase::created(function (ModerationCase $case): void {
             if ($case->subject_user_id) {
                 UserRiskScoreDispatcher::dispatch((int) $case->subject_user_id);
             }
+
+            app(\App\Services\Platform\PlatformSlaService::class)->start(
+                'content_moderation',
+                $case,
+                null,
+                null,
+                [
+                    'subject_label' => 'Moderation case #'.$case->id,
+                    'queue' => $case->queue,
+                ],
+                $case->created_at,
+            );
         });
 
         PaymentEscrow::saved(function (PaymentEscrow $escrow) use ($hook): void {

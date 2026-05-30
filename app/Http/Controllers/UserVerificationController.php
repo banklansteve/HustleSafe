@@ -82,9 +82,22 @@ class UserVerificationController extends Controller
 
         $kycIntake->createFromVerification($verification, $verification->queue_reason ?: 'manual_review');
 
+        app(\App\Services\Platform\PlatformSlaService::class)->start(
+            'kyc_verification',
+            $verification,
+            null,
+            $user,
+            [
+                'subject_label' => ($user->name ?? 'User').' · '.$verification->verification_type,
+                'user_id' => $user->id,
+            ],
+            $verification->submitted_at,
+        );
+
         return redirect()
             ->route('verifications.index')
-            ->with('success', __('Submission received — our team will review shortly. You will be notified in-app and by email when a decision is made.'));
+            ->with('success', __('Submission received — our team will review shortly. You will be notified in-app and by email when a decision is made.'))
+            ->with('sla_expectation', app(\App\Services\Platform\PlatformSlaService::class)->userExpectationMessage('kyc_verification'));
     }
 
     /**

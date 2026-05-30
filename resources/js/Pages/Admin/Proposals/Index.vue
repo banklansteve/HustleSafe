@@ -133,11 +133,11 @@
                         </label>
                         <label class="filter-field">
                             <span>Submitted from</span>
-                            <input v-model="form.submitted_from" type="date" />
+                            <AdminDateInput v-model="form.submitted_from" />
                         </label>
                         <label class="filter-field">
                             <span>Submitted to</span>
-                            <input v-model="form.submitted_to" type="date" />
+                            <AdminDateInput v-model="form.submitted_to" />
                         </label>
                         <label class="filter-field">
                             <span>Flag type</span>
@@ -564,6 +564,7 @@
 </template>
 
 <script setup>
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
 import AdminTabs from '@/Components/Admin/AdminTabs.vue';
@@ -1396,7 +1397,8 @@ const DeletePanel = defineComponent({
 .control-select,
 .panel-input,
 .filter-field select,
-.filter-field input {
+.filter-field input,
+.filter-field button {
     @apply min-h-11 rounded-xl border border-white/10 bg-slate-950 px-3 text-sm font-semibold text-white outline-none ring-2 ring-transparent transition focus:border-primary-400/60 focus:ring-primary-500/30;
 }
 

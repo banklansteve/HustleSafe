@@ -8,6 +8,8 @@ use App\Models\QuestDispute;
 use App\Models\QuestOffer;
 use App\Models\User;
 use App\Services\Disputes\QuestDisputeWorkflowService;
+use App\Services\Quest\DisputePreventionPromptService;
+use App\Services\Quest\EscrowTransparencyTimelineService;
 use Illuminate\Validation\ValidationException;
 
 final class QuestCommerceUi
@@ -21,12 +23,15 @@ final class QuestCommerceUi
         $isAccepted = $offer->status === 'accepted'
             && (int) ($quest->accepted_quest_offer_id ?? 0) === (int) $offer->id;
         $awaiting = $quest->escrow_status === 'awaiting_funding';
+        $mutualAward = $offer->isAwardMutuallyConfirmed();
 
         return [
-            'show_fund_button' => (bool) ($isClient && $isAccepted && $awaiting),
-            'funding_post_url' => ($isClient && $isAccepted && $awaiting)
+            'show_fund_button' => (bool) ($isClient && $isAccepted && $awaiting && $mutualAward),
+            'funding_post_url' => ($isClient && $isAccepted && $awaiting && $mutualAward)
                 ? route('quests.proposals.funding-intent.store', [$quest->getRouteKey(), $offer->id])
                 : null,
+            'award_awaiting_freelancer' => $offer->status === 'pending_award',
+            'award_mutually_confirmed' => $mutualAward,
             'completion' => EscrowReleasePolicy::uiPayload($quest, $viewer),
         ];
     }
@@ -82,5 +87,20 @@ final class QuestCommerceUi
                 'dispute_block_reason' => (string) collect($e->errors())->flatten()->first(),
             ];
         }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function partyExtras(Quest $quest, ?User $viewer): array
+    {
+        if ($viewer === null || ! $quest->isParty($viewer)) {
+            return [];
+        }
+
+        return [
+            'escrow_timeline' => app(EscrowTransparencyTimelineService::class)->build($quest),
+            'dispute_prevention_prompts' => app(DisputePreventionPromptService::class)->promptsFor($quest, $viewer),
+        ];
     }
 }

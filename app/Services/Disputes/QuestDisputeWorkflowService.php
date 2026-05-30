@@ -403,6 +403,18 @@ class QuestDisputeWorkflowService
             ));
 
             $this->notifyBoth($dispute, __('Dispute escalated'), __('A countdown expired without a required update. Please upload final evidence within the new window.'));
+
+            app(\App\Services\Platform\PlatformSlaService::class)->start(
+                'dispute_resolution',
+                $dispute,
+                null,
+                null,
+                [
+                    'subject_label' => $dispute->quest?->title ?? "Dispute #{$dispute->id}",
+                    'dispute_uuid' => $dispute->uuid,
+                ],
+                now(),
+            );
         });
     }
 

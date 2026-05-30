@@ -107,6 +107,13 @@
                     Shortlist to signal interest, pin to keep it on your radar, or decide. Every action is confirmed so expectations stay crystal clear.
                 </p>
                 <div class="mt-3 flex flex-wrap gap-2">
+                    <Link
+                        v-if="clarification_url"
+                        :href="clarification_url"
+                        class="rounded-full bg-sky-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-sky-700"
+                    >
+                        {{ clarification_summary ? `Clarify (${clarification_summary})` : 'Ask clarifying questions' }}
+                    </Link>
                     <button
                         v-if="offer.status === 'submitted'"
                         type="button"
@@ -142,13 +149,56 @@
                         class="rounded-full bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-700"
                         @click="openModal('accept')"
                     >
-                        Accept proposal
+                        Award proposal
                     </button>
                 </div>
             </section>
 
             <section
-                v-if="!observer_mode && is_client && offer.status === 'accepted' && quest.escrow_status === 'awaiting_funding'"
+                v-if="!observer_mode && is_client && offer.status === 'pending_award'"
+                class="rounded-2xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm font-semibold text-amber-950 ring-1 ring-amber-100 sm:px-5"
+            >
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-900">Awaiting freelancer confirmation</p>
+                <p class="mt-1 text-xs leading-relaxed">
+                    You confirmed the award terms. Escrow funding unlocks only after the freelancer confirms scope, price, and deadline.
+                </p>
+                <ul v-if="awardTerms" class="mt-3 space-y-1 text-xs font-semibold text-amber-950/90">
+                    <li>Price: <span class="font-black">{{ awardTerms.price_label }}</span></li>
+                    <li v-if="awardTerms.deadline_label">Finish: <span class="font-black">{{ awardTerms.deadline_label }}</span></li>
+                </ul>
+            </section>
+
+            <section
+                v-if="!observer_mode && is_author && offer.status === 'pending_award'"
+                class="rounded-2xl border border-emerald-200/90 bg-emerald-50/90 px-4 py-3 text-sm font-semibold text-emerald-950 ring-1 ring-emerald-100 sm:px-5"
+            >
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-900">Confirm your award</p>
+                <p class="mt-1 text-xs leading-relaxed">
+                    The client selected you. Review the contract snapshot below and confirm — then they can fund escrow.
+                </p>
+                <ul v-if="awardTerms" class="mt-3 space-y-2 text-xs font-semibold text-emerald-950/90">
+                    <li>Price: <span class="font-black">{{ awardTerms.price_label }}</span></li>
+                    <li v-if="awardTerms.deadline_label">Target finish: <span class="font-black">{{ awardTerms.deadline_label }}</span></li>
+                    <li class="leading-relaxed">Scope: {{ awardTerms.scope_summary }}</li>
+                </ul>
+                <button
+                    type="button"
+                    class="mt-3 rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-emerald-800"
+                    @click="openModal('confirm_award')"
+                >
+                    Confirm award terms
+                </button>
+            </section>
+
+            <section
+                v-if="!observer_mode && is_client && offer.status === 'accepted' && quest.escrow_status === 'awaiting_funding' && !commerce?.award_mutually_confirmed"
+                class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700"
+            >
+                Escrow funding will appear here once both parties have confirmed the award terms.
+            </section>
+
+            <section
+                v-if="!observer_mode && is_client && offer.status === 'accepted' && quest.escrow_status === 'awaiting_funding' && commerce?.award_mutually_confirmed"
                 class="rounded-2xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm font-semibold text-amber-950 ring-1 ring-amber-100 sm:px-5"
             >
                 <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-900">Escrow funding</p>
@@ -191,6 +241,7 @@
                 <p v-if="commerce?.dispute_block_reason && !commerce?.can_open_dispute && !commerce?.active_dispute" class="mt-2 text-xs font-semibold text-amber-900">
                     {{ commerce.dispute_block_reason }}
                 </p>
+                <DisputePreventionPrompts v-if="commerce?.dispute_prevention_prompts?.length" class="mt-3" :prompts="commerce.dispute_prevention_prompts" />
             </section>
 
             <section
@@ -202,6 +253,18 @@
                     The client accepted your proposal. Please wait until escrow is funded and confirmed — only then should you begin billable work. Payouts
                     unlock when the client marks the quest complete.
                 </p>
+            </section>
+
+            <section
+                v-if="!observer_mode && commerce?.escrow_timeline && quest.escrow_status && !['none', 'awaiting_funding'].includes(quest.escrow_status)"
+                class="rounded-2xl border border-emerald-200/90 bg-white px-4 py-4 shadow-sm ring-1 ring-emerald-100 sm:px-5"
+            >
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-900">Escrow timeline</p>
+                <p class="mt-1 text-xs font-semibold text-slate-600">Live status of funds on this contract — updated as each stage completes.</p>
+                <div class="mt-3">
+                    <EscrowTransparencyTimeline :timeline="commerce.escrow_timeline" />
+                </div>
+                <DisputePreventionPrompts v-if="commerce.dispute_prevention_prompts?.length" class="mt-4" :prompts="commerce.dispute_prevention_prompts" />
             </section>
 
             <section
@@ -225,6 +288,7 @@
                     {{ completionUi.blocked_release_reason }}
                     <span v-if="cooldownLabel && completionUi.delivery_acknowledged" class="mt-1 block font-black">Release unlocks in {{ cooldownLabel }}</span>
                 </p>
+                <DisputePreventionPrompts v-if="commerce?.dispute_prevention_prompts?.length && !commerce?.escrow_timeline" class="mt-3" :prompts="commerce.dispute_prevention_prompts" />
                 <div class="mt-3 flex flex-wrap gap-2">
                     <button
                         v-if="!completionUi.delivery_acknowledged"
@@ -421,7 +485,7 @@
                         <template v-if="activeModal === 'shortlist'">
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="shortlistForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
-                                <span>I want to shortlist this proposal and notify the freelancer.</span>
+                                <span>I want to shortlist this proposal and notify the freelancer they may hear from me soon.</span>
                             </label>
                             <InputError :message="shortlistForm.errors.confirm" />
                         </template>
@@ -460,7 +524,13 @@
                         </template>
 
                         <template v-else-if="activeModal === 'accept'">
-                            <ul class="list-disc space-y-2 pl-4 text-xs font-semibold text-slate-700">
+                            <div v-if="awardTermsPreview" class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-800">
+                                <p class="font-black uppercase tracking-wide text-slate-500">Contract snapshot</p>
+                                <p class="mt-2">Price: <span class="font-black">{{ awardTermsPreview.price_label }}</span></p>
+                                <p v-if="awardTermsPreview.deadline_label">Finish: <span class="font-black">{{ awardTermsPreview.deadline_label }}</span></p>
+                                <p class="mt-2 leading-relaxed">{{ awardTermsPreview.scope_summary }}</p>
+                            </div>
+                            <ul class="mt-4 list-disc space-y-2 pl-4 text-xs font-semibold text-slate-700">
                                 <li>
                                     You agree to fund escrow for the full quote
                                     <span class="font-black text-slate-900">{{ formatBudget(offer.quoted_amount_minor) }}</span>
@@ -483,12 +553,27 @@
                             </ul>
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="acceptForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I confirm I want to accept this proposal for this quest.</span>
+                                <span>I confirm I want to award this proposal.</span>
                             </label>
                             <InputError :message="acceptForm.errors.confirm" />
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
+                                <input v-model="acceptForm.confirm_scope" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>I confirm the agreed scope above matches what I expect delivered.</span>
+                            </label>
+                            <InputError :message="acceptForm.errors.confirm_scope" />
+                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
+                                <input v-model="acceptForm.confirm_price" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>I confirm the quoted price is what I will fund in escrow (including fees in the breakdown).</span>
+                            </label>
+                            <InputError :message="acceptForm.errors.confirm_price" />
+                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
+                                <input v-model="acceptForm.confirm_deadline" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>I confirm the target finish date / timeline is acceptable.</span>
+                            </label>
+                            <InputError :message="acceptForm.errors.confirm_deadline" />
+                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="acceptForm.accept_escrow_rules" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I understand I must fund escrow before the freelancer should begin work, and funds are released when I mark the job complete or, if I do not act in time, under the 72-hour rule described above.</span>
+                                <span>I understand I must fund escrow after the freelancer confirms, before work should begin, and funds release when I mark complete or under the 72-hour rule.</span>
                             </label>
                             <InputError :message="acceptForm.errors.accept_escrow_rules" />
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
@@ -501,6 +586,31 @@
                                 <span>I understand the 72-hour auto-release rule after the planned job end if I do not mark complete or dispute in time.</span>
                             </label>
                             <InputError :message="acceptForm.errors.accept_auto_release_ack" />
+                        </template>
+
+                        <template v-else-if="activeModal === 'confirm_award'">
+                            <ul v-if="awardTerms" class="list-disc space-y-2 pl-4 text-xs font-semibold text-slate-700">
+                                <li>Price: <span class="font-black">{{ awardTerms.price_label }}</span></li>
+                                <li v-if="awardTerms.deadline_label">Finish: <span class="font-black">{{ awardTerms.deadline_label }}</span></li>
+                                <li class="leading-relaxed">{{ awardTerms.scope_summary }}</li>
+                            </ul>
+                            <label class="mt-4 flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
+                                <input v-model="confirmAwardForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>I confirm I understand and accept this award.</span>
+                            </label>
+                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
+                                <input v-model="confirmAwardForm.confirm_scope" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>I accept the scope described above.</span>
+                            </label>
+                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
+                                <input v-model="confirmAwardForm.confirm_price" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>I accept the quoted price.</span>
+                            </label>
+                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
+                                <input v-model="confirmAwardForm.confirm_deadline" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>I accept the target finish timeline.</span>
+                            </label>
+                            <InputError :message="confirmAwardForm.errors.confirm" />
                         </template>
 
                         <template v-else-if="activeModal === 'escrow'">
@@ -552,6 +662,9 @@
                         </template>
 
                         <template v-else-if="activeModal === 'withdraw'">
+                            <p v-if="offer.status === 'shortlisted' || offer.shortlisted_at" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
+                                You were shortlisted — withdrawing now is logged and may slightly reduce your reliability score on the platform.
+                            </p>
                             <p class="text-xs font-semibold text-slate-600">
                                 Withdrawing removes your proposal from the client’s queue. They are notified. You may submit a fresh proposal if the quest remains
                                 open.
@@ -591,6 +704,8 @@
 
 <script setup>
 import ReportConcernSheet from '@/Components/Quests/ReportConcernSheet.vue';
+import EscrowTransparencyTimeline from '@/Components/Quests/EscrowTransparencyTimeline.vue';
+import DisputePreventionPrompts from '@/Components/Quests/DisputePreventionPrompts.vue';
 import BackChevronLink from '@/Components/Ui/BackChevronLink.vue';
 import InputError from '@/Components/InputError.vue';
 import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
@@ -607,6 +722,8 @@ const props = defineProps({
     observer_mode: { type: Boolean, default: false },
     can_download_pdf: { type: Boolean, default: true },
     conversation_with_freelancer_url: { type: String, default: null },
+    clarification_url: { type: String, default: null },
+    clarification_summary: { type: Number, default: 0 },
     commerce: { type: Object, default: null },
 });
 
@@ -704,9 +821,18 @@ const pinForm = useForm({ confirm: false });
 const declineForm = useForm({ confirm: false, understand_decline: false });
 const acceptForm = useForm({
     confirm: false,
+    confirm_scope: false,
+    confirm_price: false,
+    confirm_deadline: false,
     accept_escrow_rules: false,
     accept_fees_and_terms: false,
     accept_auto_release_ack: false,
+});
+const confirmAwardForm = useForm({
+    confirm: false,
+    confirm_scope: false,
+    confirm_price: false,
+    confirm_deadline: false,
 });
 const escrowForm = useForm({ confirm: false, confirm_funds_in_escrow: false });
 const withdrawForm = useForm({ confirm: false, understand_withdraw: false });
@@ -718,11 +844,28 @@ const anyModalFormProcessing = computed(
         || pinForm.processing
         || declineForm.processing
         || acceptForm.processing
+        || confirmAwardForm.processing
         || escrowForm.processing
         || acknowledgeForm.processing
         || releaseForm.processing
         || withdrawForm.processing,
 );
+
+const awardTerms = computed(() => props.offer.award_terms_snapshot || null);
+
+const awardTermsPreview = computed(() => {
+    if (awardTerms.value) {
+        return awardTerms.value;
+    }
+
+    const finish = props.offer.planned_finish_date || props.offer.proposed_completion_date;
+
+    return {
+        scope_summary: props.offer.scope_detail || props.offer.pitch || '',
+        price_label: formatBudget(props.offer.quoted_amount_minor),
+        deadline_label: finish || null,
+    };
+});
 
 const clientDecisionOffer = computed(
     () => props.is_client && props.quest.status === 'open' && ['submitted', 'shortlisted'].includes(props.offer.status),
@@ -733,6 +876,7 @@ const statusLabel = computed(() => {
     const map = {
         submitted: 'Submitted',
         shortlisted: 'Shortlisted',
+        pending_award: 'Awaiting confirmation',
         accepted: 'Accepted',
         declined: 'Declined',
         withdrawn: 'Withdrawn',
@@ -752,6 +896,9 @@ const statusPillClass = computed(() => {
     if (s === 'shortlisted') {
         return 'bg-violet-600';
     }
+    if (s === 'pending_award') {
+        return 'bg-amber-600';
+    }
 
     return 'bg-slate-900';
 });
@@ -763,7 +910,8 @@ const modalTitle = computed(() => {
         unshortlist: 'Remove shortlist',
         pin: props.offer.client_pinned_at ? 'Unpin proposal' : 'Pin proposal',
         decline: 'Decline proposal',
-        accept: 'Accept proposal',
+        accept: 'Award proposal',
+        confirm_award: 'Confirm award terms',
         escrow: 'Confirm escrow funded',
         acknowledge: 'Confirm delivery',
         release: 'Release funds to freelancer',
@@ -776,7 +924,7 @@ const modalTitle = computed(() => {
 const modalIntro = computed(() => {
     const m = activeModal.value;
     if (m === 'shortlist') {
-        return 'Shortlisting is a soft signal — it helps freelancers prioritise your quest without locking you in.';
+        return 'Shortlisting notifies the freelancer they\'re in the running — the client may reach out soon.';
     }
     if (m === 'unshortlist') {
         return 'This keeps the quest tidy if you change your mind before a final decision.';
@@ -790,7 +938,10 @@ const modalIntro = computed(() => {
         return 'Declining is permanent for this proposal. Other proposals remain untouched.';
     }
     if (m === 'accept') {
-        return 'Accepting assigns this freelancer and starts the escrow funding step for everyone’s protection.';
+        return 'You confirm scope, price, and deadline. The freelancer must confirm too before escrow funding unlocks.';
+    }
+    if (m === 'confirm_award') {
+        return 'This creates a documented contract moment — escrow funding follows only after you confirm.';
     }
     if (m === 'escrow') {
         return 'You are confirming funds are in escrow so the freelancer receives the official go-ahead.';
@@ -844,7 +995,10 @@ const modalSubmitDisabled = computed(() => {
         return declineForm.processing || !declineForm.confirm || !declineForm.understand_decline;
     }
     if (m === 'accept') {
-        return acceptForm.processing || !acceptForm.confirm || !acceptForm.accept_escrow_rules || !acceptForm.accept_fees_and_terms || !acceptForm.accept_auto_release_ack;
+        return acceptForm.processing || !acceptForm.confirm || !acceptForm.confirm_scope || !acceptForm.confirm_price || !acceptForm.confirm_deadline || !acceptForm.accept_escrow_rules || !acceptForm.accept_fees_and_terms || !acceptForm.accept_auto_release_ack;
+    }
+    if (m === 'confirm_award') {
+        return confirmAwardForm.processing || !confirmAwardForm.confirm || !confirmAwardForm.confirm_scope || !confirmAwardForm.confirm_price || !confirmAwardForm.confirm_deadline;
     }
     if (m === 'escrow') {
         return escrowForm.processing || !escrowForm.confirm || !escrowForm.confirm_funds_in_escrow;
@@ -869,6 +1023,7 @@ function openModal(id) {
     pinForm.clearErrors();
     declineForm.clearErrors();
     acceptForm.clearErrors();
+    confirmAwardForm.clearErrors();
     escrowForm.clearErrors();
     acknowledgeForm.clearErrors();
     releaseForm.clearErrors();
@@ -878,6 +1033,7 @@ function openModal(id) {
     pinForm.reset('confirm');
     declineForm.reset();
     acceptForm.reset();
+    confirmAwardForm.reset();
     escrowForm.reset();
     acknowledgeForm.reset();
     releaseForm.reset();
@@ -922,11 +1078,23 @@ function submitModal() {
         acceptForm
             .transform(() => ({
                 confirm: bool(acceptForm.confirm),
+                confirm_scope: bool(acceptForm.confirm_scope),
+                confirm_price: bool(acceptForm.confirm_price),
+                confirm_deadline: bool(acceptForm.confirm_deadline),
                 accept_escrow_rules: bool(acceptForm.accept_escrow_rules),
                 accept_fees_and_terms: bool(acceptForm.accept_fees_and_terms),
                 accept_auto_release_ack: bool(acceptForm.accept_auto_release_ack),
             }))
             .post(route('quests.proposals.accept', [rk, oid]), { preserveScroll: true, onSuccess: closeModal });
+    } else if (m === 'confirm_award') {
+        confirmAwardForm
+            .transform(() => ({
+                confirm: bool(confirmAwardForm.confirm),
+                confirm_scope: bool(confirmAwardForm.confirm_scope),
+                confirm_price: bool(confirmAwardForm.confirm_price),
+                confirm_deadline: bool(confirmAwardForm.confirm_deadline),
+            }))
+            .post(route('quests.proposals.confirm-award', [rk, oid]), { preserveScroll: true, onSuccess: closeModal });
     } else if (m === 'escrow') {
         escrowForm
             .transform(() => ({

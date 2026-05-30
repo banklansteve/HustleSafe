@@ -29,6 +29,10 @@ class Quest extends Model
         'freelancer_id',
         'title',
         'description',
+        'quality_gate_feedback',
+        'quality_gate_failed_at',
+        'health_score',
+        'health_score_updated_at',
         'quest_category_id',
         'state_id',
         'local_government_id',
@@ -42,6 +46,7 @@ class Quest extends Model
         'admin_status_changed_at',
         'escrow_status',
         'accepted_quest_offer_id',
+        'pending_award_offer_id',
         'visibility',
         'freelancer_location_pref',
         'availability_need',
@@ -191,6 +196,9 @@ class Quest extends Model
             'team_size' => QuestTeamSize::class,
             'promotion_tier' => QuestPromotionTier::class,
             'traffic_utm' => 'array',
+            'quality_gate_feedback' => 'array',
+            'quality_gate_failed_at' => 'datetime',
+            'health_score_updated_at' => 'datetime',
             'start_timing' => QuestStartTiming::class,
             'site_visits_allowed' => 'boolean',
             'pets_on_site' => 'boolean',
@@ -227,6 +235,14 @@ class Quest extends Model
     }
 
     /**
+     * @return BelongsTo<QuestOffer, $this>
+     */
+    public function pendingAwardOffer(): BelongsTo
+    {
+        return $this->belongsTo(QuestOffer::class, 'pending_award_offer_id');
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function client(): BelongsTo
@@ -256,6 +272,14 @@ class Quest extends Model
     public function offers(): HasMany
     {
         return $this->hasMany(QuestOffer::class);
+    }
+
+    /**
+     * @return HasMany<QuestNudgeLog, $this>
+     */
+    public function nudgeLogs(): HasMany
+    {
+        return $this->hasMany(QuestNudgeLog::class)->latest('sent_at');
     }
 
     /**

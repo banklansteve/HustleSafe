@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AdminActivityFeedEvent;
 use App\Models\QuestDispute;
+use App\Models\SupportTicket;
 use App\Models\User;
 use App\Services\Admin\AdminActivityFeedService;
 use App\Services\Admin\AdminManagementService;
+use App\Services\Support\SupportTicketManagementService;
 use App\Support\Admin\AdminManagementRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,15 +21,25 @@ class AdminLiveActivityController extends Controller
     public function __construct(
         private AdminActivityFeedService $feed,
         private AdminManagementService $management,
+        private SupportTicketManagementService $supportTickets,
     ) {}
 
     public function index(Request $request): Response
     {
         $this->feed->seedRecentFromExistingData();
+        $isSuperAdmin = $request->user()?->role?->slug === 'super_admin';
 
         return Inertia::render('Admin/LiveActivity/Index', [
             'initial_events' => $this->feed->paginate([], 200),
             'summary' => $this->feed->summary(),
+            'initial_support_tickets' => $isSuperAdmin
+                ? $this->supportTickets->liveFeedPaginate($request->user(), [], 50)
+                : null,
+            'assignable_admins' => $isSuperAdmin
+                ? collect($this->supportTickets->assignableAdmins())->map->only(['id', 'name', 'email'])->values()
+                : [],
+            'ticket_statuses' => SupportTicketManagementService::STATUSES,
+            'current_user_id' => $request->user()?->id,
         ]);
     }
 
@@ -44,6 +56,35 @@ class AdminLiveActivityController extends Controller
     public function widget(): JsonResponse
     {
         return response()->json($this->feed->widgetPayload());
+    }
+
+    public function supportTickets(Request $request): JsonResponse
+    {
+        abort_unless($request->user()?->role?->slug === 'super_admin', 403);
+
+        $filters = $request->only(['status', 'search']);
+        if ($search = trim((string) ($filters['search'] ?? ''))) {
+            $filters['search'] = $search;
+        }
+
+        return response()->json(
+            $this->supportTickets->liveFeedPaginate(
+                $request->user(),
+                $filters,
+                (int) $request->input('per_page', 50),
+            ),
+        );
+    }
+
+    public function supportTicket(Request $request, SupportTicket $ticket): JsonResponse
+    {
+        abort_unless($request->user()?->role?->slug === 'super_admin', 403);
+
+        return response()->json([
+            'ticket' => $this->supportTickets->ticketDetail($ticket, $request->user()),
+            'assignable_admins' => collect($this->supportTickets->assignableAdmins())->map->only(['id', 'name', 'email'])->values(),
+            'statuses' => SupportTicketManagementService::STATUSES,
+        ]);
     }
 
     public function entity(Request $request): JsonResponse

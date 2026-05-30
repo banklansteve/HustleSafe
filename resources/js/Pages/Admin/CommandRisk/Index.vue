@@ -67,7 +67,7 @@
                             <option value="high">High</option>
                             <option value="critical">Critical</option>
                         </select>
-                        <input v-model="taskForm.due_at" class="input" type="date" />
+                        <AdminDateInput v-model="taskForm.due_at" button-class="input w-full" />
                         <button class="btn-primary" type="submit">Create</button>
                     </form>
                 </Panel>
@@ -206,6 +206,7 @@
 </template>
 
 <script setup>
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { useStaffNotificationVisit } from '@/composables/useStaffNotificationVisit';
 import { router, useForm } from '@inertiajs/vue3';

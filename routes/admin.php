@@ -20,6 +20,9 @@ use App\Http\Controllers\Admin\AdminQuestReleaseController;
 use App\Http\Controllers\Admin\AdminUserVerificationReviewController;
 use App\Http\Controllers\Shared\UserVerificationDocumentController;
 use App\Http\Controllers\Admin\AdminContractReceiptController;
+use App\Http\Controllers\Admin\AdminLifecycleAnalyticsController;
+use App\Http\Controllers\Admin\AdminPlatformFinancialHealthController;
+use App\Http\Controllers\Admin\AdminPlatformHealthController;
 use App\Http\Controllers\Admin\AdminPaymentsEscrowController;
 use App\Http\Controllers\Admin\AdminFraudRiskController;
 use App\Http\Controllers\Admin\AdminTrustRiskController;
@@ -30,10 +33,13 @@ use App\Http\Controllers\Admin\AdminIntelligenceController;
 use App\Http\Controllers\Admin\AdminKycCentreController;
 use App\Http\Controllers\Admin\AdminLiveActivityController;
 use App\Http\Controllers\Admin\AdminManagementController;
+use App\Http\Controllers\Admin\AdminModerationController;
 use App\Http\Controllers\Admin\AdminMessagesController;
 use App\Http\Controllers\Admin\AdminStaffActivitySummaryController;
 use App\Http\Controllers\Admin\AdminNotificationCentreController;
 use App\Http\Controllers\Admin\AdminOnboardingQualityController;
+use App\Http\Controllers\Admin\AdminProactiveOutreachController;
+use App\Http\Controllers\Admin\AdminResponseTemplatesController;
 use App\Http\Controllers\Admin\AdminPromotionsGrowthController;
 use App\Http\Controllers\Admin\AdminPortfolioReviewController;
 use App\Http\Controllers\Admin\AdminProposalsController;
@@ -45,6 +51,7 @@ use App\Http\Controllers\Admin\AdminStaffController;
 use App\Http\Controllers\Admin\AdminStaffActivityDigestController;
 use App\Http\Controllers\Admin\AdminCustomerSupportController;
 use App\Http\Controllers\Admin\AdminSupportTicketController;
+use App\Http\Controllers\Support\SupportTicketManagementController;
 use App\Http\Controllers\Admin\AdminTaskController;
 use App\Http\Controllers\Admin\AdminTreasuryController;
 use App\Http\Controllers\Admin\AdminUsersController;
@@ -54,6 +61,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', AdminDashboardController::class)->name('dashboard');
 Route::get('/exports/dashboard.csv', [AdminDashboardController::class, 'export'])->name('dashboard.export');
+Route::get('/api/platform-health', AdminPlatformHealthController::class)->name('api.platform-health');
+Route::get('/api/platform-financial-health', AdminPlatformFinancialHealthController::class)->name('api.platform-financial-health');
+Route::get('/lifecycle-analytics', AdminLifecycleAnalyticsController::class)->name('lifecycle-analytics.index');
 Route::get('/documentation/dashboard-guide/{topic?}', AdminDocumentationController::class)->name('documentation.guide');
 
 Route::get('/insights', AdminInsightsController::class)->name('insights.index');
@@ -123,8 +133,22 @@ Route::post('/api/customer-support/tickets/{ticket}/messages/{message}/react', [
 Route::get('/api/customer-support/search', [AdminCustomerSupportController::class, 'search'])->name('api.customer-support.search');
 Route::get('/api/customer-support/users/{user}/context', [AdminCustomerSupportController::class, 'userContext'])->name('api.customer-support.user-context');
 Route::get('/api/customer-support/gifs', [AdminCustomerSupportController::class, 'gifSearch'])->name('api.customer-support.gifs');
-Route::get('/support-tickets', [AdminSupportTicketController::class, 'index'])->name('support-tickets.index');
-Route::patch('/support-tickets/{ticket}/status', [AdminSupportTicketController::class, 'updateTicketStatus'])->middleware('throttle:60,1')->name('support-tickets.status');
+Route::get('/support-tickets', [SupportTicketManagementController::class, 'index'])->name('support-tickets.index');
+Route::get('/support-tickets/create', [SupportTicketManagementController::class, 'create'])->name('support-tickets.create');
+Route::post('/support-tickets', [SupportTicketManagementController::class, 'store'])->middleware('throttle:30,1')->name('support-tickets.store');
+Route::get('/support-tickets/settings/issue-groups', [SupportTicketManagementController::class, 'issueGroupSettings'])->name('support-tickets.issue-groups');
+Route::post('/support-tickets/settings/issue-groups', [SupportTicketManagementController::class, 'storeIssueGroup'])->middleware('throttle:30,1')->name('support-tickets.issue-groups.store');
+Route::patch('/support-tickets/settings/issue-groups/{issueGroup}', [SupportTicketManagementController::class, 'updateIssueGroup'])->middleware('throttle:30,1')->name('support-tickets.issue-groups.update');
+Route::get('/support-tickets/customers/search', [SupportTicketManagementController::class, 'searchCustomers'])->name('support-tickets.customers.search');
+Route::get('/support-tickets/{ticket}', [SupportTicketManagementController::class, 'show'])->name('support-tickets.show');
+Route::put('/support-tickets/{ticket}', [SupportTicketManagementController::class, 'update'])->middleware('throttle:30,1')->name('support-tickets.update');
+Route::delete('/support-tickets/{ticket}', [SupportTicketManagementController::class, 'destroy'])->middleware('throttle:20,1')->name('support-tickets.destroy');
+Route::patch('/support-tickets/{ticket}/status', [SupportTicketManagementController::class, 'updateStatus'])->middleware('throttle:60,1')->name('support-tickets.status');
+Route::post('/support-tickets/{ticket}/reassign', [SupportTicketManagementController::class, 'reassign'])->middleware('throttle:30,1')->name('support-tickets.reassign');
+Route::post('/support-tickets/{ticket}/comments', [SupportTicketManagementController::class, 'addComment'])->middleware('throttle:60,1')->name('support-tickets.comments.store');
+Route::patch('/support-tickets/{ticket}/action-items', [SupportTicketManagementController::class, 'updateActionItems'])->middleware('throttle:60,1')->name('support-tickets.action-items');
+Route::post('/support-tickets/{ticket}/sla', [SupportTicketManagementController::class, 'overrideSla'])->middleware('throttle:20,1')->name('support-tickets.sla');
+Route::post('/support-tickets/{ticket}/merge', [SupportTicketManagementController::class, 'merge'])->middleware('throttle:20,1')->name('support-tickets.merge');
 Route::post('/support-tickets/bulk-messages/{bulkMessage}/approve', [AdminSupportTicketController::class, 'approveBulkMessage'])->middleware('throttle:20,1')->name('support-tickets.bulk-messages.approve');
 Route::get('/tasks', [AdminTaskController::class, 'index'])->name('tasks.index');
 Route::post('/tasks', [AdminTaskController::class, 'store'])->middleware('throttle:30,1')->name('tasks.store');
@@ -398,6 +422,8 @@ Route::delete('/communications/email-broadcasts/templates/{template}', [AdminEma
 
 Route::get('/live-activity', [AdminLiveActivityController::class, 'index'])->name('live-activity.index');
 Route::get('/live-activity/events', [AdminLiveActivityController::class, 'events'])->name('live-activity.events');
+Route::get('/live-activity/support-tickets', [AdminLiveActivityController::class, 'supportTickets'])->name('live-activity.support-tickets');
+Route::get('/live-activity/support-tickets/{ticket}', [AdminLiveActivityController::class, 'supportTicket'])->name('live-activity.support-tickets.show');
 Route::get('/live-activity/summary', [AdminLiveActivityController::class, 'summary'])->name('live-activity.summary');
 Route::get('/live-activity/widget', [AdminLiveActivityController::class, 'widget'])->name('live-activity.widget');
 Route::get('/live-activity/entity', [AdminLiveActivityController::class, 'entity'])->name('live-activity.entity');
@@ -417,6 +443,39 @@ Route::get('/api/onboarding-quality/reviews/{review}', [AdminOnboardingQualityCo
 Route::post('/api/onboarding-quality/reviews/{review}/actions', [AdminOnboardingQualityController::class, 'action'])
     ->middleware('throttle:60,1')
     ->name('api.onboarding-quality.action');
+
+Route::get('/moderation', [AdminModerationController::class, 'index'])->name('moderation.index');
+Route::get('/api/moderation/quests', [AdminModerationController::class, 'questListing'])->name('api.moderation.quests');
+Route::get('/api/moderation/proposals', [AdminModerationController::class, 'proposalListing'])->name('api.moderation.proposals');
+Route::get('/api/moderation/quests/{quest}', [AdminModerationController::class, 'questDetail'])->name('api.moderation.quests.detail');
+Route::get('/api/moderation/proposals/{proposal}', [AdminModerationController::class, 'proposalDetail'])->name('api.moderation.proposals.detail');
+Route::patch('/api/moderation/quests/{quest}/admin-status', [AdminModerationController::class, 'questAdminStatus'])->middleware('throttle:60,1')->name('api.moderation.quests.admin-status');
+Route::post('/api/moderation/quests/{quest}/notices', [AdminModerationController::class, 'questNotice'])->middleware('throttle:60,1')->name('api.moderation.quests.notices');
+Route::post('/api/moderation/quests/{quest}/notes', [AdminModerationController::class, 'questNote'])->middleware('throttle:60,1')->name('api.moderation.quests.notes');
+Route::post('/api/moderation/quests/{quest}/flags', [AdminModerationController::class, 'questFlag'])->middleware('throttle:60,1')->name('api.moderation.quests.flags');
+Route::patch('/api/moderation/quests/{quest}', [AdminModerationController::class, 'questUpdate'])->middleware('throttle:30,1')->name('api.moderation.quests.update');
+Route::delete('/api/moderation/quests/{quest}/files/{file}', [AdminModerationController::class, 'questRemoveFile'])->middleware('throttle:60,1')->name('api.moderation.quests.files.destroy');
+Route::post('/api/moderation/quests/{quest}/contact', [AdminModerationController::class, 'questContact'])->middleware('throttle:30,1')->name('api.moderation.quests.contact');
+Route::post('/api/moderation/proposals/{proposal}/contact', [AdminModerationController::class, 'proposalContact'])->middleware('throttle:30,1')->name('api.moderation.proposals.contact');
+Route::patch('/api/moderation/proposals/{proposal}/admin-status', [AdminModerationController::class, 'proposalAdminStatus'])->middleware('throttle:60,1')->name('api.moderation.proposals.admin-status');
+Route::post('/api/moderation/proposals/{proposal}/notices', [AdminModerationController::class, 'proposalNotice'])->middleware('throttle:60,1')->name('api.moderation.proposals.notices');
+Route::post('/api/moderation/proposals/{proposal}/notes', [AdminModerationController::class, 'proposalNote'])->middleware('throttle:60,1')->name('api.moderation.proposals.notes');
+Route::post('/api/moderation/proposals/{proposal}/flags', [AdminModerationController::class, 'proposalFlag'])->middleware('throttle:60,1')->name('api.moderation.proposals.flags');
+Route::delete('/api/moderation/proposals/{proposal}', [AdminModerationController::class, 'proposalRemove'])->middleware('throttle:30,1')->name('api.moderation.proposals.remove');
+
+Route::get('/outreach', [AdminProactiveOutreachController::class, 'index'])->name('outreach.index');
+Route::get('/api/outreach', [AdminProactiveOutreachController::class, 'listing'])->name('api.outreach.listing');
+Route::get('/api/outreach/items/{item}', [AdminProactiveOutreachController::class, 'detail'])->name('api.outreach.detail');
+Route::post('/api/outreach/items/{item}/assign', [AdminProactiveOutreachController::class, 'assign'])->middleware('throttle:60,1')->name('api.outreach.assign');
+Route::post('/api/outreach/items/{item}/snooze', [AdminProactiveOutreachController::class, 'snooze'])->middleware('throttle:30,1')->name('api.outreach.snooze');
+Route::post('/api/outreach/items/{item}/resolve', [AdminProactiveOutreachController::class, 'resolve'])->middleware('throttle:30,1')->name('api.outreach.resolve');
+Route::post('/api/outreach/items/{item}/contact', [AdminProactiveOutreachController::class, 'outreach'])->middleware('throttle:30,1')->name('api.outreach.contact');
+Route::get('/api/outreach/templates/{template}/preview', [AdminProactiveOutreachController::class, 'templatePreview'])->name('api.outreach.templates.preview');
+
+Route::get('/response-templates', [AdminResponseTemplatesController::class, 'index'])->name('response-templates.index');
+Route::get('/api/response-templates', [AdminResponseTemplatesController::class, 'listing'])->name('api.response-templates.listing');
+Route::post('/api/response-templates', [AdminResponseTemplatesController::class, 'store'])->middleware('throttle:30,1')->name('api.response-templates.store');
+Route::patch('/api/response-templates/{template}', [AdminResponseTemplatesController::class, 'update'])->middleware('throttle:30,1')->name('api.response-templates.update');
 
 Route::get('/content-moderation', [AdminContentModerationController::class, 'index'])->name('content-moderation.index');
 Route::get('/content-moderation/cases/{case}', [AdminContentModerationController::class, 'show'])->name('content-moderation.cases.show');

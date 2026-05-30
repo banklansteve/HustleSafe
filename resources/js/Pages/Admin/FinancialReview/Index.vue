@@ -28,11 +28,11 @@
             </label>
             <label class="text-xs font-bold" :class="shell.cardMuted">
                 From
-                <input v-model="filters.from" type="date" class="mt-1 block rounded-xl border px-3 py-2 text-sm font-semibold" :class="shell.input" @change="reload" />
+                <AdminDateInput v-model="filters.from" wrapper-class="mt-1" @change="reload" />
             </label>
             <label class="text-xs font-bold" :class="shell.cardMuted">
                 To
-                <input v-model="filters.to" type="date" class="mt-1 block rounded-xl border px-3 py-2 text-sm font-semibold" :class="shell.input" @change="reload" />
+                <AdminDateInput v-model="filters.to" wrapper-class="mt-1" @change="reload" />
             </label>
             <p v-if="pendingCount > 0" class="ml-auto rounded-full bg-amber-500 px-3 py-1 text-xs font-black text-white">
                 {{ pendingCount }} pending
@@ -130,6 +130,7 @@
 </template>
 
 <script setup>
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import { onMounted, reactive, ref } from 'vue';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';

@@ -3,6 +3,21 @@
         title="Command overview"
         subtitle="Live KPIs on white cards over the teal canvas. Toggle chart mode from the sidebar."
     >
+        <PlatformHealthPanel v-if="platform_health" :initial="platform_health" />
+
+        <PlatformFinancialHealthPanel v-if="isSuperAdmin && platform_financial_health" :initial="platform_financial_health" />
+
+        <AdminPanel v-if="isSuperAdmin" eyebrow="Growth" title="User lifecycle">
+            <Link
+                :href="route('admin.lifecycle-analytics.index')"
+                prefetch="false"
+                class="inline-flex rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm font-black text-indigo-950 transition hover:border-indigo-200"
+                :class="shell.card"
+            >
+                Open lifecycle analytics — cohort timing, funnel drop-offs, 30/60/90d retention
+            </Link>
+        </AdminPanel>
+
         <AdminPanel eyebrow="Moderation tools" title="Onboarding & trust">
             <div class="grid gap-3 sm:grid-cols-2">
                 <Link
@@ -129,14 +144,19 @@
 </template>
 
 <script setup>
+import PlatformFinancialHealthPanel from '@/Components/Admin/PlatformFinancialHealthPanel.vue';
+import PlatformHealthPanel from '@/Components/Admin/PlatformHealthPanel.vue';
 import AdminKpiTile from '@/Components/Admin/AdminKpiTile.vue';
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminQuickActions from '@/Components/Admin/AdminQuickActions.vue';
 import LiveActivityWidget from '@/Components/Admin/LiveActivityWidget.vue';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { computed, defineAsyncComponent } from 'vue';
+
+const page = usePage();
+const isSuperAdmin = computed(() => page.props.auth?.user?.role?.slug === 'super_admin');
 
 const AsyncDashboardCharts = defineAsyncComponent(() => import('./DashboardCharts.vue'));
 
@@ -147,6 +167,8 @@ const props = defineProps({
     generated_at: { type: String, required: true },
     resource_groups: { type: Array, default: () => [] },
     live_activity: { type: Object, default: null },
+    platform_health: { type: Object, default: null },
+    platform_financial_health: { type: Object, default: null },
 });
 
 const { shell } = useInjectedAdminTheme();

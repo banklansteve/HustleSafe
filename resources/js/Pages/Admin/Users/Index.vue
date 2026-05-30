@@ -55,8 +55,8 @@
                 <div class="mt-3 grid gap-3 md:grid-cols-4">
                     <input v-model="localFilters.trust_min" type="number" min="0" max="100" placeholder="Trust min" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @change="applyFilters" />
                     <input v-model="localFilters.trust_max" type="number" min="0" max="100" placeholder="Trust max" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @change="applyFilters" />
-                    <input v-model="localFilters.joined_from" type="date" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @change="applyFilters" />
-                    <input v-model="localFilters.joined_to" type="date" class="rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" @change="applyFilters" />
+                    <AdminDateInput v-model="localFilters.joined_from" button-class="rounded-2xl border px-4 py-3 text-sm font-semibold" @change="applyFilters" />
+                    <AdminDateInput v-model="localFilters.joined_to" button-class="rounded-2xl border px-4 py-3 text-sm font-semibold" @change="applyFilters" />
                 </div>
 
                 <div class="mt-3 flex flex-wrap items-center gap-2">
@@ -306,6 +306,7 @@
 </template>
 
 <script setup>
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import InfoCard from '@/Components/Admin/InfoCard.vue';
 import ListBlock from '@/Components/Admin/ListBlock.vue';
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';

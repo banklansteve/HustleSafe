@@ -77,16 +77,20 @@
                     <CohortTable :payload="insights.retention" />
                 </InsightCard>
             </section>
+
+            <SupportTicketAnalyticsPanel :analytics="support_ticket_analytics" />
         </div>
     </AdminShell>
 </template>
 
 <script setup>
 import AdminShell from '@/Layouts/AdminShell.vue';
+import SupportTicketAnalyticsPanel from '@/Components/Admin/SupportTicketAnalyticsPanel.vue';
 import { computed, defineComponent, h, ref } from 'vue';
 
 const props = defineProps({
     insights: { type: Object, required: true },
+    support_ticket_analytics: { type: Object, default: () => ({}) },
 });
 
 const money = (minor) => `₦${Number((minor || 0) / 100).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;

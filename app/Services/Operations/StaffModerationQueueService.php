@@ -34,6 +34,7 @@ class StaffModerationQueueService
             ['key' => 'awaiting_edits', 'label' => 'Awaiting edits', 'hint' => 'Action required before the quest can proceed', 'filter' => ['admin_status' => 'action_required']],
             ['key' => 'escalated', 'label' => 'Escalated to Super Admin', 'hint' => 'Referred or restricted quests', 'filter' => ['admin_status' => 'referred']],
             ['key' => 'suspended', 'label' => 'Suspended', 'hint' => 'Quests suspended from the marketplace', 'filter' => ['admin_status' => 'suspended']],
+            ['key' => 'low_health', 'label' => 'Low health', 'hint' => 'Active engagements needing proactive outreach', 'filter' => ['quick' => 'low_health']],
         ];
     }
 

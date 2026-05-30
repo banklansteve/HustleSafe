@@ -8,14 +8,18 @@ use App\Models\PaymentEscrow;
 use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Services\Payments\PaystackClient;
+use App\Notifications\ProposalAwardPendingFreelancerNotification;
 use App\Notifications\ProposalAcceptedClientNotification;
 use App\Notifications\ProposalAcceptedFreelancerNotification;
 use App\Notifications\ProposalDeclinedFreelancerNotification;
 use App\Notifications\ProposalEscrowFundedFreelancerNotification;
 use App\Notifications\ProposalShortlistedFreelancerNotification;
 use App\Notifications\ProposalWithdrawnClientNotification;
+use App\Http\Requests\Quests\ConfirmProposalAwardRequest;
 use App\Services\Admin\AdminActivityFeedService;
-use App\Services\Verification\VerificationEngineService;
+use App\Services\Proposals\ProposalClarificationPromptService;
+use App\Services\Proposals\ProposalClarificationService;
+use App\Services\Proposals\ProposalTrustBehaviourService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -123,11 +127,20 @@ class QuestProposalLifecycleController extends Controller
         return back()->with('success', __('Proposal declined. The freelancer has been notified.'));
     }
 
-    public function accept(Request $request, Quest $quest, QuestOffer $offer, VerificationEngineService $verificationEngine): RedirectResponse
-    {
+    public function accept(
+        Request $request,
+        Quest $quest,
+        QuestOffer $offer,
+        ProposalClarificationPromptService $promptService,
+        ProposalClarificationService $clarifications,
+        VerificationEngineService $verificationEngine,
+    ): RedirectResponse {
         $this->authorize('respondAsClient', $offer);
         $request->validate([
             'confirm' => ['accepted'],
+            'confirm_scope' => ['accepted'],
+            'confirm_price' => ['accepted'],
+            'confirm_deadline' => ['accepted'],
             'accept_escrow_rules' => ['accepted'],
             'accept_fees_and_terms' => ['accepted'],
             'accept_auto_release_ack' => ['accepted'],
@@ -141,18 +154,62 @@ class QuestProposalLifecycleController extends Controller
         $this->assertOfferDecisible($offer);
 
         if (! in_array($offer->status, ['submitted', 'shortlisted'], true)) {
-            throw ValidationException::withMessages(['proposal' => __('This proposal cannot be accepted in its current state.')]);
+            throw ValidationException::withMessages(['proposal' => __('This proposal cannot be awarded in its current state.')]);
         }
 
-        if ($quest->accepted_quest_offer_id !== null) {
-            throw ValidationException::withMessages(['proposal' => __('This quest already has an accepted proposal.')]);
+        if ($quest->accepted_quest_offer_id !== null || $quest->pending_award_offer_id !== null) {
+            throw ValidationException::withMessages(['proposal' => __('This quest already has an award in progress or accepted.')]);
+        }
+
+        $terms = $promptService->awardTermsSnapshot($quest, $offer);
+
+        $offer->update([
+            'status' => 'pending_award',
+            'shortlisted_at' => null,
+            'award_client_confirmed_at' => now(),
+            'award_terms_snapshot' => $terms,
+        ]);
+
+        $quest->update(['pending_award_offer_id' => $offer->id]);
+        $clarifications->closeForOffer($offer);
+
+        if ($verificationEngine->arbitrationRequired($quest, $offer)) {
+            $verificationEngine->recordArbitrationAgreement($quest, $offer, $request->user(), 'client');
+        }
+
+        $offer->freelancer?->notify(new ProposalAwardPendingFreelancerNotification($offer, $terms));
+
+        return back()->with('success', __('Award initiated — the freelancer must confirm scope, price, and deadline before escrow funding unlocks.'));
+    }
+
+    public function confirmAward(
+        ConfirmProposalAwardRequest $request,
+        Quest $quest,
+        QuestOffer $offer,
+        VerificationEngineService $verificationEngine,
+        ProposalClarificationService $clarifications,
+    ): RedirectResponse {
+        if ((int) $offer->quest_id !== (int) $quest->id) {
+            abort(404);
+        }
+
+        if ((int) $offer->freelancer_id !== (int) $request->user()?->id) {
+            abort(403);
+        }
+
+        if ($offer->status !== 'pending_award' || $offer->award_client_confirmed_at === null) {
+            throw ValidationException::withMessages(['proposal' => __('This award is not awaiting your confirmation.')]);
+        }
+
+        if ((int) $quest->pending_award_offer_id !== (int) $offer->id) {
+            throw ValidationException::withMessages(['proposal' => __('This award is no longer active.')]);
         }
 
         DB::transaction(function () use ($quest, $offer): void {
             QuestOffer::query()
                 ->where('quest_id', $quest->id)
                 ->where('id', '<>', $offer->id)
-                ->whereIn('status', ['submitted', 'shortlisted'])
+                ->whereIn('status', ['submitted', 'shortlisted', 'pending_award'])
                 ->update([
                     'status' => 'declined',
                     'declined_at' => now(),
@@ -163,7 +220,7 @@ class QuestProposalLifecycleController extends Controller
             $offer->update([
                 'status' => 'accepted',
                 'accepted_at' => now(),
-                'shortlisted_at' => null,
+                'award_freelancer_confirmed_at' => now(),
             ]);
 
             $quest->update([
@@ -171,11 +228,14 @@ class QuestProposalLifecycleController extends Controller
                 'status' => QuestStatus::Assigned,
                 'escrow_status' => 'awaiting_funding',
                 'accepted_quest_offer_id' => $offer->id,
+                'pending_award_offer_id' => null,
             ]);
         });
 
+        $clarifications->closeForOffer($offer);
+
         if ($verificationEngine->arbitrationRequired($quest, $offer)) {
-            $verificationEngine->recordArbitrationAgreement($quest, $offer, $request->user(), 'client');
+            $verificationEngine->recordArbitrationAgreement($quest, $offer, $request->user(), 'freelancer');
         }
 
         $quest->client?->notify(new ProposalAcceptedClientNotification($offer));
@@ -203,7 +263,7 @@ class QuestProposalLifecycleController extends Controller
             'info',
         );
 
-        return back()->with('success', __('Proposal accepted. Fund escrow to authorise work — both parties were emailed with next steps.'));
+        return back()->with('success', __('Award confirmed — the client can now fund escrow to start work.'));
     }
 
     public function markEscrowFunded(Request $request, Quest $quest, QuestOffer $offer, VerificationEngineService $verificationEngine): RedirectResponse
@@ -224,6 +284,10 @@ class QuestProposalLifecycleController extends Controller
 
         if ((int) $quest->accepted_quest_offer_id !== (int) $offer->id || $offer->status !== 'accepted') {
             throw ValidationException::withMessages(['proposal' => __('Escrow can only be confirmed for the accepted proposal.')]);
+        }
+
+        if (! $offer->isAwardMutuallyConfirmed()) {
+            throw ValidationException::withMessages(['proposal' => __('Both parties must confirm the award terms before funding escrow.')]);
         }
 
         if ($quest->escrow_status !== 'awaiting_funding') {
@@ -278,8 +342,13 @@ class QuestProposalLifecycleController extends Controller
         return back()->with('success', __('Escrow marked funded — the freelancer is cleared to start work.'));
     }
 
-    public function withdraw(Request $request, Quest $quest, QuestOffer $offer): RedirectResponse
-    {
+    public function withdraw(
+        Request $request,
+        Quest $quest,
+        QuestOffer $offer,
+        ProposalTrustBehaviourService $trustBehaviour,
+        ProposalClarificationService $clarifications,
+    ): RedirectResponse {
         $this->authorize('withdrawAsFreelancer', $offer);
         $request->validate([
             'confirm' => ['accepted'],
@@ -294,6 +363,8 @@ class QuestProposalLifecycleController extends Controller
             throw ValidationException::withMessages(['proposal' => __('You can only withdraw proposals that are still pending with the client.')]);
         }
 
+        $wasShortlisted = $offer->status === 'shortlisted' || $offer->shortlisted_at !== null;
+
         $offer->update([
             'status' => 'withdrawn',
             'withdrawn_at' => now(),
@@ -301,11 +372,18 @@ class QuestProposalLifecycleController extends Controller
             'client_pinned_at' => null,
         ]);
 
+        if ($wasShortlisted) {
+            $trustBehaviour->recordShortlistedWithdrawal($offer);
+        }
+
+        $clarifications->closeForOffer($offer);
         $quest->client?->notify(new ProposalWithdrawnClientNotification($offer));
 
         return redirect()
             ->route('quests.show', $quest)
-            ->with('success', __('Proposal withdrawn. You can submit a fresh proposal while the quest stays open.'));
+            ->with('success', $wasShortlisted
+                ? __('Proposal withdrawn. Shortlisted withdrawals are logged and may affect your reliability score.')
+                : __('Proposal withdrawn. You can submit a fresh proposal while the quest stays open.'));
     }
 
     protected function assertQuestOpenForDecisions(Quest $quest): void

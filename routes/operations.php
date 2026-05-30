@@ -7,6 +7,8 @@ use App\Http\Controllers\Operations\OperationsEscalationController;
 use App\Http\Controllers\Operations\OperationsModerationController;
 use App\Http\Controllers\Operations\OperationsNotificationsController;
 use App\Http\Controllers\Operations\OperationsOnboardingController;
+use App\Http\Controllers\Operations\OperationsProactiveOutreachController;
+use App\Http\Controllers\Operations\OperationsResponseTemplatesController;
 use App\Http\Controllers\Operations\OperationsOnboardingQualityController;
 use App\Http\Controllers\Operations\OperationsPatrolController;
 use App\Http\Controllers\Operations\OperationsPaymentMonitoringController;
@@ -21,6 +23,7 @@ use App\Http\Controllers\Operations\OperationsQuestsController;
 use App\Http\Controllers\Operations\OperationsReviewsController;
 use App\Http\Controllers\Admin\AdminCustomerSupportController;
 use App\Http\Controllers\Operations\OperationsSupportHubController;
+use App\Http\Controllers\Support\SupportTicketManagementController;
 use App\Http\Controllers\Operations\OperationsTasksController;
 use App\Http\Controllers\Operations\OperationsUsersController;
 use App\Http\Controllers\Operations\OperationsVerificationsController;
@@ -111,6 +114,20 @@ Route::post('/api/onboarding/records/{record}/outreach', [OperationsOnboardingCo
 Route::post('/api/onboarding/records/{record}/resolve', [OperationsOnboardingController::class, 'resolve'])->middleware('throttle:30,1')->name('api.onboarding.resolve');
 Route::post('/api/onboarding/records/{record}/ticket', [OperationsOnboardingController::class, 'createTicket'])->middleware('throttle:30,1')->name('api.onboarding.ticket');
 
+Route::get('/outreach', [OperationsProactiveOutreachController::class, 'index'])->name('outreach.index');
+Route::get('/api/outreach', [OperationsProactiveOutreachController::class, 'listing'])->name('api.outreach.listing');
+Route::get('/api/outreach/items/{item}', [OperationsProactiveOutreachController::class, 'detail'])->name('api.outreach.detail');
+Route::post('/api/outreach/items/{item}/assign', [OperationsProactiveOutreachController::class, 'assign'])->middleware('throttle:60,1')->name('api.outreach.assign');
+Route::post('/api/outreach/items/{item}/snooze', [OperationsProactiveOutreachController::class, 'snooze'])->middleware('throttle:30,1')->name('api.outreach.snooze');
+Route::post('/api/outreach/items/{item}/resolve', [OperationsProactiveOutreachController::class, 'resolve'])->middleware('throttle:30,1')->name('api.outreach.resolve');
+Route::post('/api/outreach/items/{item}/contact', [OperationsProactiveOutreachController::class, 'outreach'])->middleware('throttle:30,1')->name('api.outreach.contact');
+Route::get('/api/outreach/templates/{template}/preview', [OperationsProactiveOutreachController::class, 'templatePreview'])->name('api.outreach.templates.preview');
+
+Route::get('/response-templates', [OperationsResponseTemplatesController::class, 'index'])->name('response-templates.index');
+Route::get('/api/response-templates', [OperationsResponseTemplatesController::class, 'listing'])->name('api.response-templates.listing');
+Route::post('/api/response-templates', [OperationsResponseTemplatesController::class, 'store'])->middleware('throttle:30,1')->name('api.response-templates.store');
+Route::patch('/api/response-templates/{template}', [OperationsResponseTemplatesController::class, 'update'])->middleware('throttle:30,1')->name('api.response-templates.update');
+
 Route::get('/onboarding-quality', [OperationsOnboardingQualityController::class, 'index'])->name('onboarding-quality.index');
 Route::get('/onboarding-quality/flagged-profiles', [OperationsOnboardingQualityController::class, 'flaggedProfiles'])->name('onboarding-quality.flagged');
 Route::get('/api/onboarding-quality', [OperationsOnboardingQualityController::class, 'listing'])->name('api.onboarding-quality.listing');
@@ -173,6 +190,18 @@ Route::post('/api/support/chats/{assignment}/reply', [OperationsSupportHubContro
 Route::get('/api/support/users/{user}/context', [OperationsSupportHubController::class, 'userContext'])->name('api.support.user-context');
 Route::post('/api/support/users/{user}/email', [OperationsSupportHubController::class, 'panelEmail'])->middleware('throttle:30,1')->name('api.support.panel-email');
 Route::get('/api/support/tickets/{ticket}', [OperationsSupportHubController::class, 'ticketDetail'])->name('api.support.tickets.detail');
+
+Route::get('/support-tickets', [SupportTicketManagementController::class, 'index'])->name('support-tickets.index');
+Route::get('/support-tickets/create', [SupportTicketManagementController::class, 'create'])->name('support-tickets.create');
+Route::post('/support-tickets', [SupportTicketManagementController::class, 'store'])->middleware('throttle:30,1')->name('support-tickets.store');
+Route::get('/support-tickets/customers/search', [SupportTicketManagementController::class, 'searchCustomers'])->name('support-tickets.customers.search');
+Route::get('/support-tickets/{ticket}', [SupportTicketManagementController::class, 'show'])->name('support-tickets.show');
+Route::put('/support-tickets/{ticket}', [SupportTicketManagementController::class, 'update'])->middleware('throttle:30,1')->name('support-tickets.update');
+Route::delete('/support-tickets/{ticket}', [SupportTicketManagementController::class, 'destroy'])->middleware('throttle:20,1')->name('support-tickets.destroy');
+Route::patch('/support-tickets/{ticket}/status', [SupportTicketManagementController::class, 'updateStatus'])->middleware('throttle:60,1')->name('support-tickets.status');
+Route::post('/support-tickets/{ticket}/reassign', [SupportTicketManagementController::class, 'reassign'])->middleware('throttle:30,1')->name('support-tickets.reassign');
+Route::post('/support-tickets/{ticket}/comments', [SupportTicketManagementController::class, 'addComment'])->middleware('throttle:60,1')->name('support-tickets.comments.store');
+Route::patch('/support-tickets/{ticket}/action-items', [SupportTicketManagementController::class, 'updateActionItems'])->middleware('throttle:60,1')->name('support-tickets.action-items');
 
 Route::redirect('/communications', '/operations/support')->name('communications.index');
 Route::post('/communications/bulk-messages', [OperationsCommunicationsController::class, 'storeBulkMessage'])->middleware('throttle:10,1')->name('communications.bulk-messages.store');

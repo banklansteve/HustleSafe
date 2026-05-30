@@ -11,6 +11,7 @@ class SupportTicket extends Model
 {
     protected $fillable = [
         'uuid',
+        'ticket_reference',
         'user_id',
         'customer_username',
         'customer_full_name',
@@ -19,12 +20,22 @@ class SupportTicket extends Model
         'assigned_admin_id',
         'subject',
         'category',
+        'issue_group',
         'priority',
         'status',
         'chat_status',
         'description',
+        'internal_notes',
+        'action_items',
         'resolution_summary',
         'opened_at',
+        'in_progress_at',
+        'expected_resolution_at',
+        'sla_breached',
+        'sla_overdue_at',
+        'sla_override_reason',
+        'sla_override_by_user_id',
+        'merged_into_support_ticket_id',
         'queued_at',
         'closed_at',
         'last_activity_at',
@@ -54,6 +65,11 @@ class SupportTicket extends Model
     {
         return [
             'opened_at' => 'datetime',
+            'in_progress_at' => 'datetime',
+            'expected_resolution_at' => 'datetime',
+            'sla_breached' => 'boolean',
+            'sla_overdue_at' => 'datetime',
+            'action_items' => 'array',
             'queued_at' => 'datetime',
             'closed_at' => 'datetime',
             'last_activity_at' => 'datetime',
@@ -72,7 +88,18 @@ class SupportTicket extends Model
 
     public function isClosed(): bool
     {
-        return in_array($this->chat_status, ['closed'], true) || $this->status === 'closed';
+        return in_array($this->chat_status, ['closed'], true)
+            || in_array($this->status, ['closed', 'resolved'], true);
+    }
+
+    public function isReadOnly(): bool
+    {
+        return $this->merged_into_support_ticket_id !== null;
+    }
+
+    public function isManagedTicket(): bool
+    {
+        return $this->opened_by_admin_id !== null;
     }
 
     public function getRouteKeyName(): string
@@ -123,5 +150,25 @@ class SupportTicket extends Model
     public function handoffs(): HasMany
     {
         return $this->hasMany(SupportTicketHandoff::class);
+    }
+
+    public function activities(): HasMany
+    {
+        return $this->hasMany(SupportTicketActivity::class)->orderByDesc('occurred_at');
+    }
+
+    public function emailLogs(): HasMany
+    {
+        return $this->hasMany(SupportTicketEmailLog::class)->orderByDesc('sent_at');
+    }
+
+    public function mergedInto(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'merged_into_support_ticket_id');
+    }
+
+    public function slaOverrideBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'sla_override_by_user_id');
     }
 }

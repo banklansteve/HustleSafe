@@ -51,26 +51,7 @@
             </section>
 
             <section class="grid gap-6 xl:grid-cols-2">
-                <form class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" @submit.prevent="assignRoleGroup">
-                    <h2 class="text-lg font-black text-slate-900">Assign role group</h2>
-                    <div class="mt-4 grid gap-3 sm:grid-cols-2">
-                        <select v-model.number="roleForm.staff_user_id" class="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold">
-                            <option :value="null">Select staff</option>
-                            <option v-for="member in staff" :key="member.id" :value="member.id">{{ member.name }} ({{ member.email }})</option>
-                        </select>
-                        <select v-model="roleForm.role_group" class="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold">
-                            <option value="">Role group</option>
-                            <option v-for="group in roleGroups" :key="group.value" :value="group.value">{{ group.label }}</option>
-                        </select>
-                        <input v-model="roleForm.starts_on" type="date" class="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold" />
-                        <input v-model="roleForm.ends_on" type="date" class="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold" />
-                    </div>
-                    <textarea v-model="roleForm.reason" rows="2" class="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold" placeholder="Reason for this assignment..." />
-                    <button type="submit" class="mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-primary-700 px-5 py-2.5 text-sm font-black text-white" :disabled="processing.assignRole">
-                        <span v-if="processing.assignRole" class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                        <span>Save role assignment</span>
-                    </button>
-                </form>
+                <AdminRoleAssignmentForm :staff="staff" :active-assignments="activeAssignments" />
 
                 <form class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" @submit.prevent="adjustLeaveBalance">
                     <h2 class="text-lg font-black text-slate-900">Adjust leave balance</h2>
@@ -267,8 +248,8 @@
                             <tr v-for="assignment in activeAssignments" :key="assignment.id" class="border-b border-slate-100">
                                 <td class="px-2 py-2 font-semibold text-slate-800">{{ assignment.staff?.name || 'Unknown' }}</td>
                                 <td class="px-2 py-2 text-slate-700">{{ roleGroupLabel(assignment.role_group) }}</td>
-                                <td class="px-2 py-2 text-slate-700">{{ assignment.starts_on }}</td>
-                                <td class="px-2 py-2 text-slate-700">{{ assignment.ends_on || 'Open' }}</td>
+                                <td class="px-2 py-2 text-slate-700">{{ formatLeaveDate(assignment.starts_on) }}</td>
+                                <td class="px-2 py-2 text-slate-700">{{ assignment.ends_on ? formatLeaveDate(assignment.ends_on) : 'Open' }}</td>
                                 <td class="px-2 py-2 text-slate-700">{{ assignment.status }}</td>
                             </tr>
                         </tbody>
@@ -285,7 +266,7 @@
                                 <th class="px-2 py-2">Staff</th>
                                 <th class="px-2 py-2">Type</th>
                                 <th class="px-2 py-2">Range</th>
-                                <th class="px-2 py-2">Days</th>
+                                <th class="px-2 py-2">Duration</th>
                                 <th class="px-2 py-2">Status</th>
                                 <th class="px-2 py-2">Action</th>
                             </tr>
@@ -294,8 +275,8 @@
                             <tr v-for="row in leaveRequests" :key="row.id" class="border-b border-slate-100">
                                 <td class="px-2 py-2 font-semibold text-slate-800">{{ row.staff?.name || 'Unknown' }}</td>
                                 <td class="px-2 py-2 font-semibold text-slate-700">{{ row.leave_type }}</td>
-                                <td class="px-2 py-2 text-slate-700">{{ row.start_date }} - {{ row.end_date }}</td>
-                                <td class="px-2 py-2 text-slate-700">{{ row.days_requested }}</td>
+                                <td class="px-2 py-2 text-slate-700">{{ formatLeaveRange(row) }}</td>
+                                <td class="px-2 py-2 text-slate-700">{{ formatLeaveDurationRequested(row) }}</td>
                                 <td class="px-2 py-2">
                                     <span class="rounded-full px-2 py-1 text-[10px] font-black uppercase" :class="statusClass(row.status)">{{ row.status }}</span>
                                 </td>
@@ -374,8 +355,8 @@
                         <option value="">All actions</option>
                         <option v-for="actionType in auditActionTypes" :key="`action-${actionType}`" :value="actionType">{{ actionType }}</option>
                     </select>
-                    <input v-model="auditFilterForm.from_date" type="date" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold" />
-                    <input v-model="auditFilterForm.to_date" type="date" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold" />
+                    <AdminDateInput v-model="auditFilterForm.from_date" button-class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900" />
+                    <AdminDateInput v-model="auditFilterForm.to_date" button-class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900" />
                     <div class="flex gap-2">
                         <button type="submit" class="rounded-full bg-primary-700 px-4 py-2.5 text-sm font-black text-white">Filter</button>
                         <button type="button" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-black uppercase tracking-wide text-slate-700" @click="resetAuditFilters">Reset</button>
@@ -457,8 +438,8 @@
                             <tr v-for="row in leaveCalendar" :key="`calendar-${row.id}`" class="border-b border-slate-100">
                                 <td class="px-2 py-2 font-semibold text-slate-800">{{ row.staff?.name || 'Unknown' }}</td>
                                 <td class="px-2 py-2 text-slate-700">{{ row.leave_type }}</td>
-                                <td class="px-2 py-2 text-slate-700">{{ row.start_date }}</td>
-                                <td class="px-2 py-2 text-slate-700">{{ row.end_date }}</td>
+                                <td class="px-2 py-2 text-slate-700">{{ formatLeaveDate(row.start_date) }}</td>
+                                <td class="px-2 py-2 text-slate-700">{{ formatLeaveDate(row.end_date) }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -495,7 +476,10 @@
 </template>
 
 <script setup>
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
+import AdminRoleAssignmentForm from '@/Components/Admin/AdminRoleAssignmentForm.vue';
 import AdminShell from '@/Layouts/AdminShell.vue';
+import { formatLeaveDate, formatLeaveDurationRequested, formatLeaveRange } from '@/utils/formatHumanDateTime';
 import { router } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 
@@ -527,14 +511,6 @@ const roleGroups = [
     { value: 'group_c_people_trust_management', label: 'Group C - People & Trust' },
     { value: 'group_d_financial_disputes_casework', label: 'Group D - Financial & Disputes' },
 ];
-
-const roleForm = reactive({
-    staff_user_id: null,
-    role_group: '',
-    starts_on: '',
-    ends_on: '',
-    reason: '',
-});
 
 const balanceForm = reactive({
     staff_user_id: null,
@@ -592,7 +568,6 @@ const suspiciousForm = reactive({
 const reportStaffId = ref(null);
 const toasts = ref([]);
 const processing = reactive({
-    assignRole: false,
     adjustBalance: false,
     updatePayroll: false,
     storeAllowance: false,
@@ -618,15 +593,6 @@ function showToast(message, type = 'success') {
     window.setTimeout(() => {
         toasts.value = toasts.value.filter((item) => item.id !== id);
     }, 3200);
-}
-
-function assignRoleGroup() {
-    processing.assignRole = true;
-    router.post(route('admin.hr.role-group.assign'), roleForm, {
-        onSuccess: () => showToast('Role assignment saved.'),
-        onError: () => showToast('Failed to save role assignment.', 'error'),
-        onFinish: () => { processing.assignRole = false; },
-    });
 }
 
 function adjustLeaveBalance() {

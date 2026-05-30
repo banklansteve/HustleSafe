@@ -32,7 +32,7 @@ class ProposalShortlistedFreelancerNotification extends Notification
         return (new MailMessage)
             ->subject(__('You were shortlisted on :title', ['title' => $quest?->title ?? 'a quest']))
             ->line(__('Hi :name,', ['name' => $first]))
-            ->line(__('Great news — the client shortlisted your proposal. Keep an eye on messages for any follow-ups.'))
+            ->line(__('You\'ve been shortlisted — the client may reach out soon. Keep an eye on clarifications and messages for this quest.'))
             ->action(__('View proposal'), $quest ? route('quests.proposals.show', [$quest, $this->offer], absolute: true) : url('/'));
     }
 
@@ -49,7 +49,7 @@ class ProposalShortlistedFreelancerNotification extends Notification
             'headline' => __('Shortlisted — nice one'),
             'title' => __('Shortlisted — nice one'),
             'quest_title' => $quest?->title,
-            'body' => __('The client shortlisted your proposal.'),
+            'body' => __('You\'ve been shortlisted — the client may reach out soon.'),
             'href' => $quest ? route('quests.proposals.show', [$quest, $this->offer], absolute: false) : '/',
         ];
     }

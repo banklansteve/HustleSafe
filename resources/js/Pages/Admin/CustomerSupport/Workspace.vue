@@ -195,6 +195,13 @@
                             <button
                                 type="button"
                                 class="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-black uppercase text-primary-900 hover:bg-primary-100"
+                                @click="openCreateTicket"
+                            >
+                                Create ticket
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded-lg border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-black uppercase text-primary-900 hover:bg-primary-100"
                                 @click="openUserProfile"
                             >
                                 User profile
@@ -1085,6 +1092,12 @@ function openUserProfile() {
     if (userId) {
         loadUserContext(userId);
     }
+}
+
+function openCreateTicket() {
+    const customerId = selected.value?.customer?.id;
+    const params = customerId ? { customer_id: customerId } : {};
+    window.location.href = route(`${props.routeNamespace}.support-tickets.create`, params);
 }
 
 async function openTicketFromProfile(ticketRef) {

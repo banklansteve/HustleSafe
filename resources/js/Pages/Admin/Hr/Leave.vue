@@ -90,6 +90,7 @@
                                 <th class="px-4 py-3">Staff</th>
                                 <th class="px-4 py-3">Type</th>
                                 <th class="px-4 py-3">Range</th>
+                                <th class="px-4 py-3">Duration</th>
                                 <th class="px-4 py-3">Status</th>
                                 <th class="px-4 py-3">Review note</th>
                                 <th class="px-4 py-3">Action</th>
@@ -100,6 +101,7 @@
                                 <td class="px-4 py-3 font-semibold text-slate-800">{{ row.staff?.name || 'Unknown' }}</td>
                                 <td class="px-4 py-3 capitalize text-slate-700">{{ row.leave_type }}</td>
                                 <td class="px-4 py-3 text-slate-700">{{ formatLeaveRange(row) }}</td>
+                                <td class="px-4 py-3 font-semibold text-slate-700">{{ formatLeaveDurationRequested(row) }}</td>
                                 <td class="px-4 py-3 capitalize text-slate-700">{{ row.status }}</td>
                                 <td class="px-4 py-3 text-xs font-semibold text-slate-600">{{ row.review_note || '—' }}</td>
                                 <td class="px-4 py-3">
@@ -113,7 +115,7 @@
                                 </td>
                             </tr>
                             <tr v-if="!leaveRequests.length">
-                                <td class="px-4 py-6 text-sm font-semibold text-slate-500" colspan="6">No leave requests yet.</td>
+                                <td class="px-4 py-6 text-sm font-semibold text-slate-500" colspan="7">No leave requests yet.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -168,7 +170,7 @@
                                 <tr v-for="row in leaveCalendar" :key="row.id">
                                     <td class="px-4 py-3 font-semibold text-slate-800">{{ row.staff?.name || 'Unknown' }}</td>
                                     <td class="px-4 py-3 capitalize text-slate-700">{{ row.leave_type }}</td>
-                                    <td class="px-4 py-3 text-slate-700">{{ formatCalendarDates(row) }}</td>
+                                    <td class="px-4 py-3 text-slate-700">{{ formatLeaveCalendarDates(row) }}</td>
                                     <td class="px-4 py-3 text-slate-700">{{ formatCalendarDuration(row) }}</td>
                                 </tr>
                                 <tr v-if="!leaveCalendar.length">
@@ -202,6 +204,7 @@
 import AppConfirmModal from '@/Components/AppConfirmModal.vue';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { useAdminHrInertia } from '@/composables/useAdminHrInertia';
+import { formatLeaveCalendarDates, formatLeaveDurationRequested, formatLeaveRange } from '@/utils/formatHumanDateTime';
 import { router } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 
@@ -432,28 +435,6 @@ function leaveBalanceSummary(row, type) {
     return `${balance} left · ${assigned} assigned · ${used} taken`;
 }
 
-function formatLeaveRange(row) {
-    const start = formatHumanDate(row?.start_date);
-    const end = formatHumanDate(row?.end_date);
-    if (row?.duration_type === 'hours') {
-        return `${start} (${row?.hours_requested || 0} hour(s))`;
-    }
-    if (row?.duration_type === 'multiple_days' && row?.start_date !== row?.end_date) {
-        return `${start} to ${end}`;
-    }
-    return start;
-}
-
-function formatCalendarDates(row) {
-    const start = formatHumanDate(row?.start_date);
-    const end = formatHumanDate(row?.end_date);
-    if (row?.duration_type === 'hours' || row?.start_date === row?.end_date) {
-        return start;
-    }
-
-    return `${start} – ${end}`;
-}
-
 function formatCalendarDuration(row) {
     if (row?.duration_type === 'hours') {
         return `${row?.hours_requested || 0} hour(s)`;
@@ -462,12 +443,5 @@ function formatCalendarDuration(row) {
     const days = Number(row?.days_requested || 1);
 
     return days === 1 ? '1 day' : `${days} days`;
-}
-
-function formatHumanDate(value) {
-    if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 </script>

@@ -19,7 +19,7 @@
                 <form class="digest-filter-card" @submit.prevent="applyFilters">
                     <label>
                         <span>Date</span>
-                        <input v-model="form.date" type="date" />
+                        <AdminDateInput v-model="form.date" />
                     </label>
                     <label>
                         <span>Staff/admin</span>
@@ -154,6 +154,7 @@
 </template>
 
 <script setup>
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { Link, router } from '@inertiajs/vue3';
 import { computed, defineComponent, h, reactive } from 'vue';
@@ -303,7 +304,8 @@ const DigestPanel = defineComponent({
 }
 
 .digest-filter-card input,
-.digest-filter-card select {
+.digest-filter-card select,
+.digest-filter-card button:not([type='submit']) {
     @apply min-h-11 rounded-2xl border border-slate-300 bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950 outline-none ring-2 ring-transparent transition focus:border-blue-500 focus:ring-blue-100;
 }
 

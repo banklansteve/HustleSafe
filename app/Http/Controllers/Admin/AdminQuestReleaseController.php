@@ -30,6 +30,8 @@ class AdminQuestReleaseController extends Controller
             'release_authorized_by' => $request->user()->id,
         ]);
 
+        app(\App\Services\Platform\PlatformSlaService::class)->resolveForSubject('escrow_release_appeal', $quest);
+
         $this->events->record($quest->fresh(), 'release_authorized', $request->user(), $request, [
             'reason' => $data['reason'],
             'amount_minor' => EscrowReleasePolicy::escrowAmountMinor($quest),

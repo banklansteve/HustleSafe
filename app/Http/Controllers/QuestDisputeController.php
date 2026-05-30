@@ -170,6 +170,7 @@ class QuestDisputeController extends Controller
         return Inertia::render('Disputes/Show', [
             'dispute' => $this->disputePayload($dispute, $user),
             'can_participate' => $user?->can('participate', $dispute) ?? false,
+            'sla_expectation' => app(\App\Services\Platform\PlatformSlaService::class)->userExpectationForSubject('dispute_resolution', $dispute),
             'philosophy' => config('disputes.philosophy', []),
             'policy' => [
                 'minimum_disputed_amount_minor' => (int) config('disputes.minimum_disputed_amount_minor', 500_000),

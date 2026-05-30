@@ -162,6 +162,7 @@ class QuestManagementEngineService
             'adminStatusChangedBy:id,name,email',
             'adminQuestNotices.creator:id,name,email',
             'adminQuestNotes.admin:id,name,email,avatar_url',
+            'nudgeLogs.recipient:id,name,email',
         ]);
 
         if ($this->questFlagsAvailable()) {
@@ -185,6 +186,20 @@ class QuestManagementEngineService
             'flags' => $this->questFlagsAvailable() && $quest->relationLoaded('activeAdminQuestFlags')
                 ? $quest->activeAdminQuestFlags->map(fn (AdminQuestFlag $flag) => $this->flagRow($flag))->values()
                 : collect(),
+            'health' => [
+                'score' => $quest->health_score,
+                'updated_at' => $quest->health_score_updated_at?->toIso8601String(),
+                'low' => $quest->health_score !== null && $quest->health_score < \App\Services\Quest\QuestHealthScoreService::LOW_HEALTH_THRESHOLD,
+            ],
+            'nudge_logs' => $quest->relationLoaded('nudgeLogs')
+                ? $quest->nudgeLogs->map(fn ($log) => [
+                    'id' => $log->id,
+                    'nudge_type' => $log->nudge_type,
+                    'recipient' => $log->recipient?->name,
+                    'subject' => $log->subject,
+                    'sent_at' => $log->sent_at?->toIso8601String(),
+                ])->values()
+                : [],
             'edit_options' => $this->editOptions(),
         ];
     }
@@ -464,6 +479,9 @@ class QuestManagementEngineService
             'featured' => $query->whereHas('activeFeaturedListing'),
             'hidden' => $query->whereIn('status', [QuestStatus::Closed, QuestStatus::Archived, QuestStatus::CancelledByAdmin]),
             'expired' => $query->whereNotNull('listing_expires_at')->where('listing_expires_at', '<=', now()),
+            'low_health' => $query->whereNotNull('accepted_quest_offer_id')
+                ->whereNotNull('health_score')
+                ->where('health_score', '<', \App\Services\Quest\QuestHealthScoreService::LOW_HEALTH_THRESHOLD),
             'disputed' => $query->where('status', QuestStatus::InDispute),
             default => null,
         };
@@ -584,6 +602,8 @@ class QuestManagementEngineService
                 'status' => $quest->escrow_status,
                 'funded' => $quest->escrow_funded_at !== null,
             ],
+            'health_score' => $quest->health_score,
+            'health_score_updated_at' => $quest->health_score_updated_at?->toIso8601String(),
             'flags' => $flags->map(fn (AdminQuestFlag $flag) => $this->flagRow($flag))->all(),
             'files_count' => null,
             'created_at' => $quest->created_at?->toIso8601String(),

@@ -21,11 +21,11 @@
             :class="shell.input"
         />
 
-        <PremiumDatePicker
+        <AdminDateInput
             v-else-if="inputType === 'date'"
             :id="fieldId"
             v-model="model"
-            class="mt-1"
+            wrapper-class="mt-1"
             placeholder="DD/MM/YYYY"
         />
 
@@ -98,7 +98,7 @@
 </template>
 
 <script setup>
-import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import { computed } from 'vue';
 

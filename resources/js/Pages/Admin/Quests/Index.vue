@@ -114,11 +114,11 @@
                     </label>
                     <label class="filter-field">
                         <span>Date posted from</span>
-                        <input v-model="form.posted_from" type="date" />
+                        <AdminDateInput v-model="form.posted_from" />
                     </label>
                     <label class="filter-field">
                         <span>Date posted to</span>
-                        <input v-model="form.posted_to" type="date" />
+                        <AdminDateInput v-model="form.posted_to" />
                     </label>
                     <label class="filter-field">
                         <span>Project type</span>
@@ -478,7 +478,7 @@
                                     <label class="flex items-center gap-2 text-xs font-bold text-slate-300">
                                         <input v-model="releaseControlForm.indefinite" type="checkbox" /> Indefinite hold
                                     </label>
-                                    <input v-if="!releaseControlForm.indefinite" v-model="releaseControlForm.hold_until" type="date" class="panel-input w-full text-xs" />
+                                    <AdminDateInput v-if="!releaseControlForm.indefinite" v-model="releaseControlForm.hold_until" button-class="panel-input w-full text-xs" />
                                     <button type="submit" class="danger-button w-full text-xs" :disabled="actionBusy || releaseControlForm.hold_reason.length < 10">Place hold</button>
                                 </form>
                                 <form class="mt-3 space-y-2" @submit.prevent="submitReleaseLiftHold">
@@ -619,6 +619,7 @@
 </template>
 
 <script setup>
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 import AdminTabPanel from '@/Components/Admin/AdminTabPanel.vue';
 import AdminTabs from '@/Components/Admin/AdminTabs.vue';
@@ -1334,6 +1335,7 @@ const ResolveFlagPanel = defineComponent({
 :global(.admin-theme-light .quest-engine-page .panel-input),
 :global(.admin-theme-light .quest-engine-page .filter-field select),
 :global(.admin-theme-light .quest-engine-page .filter-field input),
+:global(.admin-theme-light .quest-engine-page .filter-field button),
 :global(.admin-theme-light .quest-engine-page input),
 :global(.admin-theme-light .quest-engine-page select),
 :global(.admin-theme-light .quest-engine-page textarea) {
@@ -1423,7 +1425,8 @@ const ResolveFlagPanel = defineComponent({
 .control-select,
 .panel-input,
 .filter-field select,
-.filter-field input {
+.filter-field input,
+.filter-field button {
     @apply min-h-11 rounded-xl border border-white/10 bg-slate-950 px-3 text-sm font-semibold text-white outline-none ring-2 ring-transparent transition focus:border-primary-400/60 focus:ring-primary-500/30;
 }
 

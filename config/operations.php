@@ -26,6 +26,7 @@ return [
         'payment' => 'Payments',
         'system' => 'System',
         'team_chat' => 'Team chat',
+        'hr' => 'HR & people ops',
     ],
 
     'notification_events' => [
@@ -40,6 +41,7 @@ return [
         'watchlist_tier_change' => ['category' => 'quality', 'default_in_app' => true, 'default_email' => false],
         'payment_exception' => ['category' => 'payment', 'default_in_app' => true, 'default_email' => true],
         'team_chat_message' => ['category' => 'team_chat', 'default_in_app' => true, 'default_email' => false],
+        'hr_update' => ['category' => 'hr', 'default_in_app' => true, 'default_email' => true],
     ],
 
     'quality_thresholds' => [
@@ -109,6 +111,66 @@ return [
             'label' => 'Abandoned proposal draft (48h+)',
             'template_subject' => 'Finish your proposal draft',
             'template_body' => "Hi :name,\n\nYou have a proposal draft that has not been submitted. I can help tighten your pitch or pricing before you send it.\n\nReply when you are ready.",
+        ],
+    ],
+
+    'proactive_outreach' => [
+        'freelancer_kyc_no_proposal_days' => 14,
+        'client_no_quest_days' => 21,
+        'awarded_no_escrow_hours' => 48,
+        'dispute_no_evidence_hours' => 72,
+        'rating_drop_threshold' => 0.5,
+        'rating_drop_window_days' => 14,
+
+        'situations' => [
+            'freelancer_kyc_no_proposal_14d' => [
+                'label' => 'Freelancer · KYC complete, no proposal (14d)',
+                'hint' => 'Verified freelancer who has not submitted a proposal',
+                'category' => 'retention',
+                'priority' => 'medium',
+                'priority_score' => 55,
+                'default_template_slug' => 'freelancer-kyc-no-proposal',
+            ],
+            'client_no_quest_21d' => [
+                'label' => 'Client · no Quest posted (21d)',
+                'hint' => 'Registered client who has not published a Quest',
+                'category' => 'retention',
+                'priority' => 'medium',
+                'priority_score' => 50,
+                'default_template_slug' => 'client-no-quest-posted',
+            ],
+            'awarded_no_escrow_funded' => [
+                'label' => 'Awarded · escrow not funded',
+                'hint' => 'Client awarded a freelancer but escrow remains unfunded',
+                'category' => 'escrow',
+                'priority' => 'high',
+                'priority_score' => 80,
+                'default_template_slug' => 'quest-awarded-no-escrow',
+            ],
+            'freelancer_rating_drop' => [
+                'label' => 'Freelancer · sudden rating drop',
+                'hint' => 'Recent reviews pulled average rating down sharply',
+                'category' => 'quality',
+                'priority' => 'high',
+                'priority_score' => 70,
+                'default_template_slug' => 'freelancer-rating-drop-coaching',
+            ],
+            'dispute_open_no_evidence' => [
+                'label' => 'Dispute · no evidence submitted',
+                'hint' => 'Open dispute with no evidence uploaded after deadline window',
+                'category' => 'dispute',
+                'priority' => 'high',
+                'priority_score' => 75,
+                'default_template_slug' => 'dispute-no-evidence',
+            ],
+            'off_platform_payment_flagged' => [
+                'label' => 'Off-platform payment attempt',
+                'hint' => 'Conversation flagged for off-platform payment solicitation',
+                'category' => 'trust',
+                'priority' => 'urgent',
+                'priority_score' => 90,
+                'default_template_slug' => 'off-platform-payment-warning',
+            ],
         ],
     ],
 ];

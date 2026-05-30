@@ -84,7 +84,9 @@ class FreelancerTrustScoreService
             + ($weights['qualifications_verified'] ?? 0) * $qualNorm
             + ($weights['cac_verified'] ?? 0) * $cacNorm;
 
-        $score = (int) round(min(100, max(0, $linear * 100)));
+        $user->loadMissing('trustMetrics');
+        $penalty = (int) ($user->trustMetrics?->reliability_penalty_points ?? 0);
+        $score = (int) round(min(100, max(0, ($linear * 100) - min(25, $penalty))));
 
         return [
             'score' => $score,
@@ -100,6 +102,7 @@ class FreelancerTrustScoreService
                 'qualifications_verified' => round($qualNorm, 4),
                 'cac_verified' => round($cacNorm, 4),
                 'linear_raw' => round($linear, 4),
+                'reliability_penalty' => $penalty,
                 'quests_finished' => $finished,
                 'quests_disputed' => $disputed,
             ],

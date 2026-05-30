@@ -8,7 +8,7 @@ use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Notifications\ProposalViewedMilestoneNotification;
 use App\Services\FreelancerWorkspaceReadinessService;
-use App\Services\QuestProposalPricingHintService;
+use App\Services\Proposals\ProposalClarificationService;
 use App\Services\UserNotificationInboxService;
 use App\Support\PlatformSettings;
 use App\Support\QuestCommerceUi;
@@ -185,6 +185,7 @@ class QuestProposalController extends Controller
 
         $commerce = QuestCommerceUi::disputeForQuest($quest, $user);
         $commerce = array_merge($commerce, QuestCommerceUi::fundingForOffer($quest, $offer, $user));
+        $commerce = array_merge($commerce, QuestCommerceUi::partyExtras($quest, $user));
 
         return Inertia::render('Quests/Proposals/Show', [
             'quest' => $this->questComposerPayload($quest),
@@ -196,6 +197,12 @@ class QuestProposalController extends Controller
             'conversation_with_freelancer_url' => $isClient && $offer->freelancer?->slug
                 ? route('quests.messages.show', [$quest->getRouteKey(), $offer->freelancer->slug])
                 : null,
+            'clarification_url' => ($isClient || $isFreelancerAuthor)
+                && in_array($offer->status, ['submitted', 'shortlisted'], true)
+                && $quest->status === QuestStatus::Open
+                ? route('quests.proposals.clarify', [$quest, $offer])
+                : null,
+            'clarification_summary' => app(ProposalClarificationService::class)->threadForOffer($offer)->messages()->count(),
             'commerce' => $commerce,
         ]);
     }
@@ -345,6 +352,9 @@ class QuestProposalController extends Controller
             'last_client_view_at' => $offer->last_client_view_at?->timezone('Africa/Lagos')->toIso8601String(),
             'client_pinned_at' => $offer->client_pinned_at !== null,
             'shortlisted_at' => $offer->shortlisted_at?->timezone('Africa/Lagos')->toIso8601String(),
+            'award_terms_snapshot' => $offer->award_terms_snapshot,
+            'award_client_confirmed_at' => $offer->award_client_confirmed_at?->timezone('Africa/Lagos')->toIso8601String(),
+            'award_freelancer_confirmed_at' => $offer->award_freelancer_confirmed_at?->timezone('Africa/Lagos')->toIso8601String(),
             'freelancer_edit_deadline_at' => $offer->freelancer_edit_deadline_at?->timezone('Africa/Lagos')->toIso8601String(),
             'can_edit' => $offer->freelancer_edit_deadline_at !== null
                 && now()->lessThanOrEqualTo($offer->freelancer_edit_deadline_at)

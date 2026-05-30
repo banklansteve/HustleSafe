@@ -37,6 +37,9 @@ class QuestOffer extends Model
         'declined_at',
         'withdrawn_at',
         'shortlisted_at',
+        'award_client_confirmed_at',
+        'award_freelancer_confirmed_at',
+        'award_terms_snapshot',
         'client_pinned_at',
         'client_view_count',
         'last_client_view_at',
@@ -61,6 +64,9 @@ class QuestOffer extends Model
             'declined_at' => 'datetime',
             'withdrawn_at' => 'datetime',
             'shortlisted_at' => 'datetime',
+            'award_client_confirmed_at' => 'datetime',
+            'award_freelancer_confirmed_at' => 'datetime',
+            'award_terms_snapshot' => 'array',
             'client_pinned_at' => 'datetime',
             'last_client_view_at' => 'datetime',
             'freelancer_edit_deadline_at' => 'datetime',
@@ -117,6 +123,21 @@ class QuestOffer extends Model
         return $this->hasMany(AdminProposalNote::class, 'quest_offer_id');
     }
 
+    public function clarificationThread(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ProposalClarificationThread::class, 'quest_offer_id');
+    }
+
+    public function isPendingAward(): bool
+    {
+        return $this->status === 'pending_award';
+    }
+
+    public function isAwardMutuallyConfirmed(): bool
+    {
+        return $this->award_client_confirmed_at !== null && $this->award_freelancer_confirmed_at !== null;
+    }
+
     /**
      * @param  Builder<QuestOffer>  $query
      */
@@ -141,6 +162,6 @@ class QuestOffer extends Model
     {
         return $query
             ->excludingAdminSuspended()
-            ->whereIn('status', ['submitted', 'shortlisted', 'accepted']);
+            ->whereIn('status', ['submitted', 'shortlisted', 'pending_award', 'accepted']);
     }
 }

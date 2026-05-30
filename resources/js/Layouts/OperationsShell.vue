@@ -312,6 +312,7 @@ const navGroups = [
         label: 'Chat',
         items: [
             { label: 'Live support', hint: 'Real-time customer chats assigned to you', href: route('operations.customer-support.index'), match: (p) => p.startsWith('/operations/customer-support'), badge: () => unreadSupportLive.value },
+            { label: 'Support tickets', hint: 'Create and manage customer support tickets', href: route('operations.support-tickets.index'), match: (p) => p.startsWith('/operations/support-tickets') },
             { label: 'Team chat', hint: 'Group channel for the operations team', href: route('operations.team-chat.index'), match: (p) => p.startsWith('/operations/team-chat') },
             { label: 'Direct messages', hint: 'Private 1:1 chats with admins', action: 'messenger', match: () => false },
         ],
@@ -338,6 +339,7 @@ const navGroups = [
             { label: 'Conversation monitoring', hint: 'Automated message scanning and escalation queue', href: route('operations.conversation-monitoring.index'), match: (p) => p.startsWith('/operations/conversation-monitoring') },
             { label: 'Freelancer quality', hint: 'Performance trends and coaching actions', href: route('operations.quality.index'), match: (p) => p.startsWith('/operations/quality') },
             { label: 'Onboarding assist', hint: 'Stuck users and retention outreach', href: route('operations.onboarding.index'), match: (p) => matchPathPrefix(p, '/operations/onboarding', { exclude: ['/operations/onboarding-quality'] }) },
+            { label: 'Proactive outreach', hint: 'Retention queue with templated outreach', href: route('operations.outreach.index'), match: (p) => p.startsWith('/operations/outreach') || p.startsWith('/operations/response-templates') },
         ],
     },
     {

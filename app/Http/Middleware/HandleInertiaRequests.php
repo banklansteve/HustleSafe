@@ -93,6 +93,7 @@ class HandleInertiaRequests extends Middleware
                 'token' => fn () => $request->session()->has('success') || $request->session()->has('status') || $request->session()->has('errors') ? uniqid('flash_', true) : null,
                 'proposal_next_steps' => fn () => $request->session()->get('proposal_next_steps'),
                 'quest_submitted_next_steps' => fn () => $request->session()->get('quest_submitted_next_steps'),
+                'quality_gate_issues' => fn () => $request->session()->get('quality_gate_issues'),
                 'show_escrow_funding_notice' => fn () => (bool) $request->session()->pull('show_escrow_funding_notice'),
             ],
             'client_outstanding' => static function () use ($request) {

@@ -4,6 +4,7 @@ namespace App\Services\Hr;
 
 use App\Models\StaffRoleAssignment;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 
 class StaffRoleAccessService
@@ -12,6 +13,7 @@ class StaffRoleAccessService
         'group_a_chat_communications' => [
             'operations.customer-support',
             'operations.support',
+            'operations.support-tickets',
             'operations.team-chat',
             'operations.api.customer-support',
             'operations.api.support',
@@ -65,7 +67,7 @@ class StaffRoleAccessService
         ],
     ];
 
-    public function activeAssignmentFor(User $user): ?StaffRoleAssignment
+    public function activeAssignmentsFor(User $user): Collection
     {
         $today = Carbon::today();
 
@@ -77,7 +79,12 @@ class StaffRoleAccessService
                 $query->whereNull('ends_on')->orWhereDate('ends_on', '>=', $today);
             })
             ->latest('id')
-            ->first();
+            ->get();
+    }
+
+    public function activeAssignmentFor(User $user): ?StaffRoleAssignment
+    {
+        return $this->activeAssignmentsFor($user)->first();
     }
 
     public function canAccessRoute(User $user, string $routeName): bool
@@ -90,15 +97,21 @@ class StaffRoleAccessService
             return true;
         }
 
-        $assignment = $this->activeAssignmentFor($user);
-        if ($assignment === null) {
+        if (str_starts_with($routeName, 'operations.support-tickets')) {
+            return true;
+        }
+
+        $assignments = $this->activeAssignmentsFor($user);
+        if ($assignments->isEmpty()) {
             return false;
         }
 
-        $allowedPrefixes = self::GROUP_ROUTE_MAP[$assignment->role_group] ?? [];
-        foreach ($allowedPrefixes as $prefix) {
-            if (str_starts_with($routeName, $prefix)) {
-                return true;
+        foreach ($assignments as $assignment) {
+            $allowedPrefixes = self::GROUP_ROUTE_MAP[$assignment->role_group] ?? [];
+            foreach ($allowedPrefixes as $prefix) {
+                if (str_starts_with($routeName, $prefix)) {
+                    return true;
+                }
             }
         }
 

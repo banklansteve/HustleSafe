@@ -39,7 +39,24 @@ class QuestCompletionController extends Controller
             'escrow_status' => $quest->escrow_status,
         ]);
 
-        return back()->with('success', __('Delivery acknowledged. Escrow stays protected until the release window opens and any required authorisations are in place.'));
+        $quest->refresh();
+        if (EscrowReleasePolicy::requiresSuperAdminAuthorization($quest) && ! EscrowReleasePolicy::hasSuperAdminAuthorization($quest)) {
+            app(\App\Services\Platform\PlatformSlaService::class)->start(
+                'escrow_release_appeal',
+                $quest,
+                null,
+                $request->user(),
+                [
+                    'subject_label' => $quest->title ?? "Quest #{$quest->id}",
+                    'quest_id' => $quest->id,
+                ],
+            );
+        }
+
+        return back()->with('success', __('Delivery acknowledged. Escrow stays protected until the release window opens and any required authorisations are in place.'))
+            ->with('sla_expectation', EscrowReleasePolicy::requiresSuperAdminAuthorization($quest)
+                ? app(\App\Services\Platform\PlatformSlaService::class)->userExpectationMessage('escrow_release_appeal')
+                : null);
     }
 
     public function releaseFunds(Request $request, Quest $quest): RedirectResponse

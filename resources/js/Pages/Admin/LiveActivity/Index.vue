@@ -16,18 +16,32 @@
                 :events="filteredEvents"
                 :active-category="category"
                 :search="search"
+                :ticket-search="ticketSearch"
                 :paused="paused"
                 :new-count="pendingEvents.length"
                 :has-more="hasMore"
+                :enable-support-tickets-tab="!!initial_support_tickets"
                 :shell="shell"
                 @update:category="setCategory"
                 @update:search="setSearch"
+                @update:ticket-search="setTicketSearch"
                 @toggle-pause="paused = !paused"
                 @reveal-new="revealNew"
                 @load-more="loadMore"
                 @inspect="inspectEntity"
                 @action="runAction"
-            />
+            >
+                <template #support-tickets>
+                    <SupportTicketLiveFeed
+                        :tickets="supportTickets"
+                        :has-more="supportTicketsHasMore"
+                        :loading="supportTicketsLoading"
+                        :shell="shell"
+                        @inspect="inspectTicket"
+                        @load-more="loadMoreTickets"
+                    />
+                </template>
+            </LiveActivityFeed>
         </AdminPanel>
 
         <AdminSlideOver :open="slideOpen" :title="slideTitle" eyebrow="Entity preview" @close="slideOpen = false">
@@ -44,6 +58,18 @@
                 </a>
             </div>
         </AdminSlideOver>
+
+        <SupportTicketLiveSlideOver
+            :open="ticketSlideOpen"
+            :ticket="selectedTicket"
+            :loading="ticketDetailLoading"
+            :assignable-admins="assignableAdmins"
+            :statuses="ticketStatuses"
+            :current-user-id="currentUserId"
+            :shell="shell"
+            @close="ticketSlideOpen = false"
+            @updated="handleTicketUpdated"
+        />
     </AdminShell>
 </template>
 
@@ -51,13 +77,19 @@
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 import LiveActivityFeed from '@/Components/Admin/LiveActivityFeed.vue';
+import SupportTicketLiveFeed from '@/Components/Admin/SupportTicketLiveFeed.vue';
+import SupportTicketLiveSlideOver from '@/Components/Admin/SupportTicketLiveSlideOver.vue';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
     initial_events: { type: Object, required: true },
     summary: { type: Object, required: true },
+    initial_support_tickets: { type: Object, default: null },
+    assignable_admins: { type: Array, default: () => [] },
+    ticket_statuses: { type: Array, default: () => [] },
+    current_user_id: { type: Number, default: null },
 });
 
 const { shell } = useInjectedAdminTheme();
@@ -67,6 +99,7 @@ const lastPage = ref(props.initial_events.last_page || 1);
 const summary = ref(props.summary);
 const category = ref(sessionStorage.getItem('admin.liveActivity.category') || 'all');
 const search = ref(sessionStorage.getItem('admin.liveActivity.search') || '');
+const ticketSearch = ref(sessionStorage.getItem('admin.liveActivity.ticketSearch') || '');
 const paused = ref(false);
 const pendingEvents = ref([]);
 const slideOpen = ref(false);
@@ -75,10 +108,24 @@ const slideBody = ref('');
 const slideHref = ref('');
 const slideRecord = ref(null);
 const slideColumns = ref([]);
+
+const supportTickets = ref(props.initial_support_tickets?.data || []);
+const supportTicketsPage = ref(props.initial_support_tickets?.current_page || 1);
+const supportTicketsLastPage = ref(props.initial_support_tickets?.last_page || 1);
+const supportTicketsLoading = ref(false);
+const ticketSlideOpen = ref(false);
+const selectedTicket = ref(null);
+const ticketDetailLoading = ref(false);
+const assignableAdmins = ref([...props.assignable_admins]);
+const ticketStatuses = ref([...props.ticket_statuses]);
+const currentUserId = ref(props.current_user_id);
+
 let searchTimer;
+let ticketSearchTimer;
 let summaryTimer;
 
 const hasMore = computed(() => page.value < lastPage.value);
+const supportTicketsHasMore = computed(() => supportTicketsPage.value < supportTicketsLastPage.value);
 const filteredEvents = computed(() => {
     const term = search.value.trim().toLowerCase();
 
@@ -99,11 +146,22 @@ const summaryTiles = computed(() => [
 function setCategory(value) {
     category.value = value;
     sessionStorage.setItem('admin.liveActivity.category', value);
+
+    if (value === 'support_tickets' && !supportTickets.value.length && props.initial_support_tickets) {
+        reloadSupportTickets();
+    }
 }
 
 function setSearch(value) {
     search.value = value;
     sessionStorage.setItem('admin.liveActivity.search', value);
+}
+
+function setTicketSearch(value) {
+    ticketSearch.value = value;
+    sessionStorage.setItem('admin.liveActivity.ticketSearch', value);
+    clearTimeout(ticketSearchTimer);
+    ticketSearchTimer = setTimeout(() => reloadSupportTickets(), 250);
 }
 
 async function reload() {
@@ -120,6 +178,51 @@ async function loadMore() {
     events.value = [...events.value, ...(data.data || [])];
     page.value = data.current_page || next;
     lastPage.value = data.last_page || lastPage.value;
+}
+
+async function reloadSupportTickets() {
+    if (!props.initial_support_tickets) {
+        return;
+    }
+
+    supportTicketsLoading.value = true;
+    try {
+        const { data } = await window.axios.get(route('admin.live-activity.support-tickets'), {
+            params: {
+                page: 1,
+                per_page: 50,
+                search: ticketSearch.value.trim() || undefined,
+            },
+        });
+        supportTickets.value = data.data || [];
+        supportTicketsPage.value = data.current_page || 1;
+        supportTicketsLastPage.value = data.last_page || 1;
+    } finally {
+        supportTicketsLoading.value = false;
+    }
+}
+
+async function loadMoreTickets() {
+    if (!supportTicketsHasMore.value || supportTicketsLoading.value) {
+        return;
+    }
+
+    supportTicketsLoading.value = true;
+    try {
+        const next = supportTicketsPage.value + 1;
+        const { data } = await window.axios.get(route('admin.live-activity.support-tickets'), {
+            params: {
+                page: next,
+                per_page: 50,
+                search: ticketSearch.value.trim() || undefined,
+            },
+        });
+        supportTickets.value = [...supportTickets.value, ...(data.data || [])];
+        supportTicketsPage.value = data.current_page || next;
+        supportTicketsLastPage.value = data.last_page || supportTicketsLastPage.value;
+    } finally {
+        supportTicketsLoading.value = false;
+    }
 }
 
 function params(nextPage, perPage) {
@@ -140,6 +243,10 @@ function addRealtimeEvent(event) {
         pendingEvents.value.unshift(event);
     } else {
         events.value = [event, ...events.value].slice(0, 200);
+    }
+
+    if (event.category === 'support_tickets' && category.value === 'support_tickets') {
+        reloadSupportTickets();
     }
 }
 
@@ -166,8 +273,46 @@ async function inspectEntity(part) {
     slideHref.value = data.href;
 }
 
+async function inspectTicket(ticket) {
+    ticketSlideOpen.value = true;
+    selectedTicket.value = null;
+    ticketDetailLoading.value = true;
+
+    try {
+        const { data } = await window.axios.get(route('admin.live-activity.support-tickets.show', ticket.uuid));
+        selectedTicket.value = data.ticket;
+        assignableAdmins.value = data.assignable_admins || assignableAdmins.value;
+        ticketStatuses.value = data.statuses || ticketStatuses.value;
+    } finally {
+        ticketDetailLoading.value = false;
+    }
+}
+
+function handleTicketUpdated(ticket) {
+    selectedTicket.value = ticket;
+    const index = supportTickets.value.findIndex((row) => row.uuid === ticket.uuid);
+    if (index >= 0) {
+        supportTickets.value[index] = {
+            ...supportTickets.value[index],
+            subject: ticket.subject,
+            status: ticket.status,
+            priority: ticket.priority,
+            assigned_admin: ticket.assigned_admin,
+            sla_breached: ticket.sla_breached,
+        };
+    }
+}
+
 async function runAction({ event, action }) {
-    if (action.method === 'open') {
+        if (action.method === 'open') {
+            if (event.category === 'support_tickets') {
+                const ticketEntity = event.entities?.find((entity) => entity.type === 'support_ticket');
+                if (ticketEntity?.uuid) {
+                    inspectTicket({ uuid: ticketEntity.uuid });
+                    return;
+                }
+            }
+
         const first = event.entities?.find((entity) => entity.href);
         if (first) inspectEntity({ text: first.label, href: first.href, entity: first });
         return;
@@ -196,9 +341,19 @@ function displayValue(value) {
     return value;
 }
 
+watch(category, (value) => {
+    if (value === 'support_tickets' && props.initial_support_tickets) {
+        reloadSupportTickets();
+    }
+});
+
 onMounted(() => {
     refreshSummary();
     summaryTimer = setInterval(refreshSummary, 60000);
+
+    if (category.value === 'support_tickets' && props.initial_support_tickets) {
+        reloadSupportTickets();
+    }
 
     if (window.Echo) {
         window.Echo.private('admin.live-activity')
@@ -212,6 +367,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     clearTimeout(searchTimer);
+    clearTimeout(ticketSearchTimer);
     clearInterval(summaryTimer);
     if (window.Echo) {
         window.Echo.leave('private-admin.live-activity');

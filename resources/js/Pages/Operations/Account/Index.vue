@@ -144,33 +144,69 @@
                                 <option value="hours">Hours</option>
                                 <option value="multiple_days">More than one day</option>
                             </select>
-                            <input v-model="leaveForm.start_date" type="date" class="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold" />
-                            <input v-if="leaveForm.duration_type === 'multiple_days'" v-model="leaveForm.end_date" type="date" class="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold" />
+                            <OperationsDateInput v-model="leaveForm.start_date" />
+                            <OperationsDateInput v-if="leaveForm.duration_type === 'multiple_days'" v-model="leaveForm.end_date" :min="leaveForm.start_date || ''" />
                             <input v-if="leaveForm.duration_type === 'hours'" v-model.number="leaveForm.hours_requested" type="number" min="1" max="23" class="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold" placeholder="Number of hours" />
                         </div>
                         <textarea v-model="leaveForm.reason" rows="3" class="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold" placeholder="Reason (optional)" />
-                        <button type="submit" class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-5 py-3 text-sm font-black text-white disabled:opacity-70" :disabled="leaveForm.processing">
+                        <p v-if="leaveBalanceWarning" class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">{{ leaveBalanceWarning }}</p>
+                        <p v-if="leaveForm.errors.leave_type" class="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">{{ leaveForm.errors.leave_type }}</p>
+                        <button type="submit" class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary-700 px-5 py-3 text-sm font-black text-white disabled:opacity-70" :disabled="leaveForm.processing || !!leaveBalanceWarning">
                             <span v-if="leaveForm.processing" class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                             <span>Submit leave request</span>
                         </button>
                     </form>
                 </div>
 
-                <div class="grid gap-6 xl:grid-cols-1">
-                    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <h3 class="text-lg font-black text-slate-900">Recent leave requests</h3>
-                        <ul class="mt-4 space-y-2">
-                            <li v-for="leave in leaveRequests" :key="leave.id" class="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
-                                <p class="font-black text-slate-900">{{ leave.leave_type }} · {{ leave.status }}</p>
-                                <p class="mt-1 text-xs font-semibold text-slate-600">{{ leave.start_date }} to {{ leave.end_date }} · {{ leaveDurationLabel(leave) }}</p>
-                                <p v-if="leave.review_note" class="mt-1 text-xs font-semibold text-slate-600">Review note: {{ leave.review_note }}</p>
-                            </li>
-                            <li v-if="!leaveRequests.length" class="rounded-xl border border-dashed border-slate-300 p-3 text-sm font-semibold text-slate-500">
-                                No leave requests yet.
-                            </li>
-                        </ul>
-                    </article>
-                </div>
+                <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                            <h3 class="text-lg font-black text-slate-900">Recent leave requests</h3>
+                            <p class="mt-1 text-sm font-semibold text-slate-500">Your latest submissions and review outcomes.</p>
+                        </div>
+                        <p class="text-xs font-bold text-slate-500">{{ leaveRequests.length }} total · click headers to sort</p>
+                    </div>
+                    <div class="mt-4">
+                        <OperationsQueueTable
+                            :columns="leaveRequestColumns"
+                            :rows="leaveQueue.pageItems.value"
+                            v-model:search="leaveQueue.search.value"
+                            :page="leaveQueue.page.value"
+                            :total="leaveQueue.total.value"
+                            :total-pages="leaveQueue.totalPages.value"
+                            :sort-key="leaveQueue.sortKey.value"
+                            :sort-dir="leaveQueue.sortDir.value"
+                            :show-per-page="false"
+                            :row-clickable="false"
+                            search-placeholder="Filter leave requests…"
+                            empty-message="No leave requests yet."
+                            @sort="leaveQueue.setSort"
+                            @page="(page) => (leaveQueue.page.value = page)"
+                        >
+                            <template #cell-leave_type="{ row }">
+                                <span class="font-semibold capitalize text-slate-900">{{ humanizeSlug(row.leave_type) }}</span>
+                            </template>
+                            <template #cell-start_date="{ row }">
+                                <span class="font-semibold text-slate-700">{{ formatLeaveRange(row) }}</span>
+                            </template>
+                            <template #cell-duration_type="{ row }">
+                                <span class="text-slate-600">{{ leaveDurationLabel(row) }}</span>
+                            </template>
+                            <template #cell-status="{ row }">
+                                <span class="rounded-full px-2 py-0.5 text-[10px] font-black uppercase" :class="leaveStatusClass(row.status)">{{ row.status }}</span>
+                            </template>
+                            <template #cell-created_at="{ row }">
+                                <span class="text-sm font-semibold text-slate-600" :title="row.created_at">{{ formatLeaveDateTime(row.created_at) }}</span>
+                            </template>
+                            <template #cell-reviewed_at="{ row }">
+                                <span class="text-sm font-semibold text-slate-600" :title="row.reviewed_at">{{ row.reviewed_at ? formatLeaveDateTime(row.reviewed_at) : '—' }}</span>
+                            </template>
+                            <template #cell-review_note="{ row }">
+                                <span class="text-xs font-semibold text-slate-600">{{ row.review_note || '—' }}</span>
+                            </template>
+                        </OperationsQueueTable>
+                    </div>
+                </article>
 
                 <div class="grid gap-6 xl:grid-cols-1">
                     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -178,7 +214,7 @@
                         <ul class="mt-4 space-y-2">
                             <li v-for="entry in teamLeaveCalendar" :key="entry.id" class="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
                                 <p class="font-black text-slate-900">{{ entry.staff?.name || 'Staff' }} · {{ entry.leave_type }}</p>
-                                <p class="mt-1 text-xs font-semibold text-slate-600">{{ entry.start_date }} to {{ entry.end_date }}</p>
+                                <p class="mt-1 text-xs font-semibold text-slate-600">{{ formatLeaveDate(entry.start_date) }} to {{ formatLeaveDate(entry.end_date) }}</p>
                             </li>
                             <li v-if="!teamLeaveCalendar.length" class="rounded-xl border border-dashed border-slate-300 p-3 text-sm font-semibold text-slate-500">
                                 No upcoming approved leave entries.
@@ -252,10 +288,24 @@
 </template>
 
 <script setup>
+import OperationsDateInput from '@/Pages/Operations/Components/OperationsDateInput.vue';
+import OperationsQueueTable from '@/Pages/Operations/Components/OperationsQueueTable.vue';
 import OperationsShell from '@/Layouts/OperationsShell.vue';
+import { useClientQueue } from '@/composables/useClientQueue';
 import { useForm } from '@inertiajs/vue3';
 import { useOperationsToast } from '@/composables/useOperationsToast';
-import { computed, ref } from 'vue';
+import { formatLeaveDate, formatLeaveDateTime, formatLeaveRange, humanizeSlug } from '@/utils/formatHumanDateTime';
+import { computed, onMounted, ref } from 'vue';
+
+const leaveRequestColumns = [
+    { key: 'leave_type', label: 'Type', sortable: true },
+    { key: 'start_date', label: 'Dates', sortable: true },
+    { key: 'duration_type', label: 'Duration', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'created_at', label: 'Submitted', sortable: true },
+    { key: 'reviewed_at', label: 'Reviewed', sortable: true },
+    { key: 'review_note', label: 'Review note' },
+];
 
 const props = defineProps({
     user: { type: Object, required: true },
@@ -281,6 +331,12 @@ const tabs = [
 ];
 
 const activeTab = ref('profile');
+const leaveQueue = useClientQueue(() => props.leaveRequests, {
+    defaultSortKey: 'created_at',
+    defaultSortDir: 'desc',
+    searchFields: ['leave_type', 'status', 'reason', 'review_note'],
+    perPage: 10,
+});
 const isEditingProfile = ref(false);
 const isEditingPassword = ref(false);
 const fallbackAvatar = computed(() => 'https://ui-avatars.com/api/?name=' + encodeURIComponent(props.user.name || 'Staff'));
@@ -425,4 +481,71 @@ function leaveDurationLabel(leave) {
     }
     return 'Full day';
 }
+
+function leaveStatusClass(status) {
+    if (status === 'approved') {
+        return 'bg-emerald-100 text-emerald-800';
+    }
+    if (status === 'rejected') {
+        return 'bg-rose-100 text-rose-800';
+    }
+
+    return 'bg-amber-100 text-amber-800';
+}
+
+function remainingForType(type) {
+    const map = {
+        annual: props.balance.annual_days - props.balance.annual_days_used,
+        sick: props.balance.sick_days - props.balance.sick_days_used,
+        emergency: props.balance.emergency_days - props.balance.emergency_days_used,
+        unpaid: props.balance.unpaid_days - props.balance.unpaid_days_used,
+    };
+
+    return map[type] ?? 0;
+}
+
+function requestedLeaveDays() {
+    if (!leaveForm.start_date) {
+        return 0;
+    }
+    if (leaveForm.duration_type === 'multiple_days' && leaveForm.end_date) {
+        const start = new Date(`${leaveForm.start_date}T00:00:00`);
+        const end = new Date(`${leaveForm.end_date}T00:00:00`);
+        const diff = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+        return Math.max(2, diff);
+    }
+
+    return 1;
+}
+
+const leaveBalanceWarning = computed(() => {
+    if (!leaveForm.leave_type || !leaveForm.start_date) {
+        return '';
+    }
+
+    const needed = requestedLeaveDays();
+    const available = remainingForType(leaveForm.leave_type);
+    if (needed <= available) {
+        return '';
+    }
+
+    const alternates = ['annual', 'sick', 'emergency', 'unpaid']
+        .filter((type) => type !== leaveForm.leave_type && remainingForType(type) >= needed)
+        .map((type) => `${type.charAt(0).toUpperCase()}${type.slice(1)} (${remainingForType(type)} days)`);
+
+    const base = `This request needs ${needed} day(s), but you only have ${available} day(s) of ${leaveForm.leave_type} leave left this year.`;
+    if (!alternates.length) {
+        return `${base} Contact HR if you need your balance adjusted.`;
+    }
+
+    return `${base} Try ${alternates.join(', ')} instead.`;
+});
+
+onMounted(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab && tabs.some((entry) => entry.key === tab)) {
+        activeTab.value = tab;
+    }
+});
 </script>

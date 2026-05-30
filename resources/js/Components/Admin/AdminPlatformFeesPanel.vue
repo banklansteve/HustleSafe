@@ -25,8 +25,8 @@
                         :class="shell.input"
                         @input="debouncedFetch"
                     />
-                    <input v-model="filters.from" type="date" class="rounded-xl border px-3 py-2.5 text-sm font-semibold" :class="shell.input" @change="fetchRows" />
-                    <input v-model="filters.to" type="date" class="rounded-xl border px-3 py-2.5 text-sm font-semibold" :class="shell.input" @change="fetchRows" />
+                    <AdminDateInput v-model="filters.from" button-class="rounded-xl border px-3 py-2.5 text-sm font-semibold" @change="fetchRows" />
+                    <AdminDateInput v-model="filters.to" button-class="rounded-xl border px-3 py-2.5 text-sm font-semibold" @change="fetchRows" />
                     <select v-model="filters.fee_status" class="rounded-xl border px-3 py-2.5 text-sm font-bold" :class="shell.input" @change="fetchRows">
                         <option value="">All fee states</option>
                         <option value="earned">Earned (released)</option>
@@ -152,6 +152,7 @@
 </template>
 
 <script setup>
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import { computed, reactive, ref, watch } from 'vue';

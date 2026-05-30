@@ -80,7 +80,9 @@ class ClientTrustScoreService
             + ($weights['identity_verified'] ?? 0) * $identityNorm
             + ($weights['address_verified'] ?? 0) * $addressNorm;
 
-        $score = (int) round(min(100, max(0, $linear * 100)));
+        $user->loadMissing('trustMetrics');
+        $ghostPenalty = min(15, (int) ($user->trustMetrics?->client_proposal_ghost_strikes ?? 0) * 5);
+        $score = (int) round(min(100, max(0, ($linear * 100) - $ghostPenalty)));
 
         return [
             'score' => $score,
@@ -94,6 +96,7 @@ class ClientTrustScoreService
                 'identity_verified' => round($identityNorm, 4),
                 'address_verified' => round($addressNorm, 4),
                 'linear_raw' => round($linear, 4),
+                'ghost_strike_penalty' => $ghostPenalty,
                 'terminal_quests' => $terminal,
             ],
         ];

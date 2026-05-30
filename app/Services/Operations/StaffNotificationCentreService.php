@@ -338,6 +338,9 @@ class StaffNotificationCentreService
             if ($notification->category === 'kyc' && ! empty($data['verification_id'])) {
                 return route('admin.verification-engine.index');
             }
+            if ($notification->category === 'sla') {
+                return $stored !== '' ? $stored : route('admin.alerts.index');
+            }
 
             return $stored !== '' ? $stored : route('admin.alerts.index');
         }
@@ -373,11 +376,47 @@ class StaffNotificationCentreService
             return route('operations.support.index');
         }
 
+        if ($notification->category === 'hr') {
+            return $stored !== '' ? $stored : route('operations.account.index');
+        }
+
         if ($stored !== '' && str_contains($stored, '/admin/')) {
             return route('operations.dashboard');
         }
 
         return $stored !== '' ? $stored : route('operations.notifications.index');
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function notifyHrImpact(
+        User $staff,
+        string $dedupeKey,
+        string $title,
+        string $body,
+        string $actionLabel,
+        string $actionUrl,
+        string $priority = 'normal',
+        array $data = [],
+    ): void {
+        if (! Schema::hasTable('admin_notifications')) {
+            return;
+        }
+
+        if ($staff->role?->slug !== 'admin') {
+            return;
+        }
+
+        $this->upsert($staff, $dedupeKey, [
+            'category' => 'hr',
+            'priority' => $priority,
+            'title' => $title,
+            'body' => $body,
+            'action_label' => $actionLabel,
+            'action_url' => $actionUrl,
+            'data' => $data,
+        ]);
     }
 
     private function upsert(User $staff, string $dedupeKey, array $attrs): void
@@ -502,6 +541,40 @@ class StaffNotificationCentreService
                     'data' => ['chat_assignment_id' => $chat->id, 'dedupe_key' => "chat:{$chat->id}"],
                 ]);
             });
+    }
+
+    public function notifyManagedSupportTicketUpdated(
+        User $creator,
+        SupportTicket $ticket,
+        User $updater,
+        string $summary,
+    ): void {
+        if (! Schema::hasTable('admin_notifications')) {
+            return;
+        }
+
+        if ((int) $creator->id === (int) $updater->id) {
+            return;
+        }
+
+        $url = $creator->role?->slug === 'super_admin'
+            ? route('admin.support-tickets.show', $ticket->uuid)
+            : route('operations.support-tickets.show', $ticket->uuid);
+
+        AdminNotification::query()->create([
+            'admin_user_id' => $creator->id,
+            'category' => 'customer_support',
+            'priority' => in_array($ticket->priority, ['urgent', 'critical', 'high'], true) ? 'high' : 'normal',
+            'title' => 'Support ticket updated',
+            'body' => Str::limit("{$updater->name}: {$summary} · {$ticket->ticket_reference}", 240),
+            'action_label' => 'View ticket',
+            'action_url' => $url,
+            'data' => [
+                'dedupe_key' => "managed_ticket_update:{$ticket->id}:{$creator->id}:".now()->timestamp,
+                'ticket_id' => $ticket->id,
+                'updated_by_user_id' => $updater->id,
+            ],
+        ]);
     }
 
     public function notifyCustomerSupportAssigned(User $admin, SupportTicket $ticket): void

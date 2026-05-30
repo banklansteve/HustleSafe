@@ -29,6 +29,8 @@
                 </div>
             </header>
 
+            <SlaExpectationNotice v-if="sla_expectation" :message="sla_expectation" />
+
             <section class="rounded-2xl border border-slate-100 bg-slate-50/80 p-5 ring-1 ring-slate-100">
                 <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-600">
                     Policy snapshot
@@ -181,6 +183,7 @@
 
 <script setup>
 import BackChevronLink from '@/Components/Ui/BackChevronLink.vue';
+import SlaExpectationNotice from '@/Components/Platform/SlaExpectationNotice.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
@@ -192,6 +195,7 @@ const props = defineProps({
     philosophy: { type: Object, default: () => ({}) },
     policy: { type: Object, required: true },
     workflow_doc_url: { type: String, default: '/docs/dispute-workflow.md' },
+    sla_expectation: { type: String, default: '' },
 });
 
 const isOpen = computed(() => !['resolved', 'closed_withdrawn'].includes(props.dispute.status));

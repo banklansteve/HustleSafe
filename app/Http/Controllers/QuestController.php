@@ -127,6 +127,12 @@ class QuestController extends Controller
             && $approvalRule
             && $approvalRule->high_value_threshold_minor
             && (int) $data['budget_amount_minor'] >= (int) $approvalRule->high_value_threshold_minor;
+
+        $qualityGate = app(\App\Services\Quest\QuestQualityGateService::class)->evaluate($data);
+        if ($publish && ! $qualityGate['passed']) {
+            $publish = false;
+        }
+
         $status = $publish ? ($requiresApproval ? QuestStatus::PendingReview : QuestStatus::Open) : QuestStatus::Draft;
         $tagged = array_values(array_unique(array_map('intval', $data['tagged_freelancer_ids'] ?? [])));
 
@@ -142,7 +148,7 @@ class QuestController extends Controller
 
         $uploadedFiles = array_values(array_filter($request->file('files', [])));
 
-        $quest = DB::transaction(function () use ($request, $user, $data, $status, $tagged, $slug, $publish, $trafficUtm, $questFiles, $uploadedFiles): Quest {
+        $quest = DB::transaction(function () use ($request, $user, $data, $status, $tagged, $slug, $publish, $trafficUtm, $questFiles, $uploadedFiles, $qualityGate): Quest {
             $dueAt = now()->addDays((int) $data['estimated_completion_days']);
 
             $listingExpiresAt = null;
@@ -161,6 +167,8 @@ class QuestController extends Controller
                 'slug' => $slug,
                 'title' => $data['title'],
                 'description' => $data['description'],
+                'quality_gate_feedback' => $publish ? null : ($qualityGate['passed'] ? null : $qualityGate['issues']),
+                'quality_gate_failed_at' => $publish ? null : ($qualityGate['passed'] ? null : now()),
                 'quest_category_id' => $data['quest_category_id'],
                 'state_id' => $data['state_id'],
                 'local_government_id' => $data['local_government_id'],
@@ -253,7 +261,13 @@ class QuestController extends Controller
                 ? __('Your quest was submitted for admin review because it is above this category’s high-value threshold.')
                 : ($publish
                 ? __('Your quest is live — freelancers have been alerted.')
-                : __('Draft saved. Publish when you are ready.')));
+                : ($qualityGate['passed']
+                    ? __('Draft saved. Publish when you are ready.')
+                    : __('Your quest was saved as a draft. Fix the quality issues below before publishing.'))));
+
+        if (! $qualityGate['passed'] && ! $publish) {
+            $redirect->with('quality_gate_issues', $qualityGate['issues']);
+        }
 
         if ($publish && ! $requiresApproval) {
             $redirect->with('quest_submitted_next_steps', true);
@@ -446,7 +460,7 @@ class QuestController extends Controller
             if ($quest->acceptedOffer !== null) {
                 $commerce = array_merge($commerce, QuestCommerceUi::fundingForOffer($quest, $quest->acceptedOffer, $user));
             }
-            $questPayload['commerce'] = $commerce;
+            $questPayload['commerce'] = array_merge($commerce, QuestCommerceUi::partyExtras($quest, $user));
         }
 
         return Inertia::render('Quests/Show', [
@@ -864,6 +878,8 @@ class QuestController extends Controller
             ])->values()->all(),
             'cover_url' => $quest->displayCoverUrl(),
             'status' => $quest->status->value,
+            'quality_gate_feedback' => $quest->quality_gate_feedback,
+            'quality_gate_failed_at' => $quest->quality_gate_failed_at?->toIso8601String(),
             'budget_minor' => (int) ($quest->budget_amount_minor ?? 0),
             'start_timing' => $quest->start_timing?->value,
             'estimated_completion_days' => $quest->estimated_completion_days,

@@ -3,8 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Services\Admin\AdminAnalyticsService;
 use App\Services\Admin\AdminActivityFeedService;
+use App\Services\Admin\AdminAnalyticsService;
+use App\Services\Admin\PlatformHealthService;
 use App\Support\Admin\AdminManagementRegistry;
 use App\Support\AdminCsv;
 use Carbon\Carbon;
@@ -17,6 +18,7 @@ class AdminDashboardController extends Controller
     public function __construct(
         private AdminAnalyticsService $analytics,
         private AdminActivityFeedService $feed,
+        private PlatformHealthService $platformHealth,
     ) {}
 
     public function __invoke(): Response
@@ -25,6 +27,10 @@ class AdminDashboardController extends Controller
         $payload['resource_groups'] = AdminManagementRegistry::groupedForUi();
         $this->feed->seedRecentFromExistingData();
         $payload['live_activity'] = $this->feed->widgetPayload(3);
+        $payload['platform_health'] = $this->platformHealth->snapshot();
+        if (request()->user()?->role?->slug === 'super_admin') {
+            $payload['platform_financial_health'] = app(\App\Services\Admin\PlatformFinancialHealthService::class)->snapshot();
+        }
 
         return Inertia::render('Admin/Dashboard', $payload);
     }

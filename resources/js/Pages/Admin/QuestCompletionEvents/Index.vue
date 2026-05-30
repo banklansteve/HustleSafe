@@ -16,8 +16,8 @@
                     <option value="">All event types</option>
                     <option v-for="type in event_types" :key="type" :value="type">{{ labelize(type) }}</option>
                 </select>
-                <input v-model="localFilters.from" type="date" class="rounded-xl border px-3 py-2.5 text-sm font-semibold" :class="shell.input" />
-                <input v-model="localFilters.to" type="date" class="rounded-xl border px-3 py-2.5 text-sm font-semibold" :class="shell.input" />
+                <AdminDateInput v-model="localFilters.from" button-class="rounded-xl border px-3 py-2.5 text-sm font-semibold" />
+                <AdminDateInput v-model="localFilters.to" button-class="rounded-xl border px-3 py-2.5 text-sm font-semibold" />
                 <div class="flex flex-wrap items-center gap-2 md:col-span-2 lg:col-span-4">
                     <button type="submit" class="rounded-xl bg-teal-500 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-950 hover:bg-teal-400">
                         Apply filters
@@ -122,6 +122,7 @@
 </template>
 
 <script setup>
+import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import { Link, router } from '@inertiajs/vue3';

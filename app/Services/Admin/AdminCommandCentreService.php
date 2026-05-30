@@ -86,10 +86,10 @@ class AdminCommandCentreService
             ],
             'critical_alerts' => $items->where('priority', 'critical')->whereNull('actioned_at')->values()->map(fn (AdminNotification $n) => $this->notificationRow($n, $admin)),
             'items' => $items->map(fn (AdminNotification $n) => $this->notificationRow($n, $admin))->values(),
-            'preferences' => collect(['disputes', 'payments', 'verifications', 'flags', 'security', 'system'])->map(fn ($category) => [
+            'preferences' => collect(['disputes', 'payments', 'verifications', 'flags', 'security', 'system', 'sla'])->map(fn ($category) => [
                 'category' => $category,
                 'in_app' => true,
-                'email' => in_array($category, ['disputes', 'payments', 'security'], true),
+                'email' => in_array($category, ['disputes', 'payments', 'security', 'sla'], true),
                 'sms' => in_array($category, ['payments', 'security'], true),
             ])->values(),
         ];

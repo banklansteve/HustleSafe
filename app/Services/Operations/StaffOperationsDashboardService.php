@@ -12,6 +12,7 @@ use App\Models\Quest;
 use App\Models\QuestDispute;
 use App\Models\QuestOffer;
 use App\Models\Review;
+use App\Models\StaffProactiveOutreachItem;
 use App\Models\User;
 use App\Models\UserVerification;
 use App\Services\TrustRisk\UserRiskMonitoringService;
@@ -70,6 +71,7 @@ class StaffOperationsDashboardService
             $this->tile('kyc', 'Pending verifications', UserVerification::query()->whereIn('status', ['pending', 'in_review', 'flagged'])->count(), 'KYC, BVN, NIN, utility, identity, and credential reviews.', route('operations.verifications.index'), 'emerald'),
             $this->tile('users_flagged', 'Users flagged', $this->flaggedUsers(), 'Accounts with bans, suspensions, restrictions, or active concerns.', route('operations.users.index', ['quick' => 'flagged']), 'slate'),
             $this->tile('risk_queue', 'Risk queue', app(UserRiskMonitoringService::class)->queueCount(), 'Users above the monitoring threshold with live composite risk scores.', route('operations.trust.index', ['tab' => 'queue']), 'rose'),
+            $this->tile('proactive_outreach', 'Proactive outreach', $this->proactiveOutreachCount(), 'Retention and trust situations needing human outreach.', route('operations.outreach.index'), 'indigo'),
         ];
     }
 
@@ -155,6 +157,7 @@ class StaffOperationsDashboardService
         return [
             ['label' => 'Onboarding quality control', 'href' => route('operations.onboarding-quality.index'), 'description' => 'Review new signups within 48 hours for profile authenticity and completeness.'],
             ['label' => 'Flagged profiles', 'href' => route('operations.onboarding-quality.flagged'), 'description' => 'Accounts flagged for monitoring during onboarding review.'],
+            ['label' => 'Proactive outreach', 'href' => route('operations.outreach.index'), 'description' => 'Work retention and trust situations with templated outreach.'],
             ['label' => 'Open My Tasks', 'href' => route('operations.tasks.index'), 'description' => 'See assigned flags, referrals, KYC items, disputes, and escalations.'],
             ['label' => 'Manage Quests', 'href' => route('operations.quests.index'), 'description' => 'Review quest queues, flags, notices, and moderation context.'],
             ['label' => 'Triage Proposals', 'href' => route('operations.proposals.index'), 'description' => 'Review flagged proposals and operational proposal risk signals.'],
@@ -234,6 +237,20 @@ class StaffOperationsDashboardService
     {
         return User::query()
             ->where(fn ($query) => $query->whereNotNull('suspended_at')->orWhereNotNull('under_review_at')->orWhereNotNull('banned_at')->orWhereNotNull('verification_restricted_at'))
+            ->count();
+    }
+
+    private function proactiveOutreachCount(): int
+    {
+        if (! Schema::hasTable('staff_proactive_outreach_items')) {
+            return 0;
+        }
+
+        return StaffProactiveOutreachItem::query()
+            ->whereNull('resolved_at')
+            ->where(function ($q): void {
+                $q->whereNull('snoozed_until')->orWhere('snoozed_until', '<=', now());
+            })
             ->count();
     }
 
