@@ -13,10 +13,26 @@ class RecordUserLogin
     {
         try {
             $userId = (int) $event->user->getAuthIdentifier();
+            $ip = request()->ip();
+            $agent = request()->userAgent();
+
+            $duplicate = LoginEvent::query()
+                ->where('user_id', $userId)
+                ->where('logged_in_at', '>=', now()->subMinutes(2))
+                ->where('ip_address', $ip)
+                ->when($agent !== null, fn ($q) => $q->where('user_agent', $agent))
+                ->exists();
+
+            if ($duplicate) {
+                UserRiskScoreDispatcher::dispatch($userId);
+
+                return;
+            }
+
             LoginEvent::query()->create([
                 'user_id' => $userId,
-                'ip_address' => request()->ip(),
-                'user_agent' => request()->userAgent(),
+                'ip_address' => $ip,
+                'user_agent' => $agent,
                 'logged_in_at' => now(),
             ]);
             UserRiskScoreDispatcher::dispatch($userId);

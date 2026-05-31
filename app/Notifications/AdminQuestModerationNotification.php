@@ -3,25 +3,22 @@
 namespace App\Notifications;
 
 use App\Models\Quest;
+use App\Notifications\Concerns\SendsBrandedMail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use Illuminate\Support\Str;
 
 class AdminQuestModerationNotification extends Notification
 {
-    use Queueable;
+    use Queueable, SendsBrandedMail;
 
     public function __construct(
         public Quest $quest,
         public string $title,
         public string $body,
-        public string $kind = 'quest_moderation_update',
+        public string $kind,
     ) {}
 
-    /**
-     * @return list<string>
-     */
     public function via(object $notifiable): array
     {
         return ['mail', 'database'];
@@ -29,27 +26,25 @@ class AdminQuestModerationNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject($this->title)
-            ->greeting(__('Hello :name,', ['name' => $notifiable->first_name ?: $notifiable->name ?: __('there')]))
-            ->line($this->body)
-            ->line(__('Quest: :title', ['title' => $this->quest->title]))
-            ->action(__('Open Quest'), route('quests.show', $this->quest, absolute: true));
+        return $this->brandedMail(
+            subject: $this->title,
+            headline: $this->title,
+            notifiable: $notifiable,
+            lines: [$this->body],
+            ctaUrl: route('quests.show', $this->quest, absolute: true),
+            ctaLabel: __('View quest'),
+        );
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     public function toArray(object $notifiable): array
     {
         return [
-            'headline' => $this->title,
-            'title' => $this->title,
-            'body' => Str::limit($this->body, 240),
-            'quest_title' => $this->quest->title,
-            'quest_reference' => $this->quest->reference_code ?? $this->quest->uuid,
-            'href' => route('quests.show', $this->quest, absolute: false),
             'kind' => $this->kind,
+            'title' => $this->title,
+            'body' => $this->body,
+            'quest_id' => $this->quest->id,
+            'quest_title' => $this->quest->title,
+            'href' => route('quests.show', $this->quest, absolute: false),
         ];
     }
 }

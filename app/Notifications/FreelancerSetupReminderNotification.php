@@ -2,13 +2,14 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\SendsBrandedMail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class FreelancerSetupReminderNotification extends Notification
 {
-    use Queueable;
+    use Queueable, SendsBrandedMail;
 
     /**
      * @param  array<string, mixed>  $summary
@@ -40,21 +41,29 @@ class FreelancerSetupReminderNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $mail = (new MailMessage)
-            ->subject(__('Finish your freelancer setup on HustleSafe'));
-
+        $lines = [];
         foreach ($this->summary['blockers'] ?? [] as $b) {
             if (is_array($b) && isset($b['message'])) {
-                $mail->line($b['message']);
+                $lines[] = (string) $b['message'];
             }
         }
 
-        if (($this->summary['blockers'] ?? []) === [] && ! ($this->summary['identity_approved'] ?? false)) {
-            $mail->line(__('Complete government ID verification so you can bid on larger quests and access withdrawals when payouts are ready.'));
+        if ($lines === [] && ! ($this->summary['identity_approved'] ?? false)) {
+            $lines[] = __('Complete government ID verification so you can bid on larger quests and access withdrawals when payouts are ready.');
         }
 
-        return $mail
-            ->action(__('Go to the right place'), $this->primaryAccountUrl());
+        if ($lines === []) {
+            $lines[] = __('Finish the remaining profile steps so you can send offers and withdraw safely.');
+        }
+
+        return $this->brandedMail(
+            subject: __('Finish your freelancer setup on HustleSafe'),
+            headline: __('Complete your freelancer profile'),
+            notifiable: $notifiable,
+            lines: $lines,
+            ctaUrl: $this->primaryAccountUrl(),
+            ctaLabel: __('Go to the right place'),
+        );
     }
 
     /**

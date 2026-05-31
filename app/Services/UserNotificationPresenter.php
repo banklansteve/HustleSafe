@@ -99,6 +99,12 @@ class UserNotificationPresenter
         $questTitle = isset($d['quest_title']) && is_string($d['quest_title']) ? $d['quest_title'] : '';
 
         $href = isset($d['href']) && is_string($d['href']) && str_starts_with($d['href'], '/') ? $d['href'] : null;
+        if ($href === null && isset($d['action_url']) && is_string($d['action_url']) && $d['action_url'] !== '') {
+            $parts = parse_url($d['action_url']);
+            if (is_array($parts) && isset($parts['path'])) {
+                $href = $parts['path'].(isset($parts['query']) ? '?'.$parts['query'] : '');
+            }
+        }
 
         return [
             'sort_ts' => $rep->created_at?->getTimestamp() ?? 0,
@@ -122,6 +128,12 @@ class UserNotificationPresenter
     {
         $d = is_array($n->data) ? $n->data : [];
         $href = isset($d['href']) && is_string($d['href']) && str_starts_with($d['href'], '/') ? $d['href'] : null;
+        if ($href === null && isset($d['action_url']) && is_string($d['action_url']) && $d['action_url'] !== '') {
+            $parts = parse_url($d['action_url']);
+            if (is_array($parts) && isset($parts['path'])) {
+                $href = $parts['path'].(isset($parts['query']) ? '?'.$parts['query'] : '');
+            }
+        }
 
         return [
             'sort_ts' => $n->created_at?->getTimestamp() ?? 0,

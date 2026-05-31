@@ -274,6 +274,7 @@ const moduleRoutes = {
     Disputes: () => route('admin.disputes.index'),
     'Reports & analytics': () => route('admin.reports.index'),
     'Audit log': () => route('admin.activity.index'),
+    'Staff activity trail': () => route('admin.activity.digest'),
 };
 
 function moduleLink(module) {

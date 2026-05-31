@@ -271,6 +271,9 @@ function statusClass(s) {
     if (s === 'draft') {
         return 'bg-amber-400/95 text-amber-950 ring-amber-200/80';
     }
+    if (s === 'closed_unawarded') {
+        return 'bg-slate-600/90 text-white ring-slate-400/50';
+    }
 
     return 'bg-slate-900/80 text-white ring-slate-600/50';
 }
@@ -278,6 +281,9 @@ function statusClass(s) {
 function formatStatus(s) {
     if (!s) {
         return '';
+    }
+    if (s === 'closed_unawarded') {
+        return 'Closed — unawarded';
     }
 
     return String(s).replace(/_/g, ' ');

@@ -328,6 +328,7 @@ const navGroups = [
             { label: 'Review integrity', hint: 'Coordinated review manipulation patterns', href: route('operations.review-integrity.index'), match: (p) => p.startsWith('/operations/review-integrity') },
             { label: 'Content patrol', hint: 'Proactive sampled Quest & proposal review', href: route('operations.patrol.index'), match: (p) => p.startsWith('/operations/patrol') },
             { label: 'Badge requests', hint: 'Manual Top Rated & talent badge reviews', href: route('operations.badge-requests.index'), match: (p) => p.startsWith('/operations/badge-requests') },
+            { label: 'Conversation monitoring', hint: 'Flagged quest & Q&A messages — assign, warn, suspend', href: route('operations.conversation-monitoring.index'), match: (p) => p.startsWith('/operations/conversation-monitoring') },
         ],
     },
     {
@@ -336,7 +337,6 @@ const navGroups = [
             { label: 'Users', hint: 'User context, warnings, and 72-hour suspensions', href: route('operations.users.index'), match: (p) => p.startsWith('/operations/users') },
             { label: 'Verifications', hint: 'KYC, BVN, NIN, and utility review queue', href: route('operations.verifications.index'), match: (p) => p.startsWith('/operations/verifications') },
             { label: 'Trust & risk', hint: 'Risk queue, watchlist, fraud network graph', href: route('operations.trust.index'), match: (p) => p.startsWith('/operations/trust') },
-            { label: 'Conversation monitoring', hint: 'Automated message scanning and escalation queue', href: route('operations.conversation-monitoring.index'), match: (p) => p.startsWith('/operations/conversation-monitoring') },
             { label: 'Freelancer quality', hint: 'Performance trends and coaching actions', href: route('operations.quality.index'), match: (p) => p.startsWith('/operations/quality') },
             { label: 'Onboarding assist', hint: 'Stuck users and retention outreach', href: route('operations.onboarding.index'), match: (p) => matchPathPrefix(p, '/operations/onboarding', { exclude: ['/operations/onboarding-quality'] }) },
             { label: 'Proactive outreach', hint: 'Retention queue with templated outreach', href: route('operations.outreach.index'), match: (p) => p.startsWith('/operations/outreach') || p.startsWith('/operations/response-templates') },

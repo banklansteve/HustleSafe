@@ -79,6 +79,26 @@
             </p>
         </div>
 
+        <div
+            v-if="is_quest_owner && quest.status === 'closed_unawarded'"
+            class="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-900 ring-1 ring-slate-100"
+            role="status"
+        >
+            <p class="font-bold">Closed — unawarded</p>
+            <p class="mt-1 leading-relaxed text-slate-700">
+                This quest stopped accepting proposals without an award. Repost in one step to relaunch with the same details, a fresh timeline, and zero proposals.
+            </p>
+            <button
+                v-if="quest.can_repost"
+                type="button"
+                class="mt-3 inline-flex items-center rounded-full bg-primary-600 px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-primary-700 disabled:opacity-60"
+                :disabled="repostBusy"
+                @click="submitRepost"
+            >
+                {{ repostBusy ? 'Reposting…' : 'Repost quest' }}
+            </button>
+        </div>
+
         <div v-if="workspace.enabled && workspacePanelItems.length" class="mt-4 rounded-xl border border-secondary-200/80 bg-gradient-to-r from-secondary-50 via-amber-50/90 to-secondary-50 p-5 shadow-sm ring-1 ring-secondary-100 sm:p-6">
             <p class="text-xs font-black uppercase tracking-[0.2em] text-secondary-800">
                 Freelancer workspace
@@ -124,7 +144,7 @@
                                 class="rounded-full px-3 py-1 uppercase tracking-wide ring-1 ring-white/20"
                                 :class="statusPillHero(quest.status)"
                             >
-                                {{ quest.status }}
+                                {{ questStatusLabel(quest.status) }}
                             </span>
                             <span
                                 v-if="quest.category"
@@ -458,9 +478,25 @@
                                         {{ quest.scheduled_start_date }}
                                     </dd>
                                 </div>
-                                <div v-if="is_quest_owner && quest.listing_expires_at" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                <div v-if="is_quest_owner && quest.listing_expires_at && quest.is_listing_clock_active" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
                                     <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
-                                        Listing expires
+                                        Proposal deadline
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ formatWhen(quest.listing_expires_at) }}
+                                    </dd>
+                                </div>
+                                <div v-else-if="is_quest_owner && quest.due_at && !quest.is_listing_clock_active" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Contract delivery deadline
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-slate-900">
+                                        {{ formatWhen(quest.due_at) }}
+                                    </dd>
+                                </div>
+                                <div v-else-if="is_quest_owner && quest.listing_expires_at && quest.status === 'closed_unawarded'" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        Listing closed
                                     </dt>
                                     <dd class="mt-1 text-sm font-bold text-slate-900">
                                         {{ formatWhen(quest.listing_expires_at) }}
@@ -635,6 +671,18 @@
                     </div>
 
                     <DisputePreventionPrompts v-if="quest.commerce.dispute_prevention_prompts?.length" class="mt-4" :prompts="quest.commerce.dispute_prevention_prompts" />
+                    <div v-if="quest.commerce.contract_url" class="mt-4 rounded-xl border border-primary-100 bg-primary-50/60 px-4 py-3">
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-primary-900">Contract</p>
+                        <p class="mt-1 text-xs font-semibold text-primary-950">
+                            {{ quest.commerce.contract_reference }} · {{ quest.commerce.contract_status_label }}
+                        </p>
+                        <Link
+                            :href="quest.commerce.contract_url"
+                            class="mt-2 inline-flex items-center rounded-full bg-primary-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-primary-800"
+                        >
+                            View contract
+                        </Link>
+                    </div>
                     <div class="mt-4 flex flex-wrap gap-2">
                         <form
                             v-if="quest.commerce.show_fund_button && quest.commerce.funding_post_url"
@@ -693,27 +741,32 @@
                     </div>
                     <ul class="mt-4 space-y-2">
                         <li v-for="p in client_proposals.slice(0, 6)" :key="p.id">
-                            <Link
-                                :href="p.show_url"
-                                class="flex items-center gap-3 rounded-xl border border-white/80 bg-white/90 px-3 py-2.5 shadow-sm ring-1 ring-violet-100/80 transition hover:border-primary-200 hover:shadow-md"
-                            >
-                                <UserProfileAvatar
-                                    :href="p.freelancer?.slug ? route('freelancers.public', p.freelancer.slug) : null"
-                                    :src="p.freelancer?.avatar_url"
-                                    :name="p.freelancer?.first_name || p.freelancer?.name || 'Freelancer'"
-                                    :alt="p.freelancer?.name"
-                                    frame-class="h-10 w-10 text-[10px]"
-                                />
-                                <div class="min-w-0 flex-1">
-                                    <p class="truncate text-sm font-bold text-slate-900">
-                                        {{ p.freelancer?.first_name || p.freelancer?.name || 'Freelancer' }}
-                                    </p>
-                                    <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-violet-900">
-                                        <span>{{ p.status.replace(/_/g, ' ') }}</span>
-                                        <span class="font-bold text-slate-600">{{ formatBudget(p.quoted_amount_minor) }}</span>
+                            <article class="flex items-center gap-3 rounded-xl border border-white/80 bg-white/90 px-3 py-2.5 shadow-sm ring-1 ring-violet-100/80">
+                                <Link :href="p.show_url" class="flex min-w-0 flex-1 items-center gap-3 transition hover:opacity-90">
+                                    <UserProfileAvatar
+                                        :href="p.freelancer?.slug ? route('freelancers.public', p.freelancer.slug) : null"
+                                        :src="p.freelancer?.avatar_url"
+                                        :name="proposalFreelancerName(p)"
+                                        :alt="proposalFreelancerName(p)"
+                                        frame-class="h-10 w-10 text-[10px]"
+                                    />
+                                    <div class="min-w-0 flex-1">
+                                        <p class="truncate text-sm font-bold text-slate-900">
+                                            {{ proposalFreelancerName(p) }}
+                                        </p>
+                                        <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-violet-900">
+                                            <span>{{ p.status.replace(/_/g, ' ') }}</span>
+                                            <span class="font-bold text-slate-600">{{ formatBudget(p.quoted_amount_minor) }}</span>
+                                        </div>
                                     </div>
-                                </div>
-                            </Link>
+                                </Link>
+                                <Link
+                                    :href="p.show_url"
+                                    class="shrink-0 rounded-full bg-violet-700 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white shadow-sm hover:bg-violet-800"
+                                >
+                                    View
+                                </Link>
+                            </article>
                         </li>
                     </ul>
                     <p v-if="client_proposals.length > 6 && client_proposals_hub_url" class="mt-3 text-center text-[11px] font-bold text-violet-900">
@@ -785,6 +838,80 @@
                             <span v-else>Add this quest’s subcategory to your profile so we know you are qualified for this brief.</span>
                         </template>
                     </p>
+                </section>
+
+                <section
+                    v-if="is_quest_owner && quest.is_listing_clock_active && quest.listing_expires_at"
+                    class="rounded-xl border border-amber-100 bg-amber-50/70 p-5 shadow-sm ring-1 ring-amber-100"
+                >
+                    <h2 class="font-display text-lg font-bold text-amber-950">
+                        Proposal deadline
+                    </h2>
+                    <p class="mt-2 text-sm font-semibold text-amber-900/90">
+                        Accepting proposals until
+                        <span class="font-black">{{ formatWhen(quest.listing_expires_at) }}</span>
+                        (Lagos time).
+                    </p>
+                    <p v-if="Number(quest.listing_extension_count) > 0" class="mt-1 text-xs font-semibold text-amber-800/80">
+                        Extended once{{ quest.listing_extended_at ? ` on ${formatWhen(quest.listing_extended_at)}` : '' }}.
+                    </p>
+                    <p class="mt-2 text-xs font-semibold leading-relaxed text-amber-900/80">
+                        After award and escrow funding, the contract delivery deadline takes over — this listing clock no longer applies.
+                    </p>
+                    <button
+                        v-if="quest.can_extend_listing && !showExtendForm"
+                        type="button"
+                        class="mt-4 w-full rounded-full border border-amber-300 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-wide text-amber-950 hover:bg-amber-100"
+                        @click="showExtendForm = true"
+                    >
+                        Extend once (up to {{ extendMaxDays }} days)
+                    </button>
+                    <form v-if="quest.can_extend_listing && showExtendForm" class="mt-4 space-y-3" @submit.prevent="submitExtend">
+                        <div>
+                            <InputLabel for="extend_days" value="Additional days" />
+                            <input
+                                id="extend_days"
+                                v-model.number="extendForm.additional_days"
+                                type="number"
+                                :min="1"
+                                :max="extendMaxDays"
+                                required
+                                class="mt-1 w-full rounded-xl border-amber-200 text-sm font-semibold shadow-sm"
+                            />
+                            <InputError class="mt-1" :message="extendForm.errors.additional_days" />
+                        </div>
+                        <div>
+                            <InputLabel for="extend_reason" value="Reason (required, logged)" />
+                            <textarea
+                                id="extend_reason"
+                                v-model="extendForm.reason"
+                                rows="3"
+                                required
+                                minlength="10"
+                                maxlength="2000"
+                                class="mt-1 w-full rounded-xl border-amber-200 text-sm font-medium shadow-sm"
+                                placeholder="Tell freelancers why you need more time…"
+                            />
+                            <InputError class="mt-1" :message="extendForm.errors.reason" />
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button
+                                type="submit"
+                                class="inline-flex items-center gap-2 rounded-full bg-amber-600 px-4 py-2 text-xs font-black text-white hover:bg-amber-700 disabled:opacity-60"
+                                :disabled="extendForm.processing"
+                            >
+                                <ReLoader4Line v-if="extendForm.processing" class="h-4 w-4 animate-spin" aria-hidden="true" />
+                                Confirm extension
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded-full border border-amber-200 bg-white px-4 py-2 text-xs font-bold text-amber-900 hover:bg-amber-50"
+                                @click="showExtendForm = false"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
                 </section>
 
                 <section v-if="can_edit" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
@@ -861,6 +988,17 @@
                     </ul>
                 </section>
 
+                <ReportConcernSheet
+                    v-if="canReportQuest"
+                    :action-url="route('quests.reports.store', quest.route_key)"
+                    subtitle="Spam, unsafe scope, misleading briefs, or harassment on this listing should be reported. We attach this quest automatically."
+                    :context="{
+                        type: 'quest',
+                        quest_title: quest.title,
+                        reference_code: quest.reference_code,
+                    }"
+                />
+
                 <section v-if="can_edit" class="rounded-xl border border-rose-100 bg-rose-50/60 p-5 shadow-sm ring-1 ring-rose-100">
                     <h2 class="font-display text-lg font-bold text-rose-900">
                         Danger zone
@@ -884,6 +1022,7 @@
 <script setup>
 import EscrowTransparencyTimeline from '@/Components/Quests/EscrowTransparencyTimeline.vue';
 import DisputePreventionPrompts from '@/Components/Quests/DisputePreventionPrompts.vue';
+import ReportConcernSheet from '@/Components/Quests/ReportConcernSheet.vue';
 import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
 import QuestFileGallery from '@/Components/Quests/QuestFileGallery.vue';
@@ -932,8 +1071,18 @@ const qualityGateIssues = computed(() => {
 });
 const isFreelancer = computed(() => page.props.auth?.user?.role?.slug === 'freelancer');
 const isStaffRole = computed(() => ['admin', 'super_admin'].includes(page.props.auth?.user?.role?.slug ?? ''));
+const canReportQuest = computed(() => Boolean(page.props.auth?.user) && !props.is_quest_owner && !isStaffRole.value);
 const localBookmarked = ref(props.is_bookmarked);
 const bookmarkBusy = ref(false);
+const showExtendForm = ref(false);
+const repostBusy = ref(false);
+
+const extendMaxDays = computed(() => props.quest?.proposal_deadline_bounds?.extension_max ?? 14);
+
+const extendForm = useForm({
+    additional_days: extendMaxDays.value,
+    reason: '',
+});
 
 const allQuestsHref = computed(() => {
     if (props.is_quest_owner) {
@@ -1239,8 +1388,47 @@ function statusPillHero(s) {
     if (s === 'draft') {
         return 'bg-amber-400/40 text-white ring-amber-100/35';
     }
+    if (s === 'closed_unawarded') {
+        return 'bg-slate-400/50 text-white ring-slate-100/35';
+    }
 
     return 'bg-white/15 text-white ring-white/25';
+}
+
+function questStatusLabel(s) {
+    const map = {
+        open: 'Open',
+        draft: 'Draft',
+        closed_unawarded: 'Closed — unawarded',
+        assigned: 'Assigned',
+        in_progress: 'In progress',
+        pending_review: 'Pending review',
+        completed: 'Completed',
+    };
+
+    return map[s] || String(s || '').replace(/_/g, ' ');
+}
+
+function submitExtend() {
+    extendForm.post(route('quests.extend-listing', questRouteKey.value), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showExtendForm.value = false;
+            extendForm.reset('reason');
+        },
+    });
+}
+
+function submitRepost() {
+    if (repostBusy.value) {
+        return;
+    }
+    repostBusy.value = true;
+    router.post(route('quests.repost', questRouteKey.value), {}, {
+        onFinish: () => {
+            repostBusy.value = false;
+        },
+    });
 }
 
 function timingLabel(v) {
@@ -1314,6 +1502,20 @@ async function toggleBookmark() {
     } finally {
         bookmarkBusy.value = false;
     }
+}
+
+function proposalFreelancerName(proposal) {
+    const f = proposal?.freelancer;
+    if (!f) {
+        return 'Freelancer';
+    }
+    const full = String(f.name || '').trim();
+    if (full) {
+        return full;
+    }
+    const parts = [f.first_name, f.last_name].map((x) => String(x || '').trim()).filter(Boolean);
+
+    return parts.length ? parts.join(' ') : 'Freelancer';
 }
 
 function formatBudget(minor) {

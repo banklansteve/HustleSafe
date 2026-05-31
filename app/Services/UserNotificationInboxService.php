@@ -75,4 +75,40 @@ class UserNotificationInboxService
             return $href !== '' && str_contains($href, "/proposals/{$offerId}");
         });
     }
+
+    public function markProposalClarificationForOffer(User $user, int $questId, int $offerId): int
+    {
+        return $this->markReadWhere($user, function (DatabaseNotification $notification, array $data) use ($questId, $offerId): bool {
+            $kind = (string) ($data['kind'] ?? '');
+            if (! in_array($kind, ['proposal_clarification_question', 'proposal_clarification_answer'], true)) {
+                return false;
+            }
+
+            if ((int) ($data['quest_id'] ?? 0) === $questId && (int) ($data['offer_id'] ?? 0) === $offerId) {
+                return true;
+            }
+
+            $href = (string) ($data['href'] ?? '');
+
+            return $href !== '' && str_contains($href, "/proposals/{$offerId}/clarify");
+        });
+    }
+
+    public function markConversationPolicyWarnings(User $user): int
+    {
+        return $this->markReadWhere($user, fn (DatabaseNotification $notification, array $data): bool => ($data['kind'] ?? '') === 'conversation_policy_warning');
+    }
+
+    public function markConversationPolicyWarning(User $user, int $warningId): int
+    {
+        return $this->markReadWhere($user, function (DatabaseNotification $notification, array $data) use ($warningId): bool {
+            if (($data['kind'] ?? '') !== 'conversation_policy_warning') {
+                return false;
+            }
+
+            $id = (int) ($data['warning_id'] ?? 0);
+
+            return $id === 0 || $id === $warningId;
+        });
+    }
 }

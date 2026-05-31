@@ -12,6 +12,7 @@ use App\Models\QuestOffer;
 use App\Models\User;
 use App\Models\UserVerification;
 use App\Services\Verification\VerificationEngineService;
+use App\Services\Verification\UserVerificationCatalogService;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -73,11 +74,11 @@ class FreelancerWorkspaceReadinessService
             ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
             ->count();
 
-        $blockers = [];
-        $hints = [];
+        $allBlockers = [];
+        $allHints = [];
 
         if ($leafCount < 1) {
-            $blockers[] = [
+            $allBlockers[] = [
                 'code' => 'categories_missing',
                 'message' => __('Choose at least one work subcategory in your account so we can match you to the right quests.'),
                 'action_label' => __('Pick subcategories'),
@@ -86,7 +87,7 @@ class FreelancerWorkspaceReadinessService
         }
 
         if (! $addressOk) {
-            $blockers[] = [
+            $allBlockers[] = [
                 'code' => 'address_incomplete',
                 'message' => __('Add your full address, state, LGA, and city on your account — clients and escrow checks rely on it.'),
                 'action_label' => __('Add address & LGA'),
@@ -95,14 +96,14 @@ class FreelancerWorkspaceReadinessService
         }
 
         if (! $identityOk) {
-            $hints[] = [
+            $allHints[] = [
                 'code' => 'identity_pending',
                 'message' => __('Complete your verification checks under Trust & verifications to unlock higher-value proposals and withdrawals.'),
                 'action_label' => __('Submit ID'),
                 'action_url' => route('verifications.index').'#verification-submit',
             ];
-        } elseif (! $livePresenceOk) {
-            $hints[] = [
+        } elseif (! $livePresenceOk && $this->freelancerEligibleForLivePresenceNudge($user)) {
+            $allHints[] = [
                 'code' => 'live_presence_recommended',
                 'message' => __('Complete the selfie + ID check under Verifications to strengthen trust on high-value quests.'),
                 'action_label' => __('Selfie + ID'),
@@ -111,7 +112,7 @@ class FreelancerWorkspaceReadinessService
         }
 
         if ($leafCount >= 1 && $addressOk && ($user->headline === null || trim((string) $user->headline) === '')) {
-            $hints[] = [
+            $allHints[] = [
                 'code' => 'headline_recommended',
                 'message' => __('Add a short headline — it helps clients understand your niche at a glance.'),
                 'action_label' => __('Add headline'),
@@ -120,7 +121,7 @@ class FreelancerWorkspaceReadinessService
         }
 
         if ($leafCount >= 1 && $addressOk && ! $profileReadyForProposals) {
-            $blockers[] = [
+            $allBlockers[] = [
                 'code' => 'profile_strength_low',
                 'message' => __('Raise your profile strength to at least :percent% (headline, bio, categories, and trust signals) before sending proposals.', [
                     'percent' => $minProfile,
@@ -131,13 +132,25 @@ class FreelancerWorkspaceReadinessService
         }
 
         if ($proposalLimitMinor <= 0) {
-            $blockers[] = [
+            $allBlockers[] = [
                 'code' => 'verification_level_blocked',
                 'message' => __('Your current verification level cannot submit proposals yet. Complete the required checks in Trust & verifications.'),
                 'action_label' => __('Open verifications'),
                 'action_url' => route('verifications.index').'#verification-submit',
             ];
         }
+
+        $prioritized = $this->prioritizeWorkspaceActions(
+            $user,
+            $allBlockers,
+            $allHints,
+            $proposalLimitMinor,
+            $profileReadyForProposals,
+            $identityOk,
+        );
+
+        $blockers = $prioritized['blockers'];
+        $hints = $prioritized['hints'];
 
         $tier = 'none';
         if ($leafCount >= 1 && $addressOk) {
@@ -370,5 +383,131 @@ class FreelancerWorkspaceReadinessService
             ->where('category', UserVerificationCategory::LivePresence)
             ->where('status', UserVerificationStatus::Approved)
             ->exists();
+    }
+
+    protected function freelancerEligibleForLivePresenceNudge(User $user): bool
+    {
+        $user->loadMissing('role');
+        if ($user->role?->slug !== 'freelancer') {
+            return false;
+        }
+
+        $engine = app(VerificationEngineService::class);
+
+        return $engine->accountAgeDaysRemaining($user, 90) <= 0;
+    }
+
+    /**
+     * Surface at most two clear next actions — setup first, then verification, then profile polish.
+     *
+     * @param  list<array{code: string, message: string, action_label?: string, action_url?: string}>  $allBlockers
+     * @param  list<array{code: string, message: string, action_label?: string, action_url?: string}>  $allHints
+     * @return array{blockers: list<array<string, mixed>>, hints: list<array<string, mixed>>}
+     */
+    protected function prioritizeWorkspaceActions(
+        User $user,
+        array $allBlockers,
+        array $allHints,
+        int $proposalLimitMinor,
+        bool $profileReadyForProposals,
+        bool $identityApproved,
+    ): array {
+        $byCode = collect(array_merge($allBlockers, $allHints))->keyBy('code');
+        $blockers = [];
+        $hints = [];
+        $maxTotal = 2;
+
+        foreach (['categories_missing', 'address_incomplete'] as $code) {
+            if ($byCode->has($code)) {
+                $blockers[] = $byCode->get($code);
+
+                return ['blockers' => $blockers, 'hints' => []];
+            }
+        }
+
+        $verificationAction = $this->verificationNextAction($user, $proposalLimitMinor, $identityApproved);
+        if ($verificationAction !== null) {
+            if ($proposalLimitMinor <= 0 || ! $identityApproved) {
+                $blockers[] = $verificationAction;
+            } else {
+                $hints[] = $verificationAction;
+            }
+        } elseif ($byCode->has('verification_level_blocked')) {
+            $blockers[] = $byCode->get('verification_level_blocked');
+        }
+
+        $remaining = $maxTotal - count($blockers) - count($hints);
+        $verificationBlocking = $proposalLimitMinor <= 0 || ! $identityApproved;
+        if ($remaining > 0 && ! $profileReadyForProposals && $byCode->has('profile_strength_low') && ! $verificationBlocking) {
+            $blockers[] = $byCode->get('profile_strength_low');
+            $remaining--;
+        }
+
+        $verificationFocused = collect($blockers)->contains(fn ($item) => ($item['code'] ?? '') === 'verification_next')
+            || collect($hints)->contains(fn ($item) => ($item['code'] ?? '') === 'verification_next');
+
+        if ($remaining > 0) {
+            foreach (['headline_recommended', 'live_presence_recommended', 'identity_pending'] as $code) {
+                if ($remaining <= 0) {
+                    break;
+                }
+                if ($verificationFocused && in_array($code, ['identity_pending', 'live_presence_recommended'], true)) {
+                    continue;
+                }
+                if ($byCode->has($code) && ! collect($hints)->contains('code', $code) && ! collect($blockers)->contains('code', $code)) {
+                    $hints[] = $byCode->get($code);
+                    $remaining--;
+                }
+            }
+        }
+
+        return [
+            'blockers' => array_slice($blockers, 0, $maxTotal),
+            'hints' => array_slice($hints, 0, max(0, $maxTotal - count($blockers))),
+        ];
+    }
+
+    /**
+     * @return array{code: string, message: string, action_label: string, action_url: string}|null
+     */
+    protected function verificationNextAction(User $user, int $proposalLimitMinor, bool $identityApproved): ?array
+    {
+        $catalog = app(UserVerificationCatalogService::class)->forUser($user);
+        $next = $catalog['next_step'] ?? null;
+
+        if (! is_array($next) || ($next['status'] ?? '') === 'complete') {
+            return null;
+        }
+
+        if (in_array($next['key'] ?? '', ['live_presence', 'account_age'], true)
+            && in_array($next['status'] ?? '', ['locked', 'waiting'], true)
+            && app(VerificationEngineService::class)->accountAgeDaysRemaining($user, 90) > 0) {
+            return null;
+        }
+
+        $title = (string) ($next['title'] ?? __('Trust & verifications'));
+        $stageMessage = (string) ($next['info_bar'] ?? $next['message'] ?? '');
+
+        if ($proposalLimitMinor <= 0) {
+            $message = __('Your current verification level cannot submit proposals yet. Complete the required checks in Trust & verifications.');
+            if ($stageMessage !== '') {
+                $message .= ' '.$stageMessage;
+            }
+        } elseif (! $identityApproved) {
+            $message = $stageMessage !== ''
+                ? $stageMessage
+                : __('Complete identity and address verification under Trust & verifications to unlock proposals.');
+        } else {
+            $message = $stageMessage !== ''
+                ? $stageMessage
+                : __('Complete your next verification step under Trust & verifications.');
+        }
+
+        return [
+            'code' => 'verification_next',
+            'message' => trim($message),
+            'action_label' => $title,
+            'action_url' => route('verifications.index').'#verification-submit',
+        ];
     }
 }

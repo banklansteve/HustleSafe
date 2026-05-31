@@ -251,6 +251,11 @@ class EscrowPaymentService
                 );
             }
 
+            $quest->refresh();
+            if ($quest !== null) {
+                app(\App\Services\Contracts\ContractLifecycleService::class)->activateFromEscrowFunding($quest, $escrow->fresh());
+            }
+
             $client = User::query()->find($escrow->client_id);
             if ($client !== null) {
                 $this->wallets->recordAudit(

@@ -1,6 +1,6 @@
 <template>
     <AdminShell title="Conversation monitoring" subtitle="Scanner rules, systematic escalations, and full-text review for Super Admins.">
-        <ConversationMonitoringWorkspace :summary="summary" :is-super-admin="true" route-prefix="admin" />
+        <ConversationMonitoringWorkspace :summary="summary" :is-super-admin="true" route-prefix="admin" :open-review-id="openReviewId" />
     </AdminShell>
 </template>
 
@@ -10,5 +10,6 @@ import ConversationMonitoringWorkspace from '@/Components/ConversationMonitoring
 
 defineProps({
     summary: { type: Object, default: () => ({}) },
+    openReviewId: { type: Number, default: null },
 });
 </script>

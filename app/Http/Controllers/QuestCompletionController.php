@@ -103,6 +103,13 @@ class QuestCompletionController extends Controller
             'closure_type' => 'client_released_funds',
         ]);
 
+        app(\App\Services\Quest\QuestJourneySurveyService::class)->onQuestFundsReleased($quest->fresh());
+
+        $contract = \App\Models\QuestContract::query()->where('quest_id', $quest->id)->first();
+        if ($contract !== null) {
+            app(\App\Services\Contracts\ContractLifecycleService::class)->markCompleted($contract, $request->user(), $request);
+        }
+
         return back()->with('success', __('Escrow released to the freelancer\'s wallet. This quest is now complete.'));
     }
 

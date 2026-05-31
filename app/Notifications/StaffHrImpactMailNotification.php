@@ -2,13 +2,14 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\SendsBrandedMail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class StaffHrImpactMailNotification extends Notification
 {
-    use Queueable;
+    use Queueable, SendsBrandedMail;
 
     /**
      * @param  list<string>  $lines
@@ -30,18 +31,13 @@ class StaffHrImpactMailNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $message = (new MailMessage)
-            ->subject($this->subject)
-            ->greeting('Hello '.$notifiable->name.',');
-
-        foreach ($this->lines as $line) {
-            $message->line($line);
-        }
-
-        if ($this->actionUrl !== null && $this->actionText !== null) {
-            $message->action($this->actionText, $this->actionUrl);
-        }
-
-        return $message;
+        return $this->brandedMail(
+            subject: $this->subject,
+            headline: $this->subject,
+            notifiable: $notifiable,
+            lines: $this->lines,
+            ctaUrl: $this->actionUrl,
+            ctaLabel: $this->actionText,
+        );
     }
 }

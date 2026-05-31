@@ -30,7 +30,10 @@
             </section>
 
             <div class="flex flex-wrap items-center justify-between gap-2">
-                <BackChevronLink :href="route('quests.show', quest.route_key)" aria-label="Back to quest" />
+                <BackChevronLink
+                    :href="is_client && client_proposals_hub_url ? client_proposals_hub_url : route('quests.show', quest.route_key)"
+                    :aria-label="is_client ? 'Back to proposals' : 'Back to quest'"
+                />
                 <div class="flex flex-wrap gap-2">
                     <a
                         v-if="can_download_pdf"
@@ -104,7 +107,7 @@
             >
                 <p class="text-[10px] font-black uppercase tracking-[0.2em] text-primary-900">Your move</p>
                 <p class="mt-1 text-xs leading-relaxed text-primary-950/90">
-                    Shortlist to signal interest, pin to keep it on your radar, or decide. Every action is confirmed so expectations stay crystal clear.
+                    Shortlist to signal interest, or award when you are ready. Decline and award still require confirmation.
                 </p>
                 <div class="mt-3 flex flex-wrap gap-2">
                     <Link
@@ -115,27 +118,15 @@
                         {{ clarification_summary ? `Clarify (${clarification_summary})` : 'Ask clarifying questions' }}
                     </Link>
                     <button
-                        v-if="offer.status === 'submitted'"
+                        v-if="canToggleShortlist"
                         type="button"
-                        class="rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-primary-900 shadow-sm ring-1 ring-primary-200 hover:bg-primary-50"
-                        @click="openModal('shortlist')"
+                        class="rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide shadow-sm transition disabled:opacity-60"
+                        :class="localOfferStatus === 'shortlisted'
+                            ? 'bg-sky-600 text-white ring-2 ring-sky-300 hover:bg-sky-700'
+                            : 'bg-white text-sky-900 ring-1 ring-sky-200 hover:bg-sky-50'"
+                        @click="toggleShortlist"
                     >
-                        Shortlist
-                    </button>
-                    <button
-                        v-if="offer.status === 'shortlisted'"
-                        type="button"
-                        class="rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-primary-900 shadow-sm ring-1 ring-primary-200 hover:bg-primary-50"
-                        @click="openModal('unshortlist')"
-                    >
-                        Remove shortlist
-                    </button>
-                    <button
-                        type="button"
-                        class="rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 shadow-sm ring-1 ring-violet-200 hover:bg-violet-50"
-                        @click="openModal('pin')"
-                    >
-                        {{ offer.client_pinned_at ? 'Unpin' : 'Pin for later' }}
+                        {{ localOfferStatus === 'shortlisted' ? 'Shortlisted' : 'Shortlist' }}
                     </button>
                     <button
                         type="button"
@@ -188,6 +179,23 @@
                 >
                     Confirm award terms
                 </button>
+            </section>
+
+            <section
+                v-if="commerce?.contract_url"
+                class="rounded-2xl border border-primary-200/90 bg-primary-50/60 px-4 py-3 text-sm font-semibold text-primary-950 ring-1 ring-primary-100 sm:px-5"
+            >
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-primary-900">Contract generated</p>
+                <p class="mt-1 text-xs leading-relaxed">
+                    Reference <span class="font-black">{{ commerce.contract_reference }}</span>
+                    · {{ commerce.contract_status_label }}
+                </p>
+                <Link
+                    :href="commerce.contract_url"
+                    class="mt-3 inline-flex items-center rounded-full bg-primary-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-primary-800"
+                >
+                    View contract
+                </Link>
             </section>
 
             <section
@@ -460,9 +468,15 @@
             </section>
 
             <ReportConcernSheet
-                v-if="!observer_mode && (is_client || is_author)"
+                v-if="canReportProposal"
                 :action-url="route('quests.proposals.reports.store', [quest.route_key, offer.id])"
                 subtitle="Misleading quotes, harassment, or attempts to move payment off-platform should be reported. Our team triages by severity."
+                :context="{
+                    type: 'proposal',
+                    proposal_id: offer.id,
+                    quest_title: quest.title,
+                    freelancer_name: offer.freelancer?.name || offer.freelancer?.first_name,
+                }"
             />
         </div>
 
@@ -482,31 +496,7 @@
                     <p class="mt-2 text-sm font-medium leading-relaxed text-slate-600">{{ modalIntro }}</p>
 
                     <form class="mt-5 space-y-4" @submit.prevent="submitModal">
-                        <template v-if="activeModal === 'shortlist'">
-                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="shortlistForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
-                                <span>I want to shortlist this proposal and notify the freelancer they may hear from me soon.</span>
-                            </label>
-                            <InputError :message="shortlistForm.errors.confirm" />
-                        </template>
-
-                        <template v-else-if="activeModal === 'unshortlist'">
-                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="unshortlistForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
-                                <span>I want to move this proposal back to the general list.</span>
-                            </label>
-                            <InputError :message="unshortlistForm.errors.confirm" />
-                        </template>
-
-                        <template v-else-if="activeModal === 'pin'">
-                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="pinForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-violet-600 focus:ring-violet-500" />
-                                <span>{{ offer.client_pinned_at ? 'I want to remove the pin from this proposal.' : 'I want to pin this proposal to my review queue.' }}</span>
-                            </label>
-                            <InputError :message="pinForm.errors.confirm" />
-                        </template>
-
-                        <template v-else-if="activeModal === 'decline'">
+                        <template v-if="activeModal === 'decline'">
                             <p class="text-xs font-semibold text-slate-600">
                                 Declining closes this thread for the freelancer on this quest. They are notified immediately. You can still accept another
                                 proposal while the quest stays open.
@@ -586,6 +576,25 @@
                                 <span>I understand the 72-hour auto-release rule after the planned job end if I do not mark complete or dispute in time.</span>
                             </label>
                             <InputError :message="acceptForm.errors.accept_auto_release_ack" />
+                            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                <p class="text-xs font-black uppercase tracking-wide text-slate-500">Confirm deliverables</p>
+                                <p class="mt-1 text-xs font-semibold text-slate-600">List each deliverable as a separate line item — this is frozen into the contract.</p>
+                                <ul class="mt-3 space-y-2">
+                                    <li v-for="(item, idx) in acceptDeliverables" :key="idx" class="flex gap-2">
+                                        <input v-model="item.title" type="text" class="min-w-0 flex-1 rounded-lg border-slate-200 text-sm shadow-sm" placeholder="Deliverable title" required />
+                                        <button v-if="acceptDeliverables.length > 1" type="button" class="shrink-0 text-xs font-bold text-rose-700" @click="acceptDeliverables.splice(idx, 1)">Remove</button>
+                                    </li>
+                                </ul>
+                                <button type="button" class="mt-2 text-xs font-black uppercase text-primary-800 underline" @click="acceptDeliverables.push({ title: '', description: '' })">Add deliverable</button>
+                                <InputError :message="acceptForm.errors.deliverables" />
+                            </div>
+                            <label class="mt-2 block text-xs font-bold uppercase text-slate-600">Revision definition</label>
+                            <textarea
+                                v-model="acceptForm.revision_definition"
+                                rows="3"
+                                class="mt-1 w-full rounded-xl border-slate-200 text-sm shadow-sm"
+                                placeholder="What counts as a revision vs a scope change?"
+                            />
                         </template>
 
                         <template v-else-if="activeModal === 'confirm_award'">
@@ -710,9 +719,10 @@ import BackChevronLink from '@/Components/Ui/BackChevronLink.vue';
 import InputError from '@/Components/InputError.vue';
 import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
 import AppShell from '@/Layouts/AppShell.vue';
+import axios from 'axios';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
     quest: { type: Object, required: true },
@@ -721,6 +731,7 @@ const props = defineProps({
     is_author: { type: Boolean, default: false },
     observer_mode: { type: Boolean, default: false },
     can_download_pdf: { type: Boolean, default: true },
+    client_proposals_hub_url: { type: String, default: null },
     conversation_with_freelancer_url: { type: String, default: null },
     clarification_url: { type: String, default: null },
     clarification_summary: { type: Number, default: 0 },
@@ -728,6 +739,9 @@ const props = defineProps({
 });
 
 const page = usePage();
+
+const isStaffRole = computed(() => ['admin', 'super_admin'].includes(page.props.auth?.user?.role?.slug ?? ''));
+const canReportProposal = computed(() => Boolean(page.props.auth?.user) && !props.is_author && !props.observer_mode && !isStaffRole.value);
 
 const acknowledgeForm = useForm({ confirm: false });
 const releaseForm = useForm({ confirm: false, acknowledge_release: false });
@@ -814,10 +828,15 @@ function openReleaseModal() {
 }
 
 const activeModal = ref(null);
+const localOfferStatus = ref(props.offer.status);
 
-const shortlistForm = useForm({ confirm: false });
-const unshortlistForm = useForm({ confirm: false });
-const pinForm = useForm({ confirm: false });
+watch(
+    () => props.offer.status,
+    (status) => {
+        localOfferStatus.value = status;
+    },
+);
+
 const declineForm = useForm({ confirm: false, understand_decline: false });
 const acceptForm = useForm({
     confirm: false,
@@ -827,7 +846,9 @@ const acceptForm = useForm({
     accept_escrow_rules: false,
     accept_fees_and_terms: false,
     accept_auto_release_ack: false,
+    revision_definition: 'A revision adjusts the agreed deliverable within the original scope. New features or material scope expansion require an amendment.',
 });
+const acceptDeliverables = ref([{ title: '', description: '' }]);
 const confirmAwardForm = useForm({
     confirm: false,
     confirm_scope: false,
@@ -839,16 +860,17 @@ const withdrawForm = useForm({ confirm: false, understand_withdraw: false });
 
 const anyModalFormProcessing = computed(
     () =>
-        shortlistForm.processing
-        || unshortlistForm.processing
-        || pinForm.processing
-        || declineForm.processing
+        declineForm.processing
         || acceptForm.processing
         || confirmAwardForm.processing
         || escrowForm.processing
         || acknowledgeForm.processing
         || releaseForm.processing
         || withdrawForm.processing,
+);
+
+const canToggleShortlist = computed(
+    () => props.is_client && props.quest.status === 'open' && ['submitted', 'shortlisted'].includes(localOfferStatus.value),
 );
 
 const awardTerms = computed(() => props.offer.award_terms_snapshot || null);
@@ -868,7 +890,7 @@ const awardTermsPreview = computed(() => {
 });
 
 const clientDecisionOffer = computed(
-    () => props.is_client && props.quest.status === 'open' && ['submitted', 'shortlisted'].includes(props.offer.status),
+    () => props.is_client && props.quest.status === 'open' && ['submitted', 'shortlisted'].includes(localOfferStatus.value),
 );
 
 const statusLabel = computed(() => {
@@ -906,9 +928,6 @@ const statusPillClass = computed(() => {
 const modalTitle = computed(() => {
     const m = activeModal.value;
     const titles = {
-        shortlist: 'Shortlist proposal',
-        unshortlist: 'Remove shortlist',
-        pin: props.offer.client_pinned_at ? 'Unpin proposal' : 'Pin proposal',
         decline: 'Decline proposal',
         accept: 'Award proposal',
         confirm_award: 'Confirm award terms',
@@ -923,17 +942,6 @@ const modalTitle = computed(() => {
 
 const modalIntro = computed(() => {
     const m = activeModal.value;
-    if (m === 'shortlist') {
-        return 'Shortlisting notifies the freelancer they\'re in the running — the client may reach out soon.';
-    }
-    if (m === 'unshortlist') {
-        return 'This keeps the quest tidy if you change your mind before a final decision.';
-    }
-    if (m === 'pin') {
-        return props.offer.client_pinned_at
-            ? 'Remove the highlight from your review queue.'
-            : 'Pin keeps this proposal visually starred while you compare options.';
-    }
     if (m === 'decline') {
         return 'Declining is permanent for this proposal. Other proposals remain untouched.';
     }
@@ -982,15 +990,6 @@ const modalPrimaryClass = computed(() => {
 
 const modalSubmitDisabled = computed(() => {
     const m = activeModal.value;
-    if (m === 'shortlist') {
-        return shortlistForm.processing || !shortlistForm.confirm;
-    }
-    if (m === 'unshortlist') {
-        return unshortlistForm.processing || !unshortlistForm.confirm;
-    }
-    if (m === 'pin') {
-        return pinForm.processing || !pinForm.confirm;
-    }
     if (m === 'decline') {
         return declineForm.processing || !declineForm.confirm || !declineForm.understand_decline;
     }
@@ -1018,9 +1017,6 @@ const modalSubmitDisabled = computed(() => {
 
 function openModal(id) {
     activeModal.value = id;
-    shortlistForm.clearErrors();
-    unshortlistForm.clearErrors();
-    pinForm.clearErrors();
     declineForm.clearErrors();
     acceptForm.clearErrors();
     confirmAwardForm.clearErrors();
@@ -1028,9 +1024,6 @@ function openModal(id) {
     acknowledgeForm.clearErrors();
     releaseForm.clearErrors();
     withdrawForm.clearErrors();
-    shortlistForm.reset('confirm');
-    unshortlistForm.reset('confirm');
-    pinForm.reset('confirm');
     declineForm.reset();
     acceptForm.reset();
     confirmAwardForm.reset();
@@ -1038,6 +1031,26 @@ function openModal(id) {
     acknowledgeForm.reset();
     releaseForm.reset();
     withdrawForm.reset();
+    if (id === 'accept') {
+        acceptForm.revision_definition = 'A revision adjusts the agreed deliverable within the original scope. New features or material scope expansion require an amendment.';
+        acceptDeliverables.value = buildSuggestedDeliverables();
+    }
+}
+
+function buildSuggestedDeliverables() {
+    const materials = Array.isArray(props.offer.materials) ? props.offer.materials : [];
+    const fromMaterials = materials
+        .map((m) => ({ title: String(m.label || '').trim(), description: '' }))
+        .filter((m) => m.title);
+    if (fromMaterials.length) {
+        return fromMaterials;
+    }
+    const text = String(props.offer.scope_detail || props.offer.pitch || '').replace(/<[^>]+>/g, ' ').trim();
+    const lines = text.split(/\r\n|\r|\n|(?:\s*[-•*]\s+)/).map((l) => l.replace(/^[-•*\d.)]+\s*/, '').trim()).filter((l) => l.length >= 8);
+    if (lines.length) {
+        return lines.slice(0, 12).map((title) => ({ title: title.slice(0, 120), description: '' }));
+    }
+    return [{ title: 'Deliver work as described in the accepted proposal and quest brief', description: '' }];
 }
 
 function closeModal() {
@@ -1048,26 +1061,31 @@ function bool(v) {
     return !!v;
 }
 
+function toggleShortlist() {
+    if (!canToggleShortlist.value) {
+        return;
+    }
+
+    const wasShortlisted = localOfferStatus.value === 'shortlisted';
+    localOfferStatus.value = wasShortlisted ? 'submitted' : 'shortlisted';
+
+    axios
+        .post(route('quests.proposals.toggle-shortlist', [props.quest.route_key, props.offer.id]), {}, {
+            headers: { Accept: 'application/json' },
+        })
+        .then(({ data }) => {
+            localOfferStatus.value = data.status || (data.shortlisted ? 'shortlisted' : 'submitted');
+        })
+        .catch(() => {
+            localOfferStatus.value = wasShortlisted ? 'shortlisted' : 'submitted';
+        });
+}
+
 function submitModal() {
     const m = activeModal.value;
     const rk = props.quest.route_key;
     const oid = props.offer.id;
-    if (m === 'shortlist') {
-        shortlistForm.transform(() => ({ confirm: bool(shortlistForm.confirm) })).post(route('quests.proposals.shortlist', [rk, oid]), {
-            preserveScroll: true,
-            onSuccess: closeModal,
-        });
-    } else if (m === 'unshortlist') {
-        unshortlistForm.transform(() => ({ confirm: bool(unshortlistForm.confirm) })).post(route('quests.proposals.unshortlist', [rk, oid]), {
-            preserveScroll: true,
-            onSuccess: closeModal,
-        });
-    } else if (m === 'pin') {
-        pinForm.transform(() => ({ confirm: bool(pinForm.confirm) })).post(route('quests.proposals.pin', [rk, oid]), {
-            preserveScroll: true,
-            onSuccess: closeModal,
-        });
-    } else if (m === 'decline') {
+    if (m === 'decline') {
         declineForm
             .transform(() => ({
                 confirm: bool(declineForm.confirm),
@@ -1084,6 +1102,8 @@ function submitModal() {
                 accept_escrow_rules: bool(acceptForm.accept_escrow_rules),
                 accept_fees_and_terms: bool(acceptForm.accept_fees_and_terms),
                 accept_auto_release_ack: bool(acceptForm.accept_auto_release_ack),
+                revision_definition: acceptForm.revision_definition,
+                deliverables: acceptDeliverables.value.filter((d) => d.title.trim() !== ''),
             }))
             .post(route('quests.proposals.accept', [rk, oid]), { preserveScroll: true, onSuccess: closeModal });
     } else if (m === 'confirm_award') {

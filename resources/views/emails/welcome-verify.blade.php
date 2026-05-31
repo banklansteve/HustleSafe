@@ -13,7 +13,7 @@
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background-color:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 25px 50px -12px rgba(15,118,110,0.15);border:1px solid #e2e8f0;">
                     <tr>
                         <td style="background:linear-gradient(135deg,#0d9488 0%,#115e59 50%,#134e4a 100%);padding:28px 32px;text-align:center;">
-                            <p style="margin:0 0 8px 0;font-size:11px;font-weight:800;letter-spacing:0.28em;text-transform:uppercase;color:rgba(255,255,255,0.85);">HustleSafe</p>
+                            <img src="{{ \App\Support\BrandedMail::logoUrl() }}" alt="{{ \App\Support\BrandedMail::brandName() }}" style="max-width:200px;height:auto;margin:0 auto 12px;display:block;">
                             <h1 style="margin:0;font-size:22px;line-height:1.25;font-weight:800;color:#ffffff;">You made it in — nice one.</h1>
                         </td>
                     </tr>

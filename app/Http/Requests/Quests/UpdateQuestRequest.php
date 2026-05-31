@@ -11,6 +11,7 @@ use App\Enums\QuestVisibility;
 use App\Models\QuestCategory;
 use App\Services\QuestDescriptionSanitizer;
 use App\Services\QuestFormFieldProfileService;
+use App\Support\PlatformSettings;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -129,7 +130,12 @@ class UpdateQuestRequest extends FormRequest
             'project_type' => ['nullable', Rule::enum(QuestProjectType::class)],
             'estimated_hours' => ['nullable', 'integer', 'min:1', 'max:2000'],
             'team_size' => ['nullable', Rule::enum(QuestTeamSize::class)],
-            'auto_listing_expiry_days' => ['nullable', 'integer', 'min:1', 'max:90'],
+            'auto_listing_expiry_days' => [
+                'nullable',
+                'integer',
+                'min:'.PlatformSettings::proposalDeadlineBounds()['min'],
+                'max:'.PlatformSettings::proposalDeadlineBounds()['max'],
+            ],
             'max_offers' => ['nullable', 'integer', 'min:1', 'max:200'],
             'slug' => [
                 'nullable',

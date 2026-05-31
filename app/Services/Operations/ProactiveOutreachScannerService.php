@@ -10,11 +10,14 @@ use App\Models\ConversationMessageFlag;
 use App\Models\ConversationThreadReview;
 use App\Models\Quest;
 use App\Models\QuestDispute;
+use App\Models\QuestOffer;
 use App\Models\Review;
 use App\Models\StaffProactiveOutreachItem;
 use App\Models\User;
 use App\Models\UserTrustMetric;
 use App\Models\UserVerification;
+use App\Services\Proposals\ProposalShortlistService;
+use App\Services\Quest\QuestListingExpiryService;
 use Illuminate\Support\Facades\Schema;
 
 class ProactiveOutreachScannerService
@@ -35,6 +38,8 @@ class ProactiveOutreachScannerService
             'freelancer_rating_drop' => $this->scanFreelancerRatingDrop(),
             'dispute_open_no_evidence' => $this->scanDisputeNoEvidence(),
             'off_platform_payment_flagged' => $this->scanOffPlatformPayment(),
+            'quest_listing_expiring_no_shortlist' => $this->scanQuestListingExpiringNoShortlist(),
+            'client_proposals_no_shortlist_5d' => $this->scanClientProposalsNoShortlist(),
         ];
 
         $this->autoResolveStale();
@@ -312,9 +317,16 @@ class ProactiveOutreachScannerService
                     return;
                 }
 
-                $reviewId = ConversationThreadReview::query()
-                    ->where('quest_conversation_thread_id', $flag->quest_conversation_thread_id)
-                    ->value('id');
+                $reviewId = null;
+                if ($flag->quest_conversation_thread_id) {
+                    $reviewId = ConversationThreadReview::query()
+                        ->where('quest_conversation_thread_id', $flag->quest_conversation_thread_id)
+                        ->value('id');
+                } elseif ($flag->proposal_clarification_thread_id) {
+                    $reviewId = ConversationThreadReview::query()
+                        ->where('proposal_clarification_thread_id', $flag->proposal_clarification_thread_id)
+                        ->value('id');
+                }
 
                 if ($this->upsertItem(
                     'off_platform_payment_flagged',
@@ -334,6 +346,121 @@ class ProactiveOutreachScannerService
                     scoreOverride: 90,
                 )) {
                     $count++;
+                }
+            });
+
+        return $count;
+    }
+
+    private function scanQuestListingExpiringNoShortlist(): int
+    {
+        $soonDays = (int) config('operations.proactive_outreach.quest_listing_expiring_soon_days', 5);
+        $inactiveDays = (int) config('operations.proactive_outreach.quest_client_inactive_days', 5);
+        $inactiveCutoff = now()->subDays($inactiveDays);
+        $expiryWindowEnd = now()->addDays($soonDays);
+        $expiry = app(QuestListingExpiryService::class);
+        $count = 0;
+
+        Quest::query()
+            ->where('status', QuestStatus::Open)
+            ->whereNull('freelancer_id')
+            ->whereNull('accepted_quest_offer_id')
+            ->whereNotNull('listing_expires_at')
+            ->where('listing_expires_at', '>', now())
+            ->where('listing_expires_at', '<=', $expiryWindowEnd)
+            ->whereDoesntHave('offers', fn ($q) => $q->where('status', 'shortlisted'))
+            ->with('client:id,name,email,updated_at')
+            ->chunkById(50, function ($quests) use (&$count, $expiry, $inactiveCutoff, $inactiveDays, $soonDays): void {
+                foreach ($quests as $quest) {
+                    $client = $quest->client;
+                    if (! $client) {
+                        continue;
+                    }
+
+                    $lastActive = $expiry->clientLastActiveAt($client);
+                    if (! $lastActive || $lastActive->greaterThan($inactiveCutoff)) {
+                        continue;
+                    }
+
+                    if ($this->upsertItem(
+                        'quest_listing_expiring_no_shortlist',
+                        $this->fingerprint('quest_listing_expiring_no_shortlist', $quest->id),
+                        [
+                            'target_user_id' => $client->id,
+                            'quest_id' => $quest->id,
+                            'context' => [
+                                'days_until_expiry' => (string) max(0, now()->diffInDays($quest->listing_expires_at, false)),
+                                'client_inactive_days' => (string) $lastActive->diffInDays(now()),
+                                'proposals_count' => (string) (int) ($quest->offers_count ?? 0),
+                                'shortlist_count' => '0',
+                                'hint' => 'Client has reviewed proposals but has not shortlisted — may need a nudge or has a question.',
+                                'listing_expires_at' => $quest->listing_expires_at?->toIso8601String(),
+                                'inactive_threshold_days' => (string) $inactiveDays,
+                                'expiring_soon_days' => (string) $soonDays,
+                            ],
+                        ],
+                        priorityOverride: 'high',
+                        scoreOverride: 72,
+                    )) {
+                        $count++;
+                    }
+                }
+            });
+
+        return $count;
+    }
+
+    private function scanClientProposalsNoShortlist(): int
+    {
+        $reviewDays = app(ProposalShortlistService::class)->noShortlistReviewDays();
+        $cutoff = now()->subDays($reviewDays);
+        $count = 0;
+
+        Quest::query()
+            ->where('status', QuestStatus::Open)
+            ->where('offers_count', '>', 0)
+            ->whereNull('freelancer_id')
+            ->whereNull('accepted_quest_offer_id')
+            ->whereDoesntHave('offers', fn ($q) => $q->where('status', 'shortlisted'))
+            ->where(function ($q) use ($cutoff): void {
+                $q->where('created_at', '<=', $cutoff)
+                    ->orWhereHas('offers', fn ($o) => $o->where('created_at', '<=', $cutoff));
+            })
+            ->with('client:id,name,email,updated_at')
+            ->chunkById(50, function ($quests) use (&$count, $reviewDays): void {
+                foreach ($quests as $quest) {
+                    $client = $quest->client;
+                    if (! $client) {
+                        continue;
+                    }
+
+                    $firstProposalAt = QuestOffer::query()
+                        ->where('quest_id', $quest->id)
+                        ->min('created_at');
+
+                    if (! $firstProposalAt || \Carbon\Carbon::parse($firstProposalAt)->greaterThan(now()->subDays($reviewDays))) {
+                        continue;
+                    }
+
+                    if ($this->upsertItem(
+                        'client_proposals_no_shortlist_5d',
+                        $this->fingerprint('client_proposals_no_shortlist_5d', $quest->id),
+                        [
+                            'target_user_id' => $client->id,
+                            'quest_id' => $quest->id,
+                            'context' => [
+                                'proposals_count' => (string) (int) ($quest->offers_count ?? 0),
+                                'days_since_first_proposal' => (string) \Carbon\Carbon::parse($firstProposalAt)->diffInDays(now()),
+                                'shortlist_count' => '0',
+                                'hint' => 'Client has reviewed proposals but has not shortlisted — may need a nudge or has a question.',
+                                'review_threshold_days' => (string) $reviewDays,
+                            ],
+                        ],
+                        priorityOverride: 'high',
+                        scoreOverride: 68,
+                    )) {
+                        $count++;
+                    }
                 }
             });
 
@@ -369,6 +496,38 @@ class ProactiveOutreachScannerService
                         'status' => 'auto_resolved',
                         'resolved_at' => now(),
                         'resolution_note' => 'User submitted a proposal.',
+                    ]);
+            });
+
+        Quest::query()
+            ->whereHas('offers', fn ($q) => $q->where('status', 'shortlisted'))
+            ->pluck('id')
+            ->each(function (int $questId): void {
+                foreach (['quest_listing_expiring_no_shortlist', 'client_proposals_no_shortlist_5d'] as $situation) {
+                    StaffProactiveOutreachItem::query()
+                        ->where('situation_key', $situation)
+                        ->where('quest_id', $questId)
+                        ->whereNull('resolved_at')
+                        ->update([
+                            'status' => 'auto_resolved',
+                            'resolved_at' => now(),
+                            'resolution_note' => 'Client shortlisted a proposal.',
+                        ]);
+                }
+            });
+
+        Quest::query()
+            ->whereIn('status', [QuestStatus::ClosedUnawarded->value, QuestStatus::Assigned->value, QuestStatus::InProgress->value, QuestStatus::Completed->value])
+            ->pluck('id')
+            ->each(function (int $questId): void {
+                StaffProactiveOutreachItem::query()
+                    ->where('situation_key', 'quest_listing_expiring_no_shortlist')
+                    ->where('quest_id', $questId)
+                    ->whereNull('resolved_at')
+                    ->update([
+                        'status' => 'auto_resolved',
+                        'resolved_at' => now(),
+                        'resolution_note' => 'Quest no longer open for proposals.',
                     ]);
             });
     }

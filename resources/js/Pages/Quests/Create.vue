@@ -439,10 +439,20 @@
                             <div class="mt-6 space-y-5">
                                 <div>
                                     <div class="flex items-center gap-1">
-                                        <InputLabel for="exp" value="Auto-close if unfilled (days, optional)" />
-                                        <FieldHint text="We will mark the listing closed after this many days from publish." />
+                                        <InputLabel for="exp" value="Proposal deadline (days)" />
+                                        <FieldHint :text="`How long freelancers can submit proposals after publish (${proposalDeadlineBounds.min}–${proposalDeadlineBounds.max} days). Default ${proposalDeadlineBounds.default} days.`" />
                                     </div>
-                                    <input id="exp" v-model.number="form.auto_listing_expiry_days" type="number" min="1" max="90" class="mt-2 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm" placeholder="Leave blank to keep open" />
+                                    <input
+                                        id="exp"
+                                        v-model.number="form.auto_listing_expiry_days"
+                                        type="number"
+                                        :min="proposalDeadlineBounds.min"
+                                        :max="proposalDeadlineBounds.max"
+                                        required
+                                        class="mt-2 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm"
+                                        :placeholder="String(proposalDeadlineBounds.default)"
+                                    />
+                                    <InputError class="mt-2" :message="form.errors.auto_listing_expiry_days" />
                                 </div>
                                 <div>
                                     <InputLabel for="maxo" value="Max proposals (optional)" />
@@ -690,6 +700,10 @@ const props = defineProps({
             global_completion: null,
         }),
     },
+    proposal_deadline_bounds: {
+        type: Object,
+        default: () => ({ min: 1, max: 60, default: 14, extension_max: 14, warning_hours: 48 }),
+    },
 });
 
 const page = usePage();
@@ -734,6 +748,14 @@ let tagTimer = null;
 const utm = reactive({ utm_source: '', utm_medium: '', utm_campaign: '' });
 
 const completionPresets = [1, 2, 3, 5, 7, 10, 14, 21, 30, 45, 60, 90];
+
+const proposalDeadlineBounds = computed(() => ({
+    min: props.proposal_deadline_bounds?.min ?? 1,
+    max: props.proposal_deadline_bounds?.max ?? 60,
+    default: props.proposal_deadline_bounds?.default ?? 14,
+    extension_max: props.proposal_deadline_bounds?.extension_max ?? 14,
+    warning_hours: props.proposal_deadline_bounds?.warning_hours ?? 48,
+}));
 
 const visibilityOptions = [
     { value: 'public', label: 'Public — discoverable in Explore' },
@@ -795,7 +817,7 @@ const form = useForm({
     site_access_level: '',
     pets_on_site: null,
     pets_detail: '',
-    auto_listing_expiry_days: null,
+    auto_listing_expiry_days: props.proposal_deadline_bounds?.default ?? 14,
     max_offers: null,
     traffic_source: '',
     publish_now: true,
@@ -1169,7 +1191,7 @@ const previewBlocks = computed(() => {
             id: 6,
             title: 'Launch',
             rows: [
-                { label: 'Auto-expiry (days)', value: form.auto_listing_expiry_days != null && form.auto_listing_expiry_days !== '' ? String(form.auto_listing_expiry_days) : '—' },
+                { label: 'Proposal deadline (days)', value: String(form.auto_listing_expiry_days ?? proposalDeadlineBounds.default) },
                 { label: 'Max proposals', value: form.max_offers != null && form.max_offers !== '' ? String(form.max_offers) : '—' },
                 { label: 'Tagged freelancers', value: taggedDisplay.value.map((t) => t.label).join(', ') || '—' },
                 { label: 'Files', value: form.files?.length ? `${form.files.length} attached` : 'None' },
@@ -1189,6 +1211,7 @@ function validationDeps() {
         locations: props.locations,
         maxBudgetMinor: props.maxBudgetMinor,
         minBudgetMinor: props.minBudgetMinor,
+        proposalDeadlineBounds: proposalDeadlineBounds.value,
     };
 }
 
@@ -1600,7 +1623,7 @@ function submit() {
             project_type: data.project_type || null,
             estimated_hours: data.estimated_hours || null,
             team_size: data.team_size || null,
-            auto_listing_expiry_days: data.auto_listing_expiry_days || null,
+            auto_listing_expiry_days: data.auto_listing_expiry_days ?? props.proposal_deadline_bounds?.default ?? 14,
             max_offers: data.max_offers || null,
             traffic_source: data.traffic_source?.trim() || null,
             estimated_delivery_date: data.estimated_delivery_date || null,

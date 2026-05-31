@@ -2,29 +2,21 @@
 
 namespace App\Console\Commands;
 
-use App\Enums\QuestStatus;
-use App\Models\Quest;
+use App\Services\Quest\QuestListingExpiryService;
 use Illuminate\Console\Command;
 
 class ExpireQuestListingsCommand extends Command
 {
     protected $signature = 'quests:expire-listings';
 
-    protected $description = 'Close open quests whose listing expiry time has passed.';
+    protected $description = 'Send proposal deadline warnings and close unawarded open quests past listing expiry.';
 
-    public function handle(): int
+    public function handle(QuestListingExpiryService $expiry): int
     {
-        $count = Quest::query()
-            ->where('status', QuestStatus::Open)
-            ->whereNull('freelancer_id')
-            ->whereNotNull('listing_expires_at')
-            ->where('listing_expires_at', '<=', now())
-            ->update([
-                'status' => QuestStatus::Closed,
-                'closure_type' => 'listing_expired',
-            ]);
+        $warnings = $expiry->sendDeadlineWarnings();
+        $expired = $expiry->expireDueListings();
 
-        $this->info("Expired {$count} quest(s).");
+        $this->info("Sent {$warnings} deadline warning(s); closed {$expired} unawarded quest(s).");
 
         return self::SUCCESS;
     }

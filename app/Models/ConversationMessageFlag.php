@@ -11,6 +11,8 @@ class ConversationMessageFlag extends Model
     protected $fillable = [
         'quest_conversation_thread_id',
         'quest_conversation_message_id',
+        'proposal_clarification_thread_id',
+        'proposal_clarification_message_id',
         'sender_user_id',
         'quest_id',
         'quest_offer_id',
@@ -38,6 +40,16 @@ class ConversationMessageFlag extends Model
     public function message(): BelongsTo
     {
         return $this->belongsTo(QuestConversationMessage::class, 'quest_conversation_message_id');
+    }
+
+    public function clarificationThread(): BelongsTo
+    {
+        return $this->belongsTo(ProposalClarificationThread::class, 'proposal_clarification_thread_id');
+    }
+
+    public function clarificationMessage(): BelongsTo
+    {
+        return $this->belongsTo(ProposalClarificationMessage::class, 'proposal_clarification_message_id');
     }
 
     public function sender(): BelongsTo

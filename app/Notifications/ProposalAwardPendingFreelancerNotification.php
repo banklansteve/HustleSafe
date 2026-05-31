@@ -3,13 +3,14 @@
 namespace App\Notifications;
 
 use App\Models\QuestOffer;
+use App\Notifications\Concerns\SendsBrandedMail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class ProposalAwardPendingFreelancerNotification extends Notification
 {
-    use Queueable;
+    use Queueable, SendsBrandedMail;
 
     /**
      * @param  array<string, mixed>  $terms
@@ -31,17 +32,24 @@ class ProposalAwardPendingFreelancerNotification extends Notification
     {
         $this->offer->loadMissing('quest');
         $quest = $this->offer->quest;
-        $first = $notifiable->first_name ?: $notifiable->name;
+        $panel = collect([
+            __('Price: :price', ['price' => $this->terms['price_label'] ?? '—']),
+            ! empty($this->terms['deadline_label']) ? __('Target finish: :date', ['date' => $this->terms['deadline_label']]) : null,
+            __('Scope: :scope', ['scope' => str($this->terms['scope_summary'] ?? '')->limit(200)]),
+        ])->filter()->implode("\n\n");
 
-        return (new MailMessage)
-            ->subject(__('Confirm your award on :title', ['title' => $quest?->title ?? 'a quest']))
-            ->line(__('Hi :name,', ['name' => $first]))
-            ->line(__('The client wants to award you this quest. Please review and confirm the agreed terms:'))
-            ->line(__('Price: :price', ['price' => $this->terms['price_label'] ?? '—']))
-            ->when(! empty($this->terms['deadline_label']), fn (MailMessage $m) => $m->line(__('Target finish: :date', ['date' => $this->terms['deadline_label']])))
-            ->line(__('Scope: :scope', ['scope' => str($this->terms['scope_summary'] ?? '')->limit(200)]))
-            ->action(__('Confirm award terms'), route('quests.proposals.show', [$quest, $this->offer], absolute: true))
-            ->line(__('Escrow funding only begins after you confirm — this creates a documented contract moment for both sides.'));
+        return $this->brandedMail(
+            subject: __('Confirm your award on :title', ['title' => $quest?->title ?? 'a quest']),
+            headline: __('Confirm your award terms'),
+            notifiable: $notifiable,
+            lines: [
+                __('The client wants to award you this quest. Please review and confirm the agreed terms below.'),
+            ],
+            panel: $panel,
+            ctaUrl: route('quests.proposals.show', [$quest, $this->offer], absolute: true),
+            ctaLabel: __('Confirm award terms'),
+            footerLine: __('Escrow funding only begins after you confirm — this creates a documented contract moment for both sides.'),
+        );
     }
 
     /**

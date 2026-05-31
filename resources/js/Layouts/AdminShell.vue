@@ -852,7 +852,6 @@ const navGroups = [
             { label: 'Live Activity', href: route('admin.live-activity.index'), icon: BoltIcon, match: (p) => p.startsWith('/admin/live-activity') },
             { label: 'Alert Centre', href: route('admin.alerts.index'), icon: BellIcon, match: (p) => p.startsWith('/admin/alerts') },
             { label: 'Tasks', href: route('admin.tasks.index'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/tasks') },
-            { label: 'Platform settings', href: route('admin.settings.index'), icon: Cog6ToothIcon, matchFull: (url) => url.startsWith('/admin/settings') && !url.includes('section=maintenance'), match: (p) => p.startsWith('/admin/settings') },
         ],
     },
     {
@@ -930,7 +929,6 @@ const navGroups = [
             { label: 'Team chat', href: route('admin.team-chat.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/team-chat') },
             { label: 'Direct messages', href: route('admin.messages.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/messages') },
             { label: 'SEO & Content', href: route('admin.content.index'), icon: NewspaperIcon, match: (p) => p === '/admin/content' || (p.startsWith('/admin/content/') && !p.startsWith('/admin/content-moderation')) },
-            { label: 'Staff Digest', href: route('admin.activity.digest'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/activity/digest') },
         ],
     },
     { label: 'Data registry', management: true, collapsible: true, items: [] },
@@ -940,9 +938,8 @@ const navGroups = [
         items: [
             { label: 'Dashboard Guide', href: route('admin.documentation.guide'), icon: BookOpenIcon, match: (p) => p.startsWith('/admin/documentation') },
             { label: 'Staff & roles', href: route('admin.staff.index'), icon: UserGroupIcon, match: (p) => p.startsWith('/admin/staff') },
-            { label: 'Audit log', href: route('admin.activity.index'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/activity') && !p.includes('/digest') },
+            { label: 'Staff activity trail', href: route('admin.activity.digest'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/activity') },
             { label: 'Completion events', href: route('admin.quest-completion-events.index'), icon: ClipboardDocumentCheckIcon, match: (p) => p.startsWith('/admin/quest-completion-events') },
-            { label: 'Completion events', href: route('admin.quest-completion-events.index'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/quest-completion-events') },
             { label: 'Engagement policy', href: route('admin.engagement-policy'), icon: DocumentTextIcon, match: (p) => p.startsWith('/admin/engagement-policy') },
             { label: 'Settings', href: route('admin.settings.index'), icon: Cog6ToothIcon, matchFull: (url) => url.startsWith('/admin/settings') && !url.includes('section=maintenance'), match: (p) => p.startsWith('/admin/settings') },
         ],

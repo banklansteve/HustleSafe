@@ -4,6 +4,8 @@ use App\Enums\CredentialType;
 use App\Http\Controllers\AccountDeactivateController;
 use App\Http\Controllers\AccountDeleteUserController;
 use App\Http\Controllers\AccountHubController;
+use App\Http\Controllers\ContractAmendmentController;
+use App\Http\Controllers\ContractController;
 use App\Http\Controllers\AccountPresenceController;
 use App\Http\Controllers\AccountQuestCategoriesController;
 use App\Http\Controllers\AccountSecurityController;
@@ -18,6 +20,9 @@ use App\Http\Controllers\FreelancerPortfoliosDirectoryController;
 use App\Http\Controllers\FreelancerReviewsDirectoryController;
 use App\Http\Controllers\Legal\LegalPageController;
 use App\Http\Controllers\NotificationReadController;
+use App\Http\Controllers\UserNotificationClearController;
+use App\Http\Controllers\UserNotificationNavController;
+use App\Http\Controllers\UserPolicyNoticesController;
 use App\Http\Controllers\Public\LandingController;
 use App\Http\Controllers\Public\HelpContentController;
 use App\Http\Controllers\Public\NewsletterController;
@@ -43,6 +48,7 @@ use App\Http\Controllers\QuestProposalController;
 use App\Http\Controllers\QuestProposalLifecycleController;
 use App\Http\Controllers\QuestProposalPdfController;
 use App\Http\Controllers\QuestCompletionController;
+use App\Http\Controllers\QuestJourneySurveyController;
 use App\Http\Controllers\QuestProposalFundingIntentController;
 use App\Http\Controllers\QuestWizardController;
 use App\Http\Controllers\Payments\PaystackCallbackController;
@@ -66,7 +72,13 @@ Route::get('/help', HelpContentController::class)->name('help.index');
 Route::middleware('signed')->group(function (): void {
     Route::get('/support/rate/{ticket:uuid}', [CustomerSupportChatController::class, 'rateShow'])->name('support.rate.show');
     Route::post('/support/rate/{ticket:uuid}', [CustomerSupportChatController::class, 'rateSubmit'])->name('support.rate.submit');
+
+    Route::get('/journey-survey/{token}/capture', [QuestJourneySurveyController::class, 'capture'])->name('journey-survey.capture');
+    Route::get('/journey-survey/{token}', [QuestJourneySurveyController::class, 'show'])->name('journey-survey.show');
+    Route::post('/journey-survey/{token}', [QuestJourneySurveyController::class, 'submit'])->name('journey-survey.submit');
 });
+
+Route::get('/journey-survey/closed', [QuestJourneySurveyController::class, 'closed'])->name('journey-survey.closed');
 
 Route::post('/newsletter', [NewsletterController::class, 'store'])
     ->middleware('throttle:10,1')
@@ -107,7 +119,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('throttle:120,1')
         ->name('notifications.read');
 
+    Route::get('/api/notifications/nav', UserNotificationNavController::class)
+        ->middleware('throttle:120,1')
+        ->name('api.notifications.nav');
+
+    Route::delete('/api/notifications/clear', UserNotificationClearController::class)
+        ->middleware('throttle:30,1')
+        ->name('api.notifications.clear');
+
     Route::get('/account', [AccountHubController::class, 'show'])->name('account.show');
+    Route::get('/account/policy-notices', [UserPolicyNoticesController::class, 'index'])->name('account.policy-notices.index');
+    Route::get('/contracts', [ContractController::class, 'index'])->name('contracts.index');
+    Route::get('/contracts/{contract:reference_code}', [ContractController::class, 'show'])->name('contracts.show');
+    Route::get('/contracts/{contract:reference_code}/pdf', [ContractController::class, 'pdf'])->name('contracts.pdf');
+    Route::post('/contracts/{contract:reference_code}/amendments', [ContractAmendmentController::class, 'store'])->middleware('throttle:12,1')->name('contracts.amendments.store');
+    Route::post('/contracts/{contract:reference_code}/amendments/{amendment}/respond', [ContractAmendmentController::class, 'respond'])->middleware('throttle:20,1')->name('contracts.amendments.respond');
+    Route::post('/account/policy-notices/{source}/{id}/acknowledge', [UserPolicyNoticesController::class, 'acknowledge'])
+        ->whereIn('source', ['conversation', 'sanction'])
+        ->middleware('throttle:60,1')
+        ->name('account.policy-notices.acknowledge');
     Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
     Route::post('/wallet/bank-accounts', [WalletController::class, 'storeBankAccount'])->middleware('throttle:20,1')->name('wallet.bank-accounts.store');
     Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])->middleware('throttle:10,1')->name('wallet.withdraw');
@@ -216,18 +246,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware(['freelancer', 'throttle:15,1'])
         ->whereNumber('offer')
         ->name('quests.proposals.update');
-    Route::post('/quests/{quest}/proposals/{offer}/shortlist', [QuestProposalLifecycleController::class, 'shortlist'])
-        ->middleware('throttle:30,1')
+    Route::post('/quests/{quest}/proposals/{offer}/toggle-shortlist', [QuestProposalLifecycleController::class, 'toggleShortlist'])
+        ->middleware('throttle:60,1')
         ->whereNumber('offer')
-        ->name('quests.proposals.shortlist');
-    Route::post('/quests/{quest}/proposals/{offer}/unshortlist', [QuestProposalLifecycleController::class, 'unshortlist'])
-        ->middleware('throttle:30,1')
-        ->whereNumber('offer')
-        ->name('quests.proposals.unshortlist');
-    Route::post('/quests/{quest}/proposals/{offer}/pin', [QuestProposalLifecycleController::class, 'pin'])
-        ->middleware('throttle:30,1')
-        ->whereNumber('offer')
-        ->name('quests.proposals.pin');
+        ->name('quests.proposals.toggle-shortlist');
     Route::post('/quests/{quest}/proposals/{offer}/decline', [QuestProposalLifecycleController::class, 'decline'])
         ->middleware('throttle:20,1')
         ->whereNumber('offer')
@@ -302,6 +324,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('quests.proposals.reports.store');
 
     Route::patch('/quests/{quest}', [QuestController::class, 'update'])->name('quests.update');
+    Route::post('/quests/{quest}/extend-listing', [QuestController::class, 'extendListing'])->middleware('throttle:10,1')->name('quests.extend-listing');
+    Route::post('/quests/{quest}/repost', [QuestController::class, 'repost'])->middleware('throttle:10,1')->name('quests.repost');
     Route::delete('/quests/{quest}', [QuestController::class, 'destroy'])->name('quests.destroy');
     Route::get('/quests/{quest}', [QuestController::class, 'show'])->name('quests.show');
 

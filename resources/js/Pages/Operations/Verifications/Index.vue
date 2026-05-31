@@ -1,5 +1,5 @@
 <template>
-    <OperationsShell title="Verification queue" subtitle="Review identity submissions assigned to you. Filter, sort, and paginate your workload — or open the pending queue for the next case.">
+    <OperationsShell title="Verification queue" subtitle="Pick up pending identity and KYC submissions from the queue, or review cases already assigned to you. Final-tier checks (client BVN, freelancer selfie + ID) are Super Admin only.">
         <div class="mb-4 flex gap-2 overflow-x-auto pb-1">
             <button
                 v-for="tab in queueTabs"
@@ -196,16 +196,16 @@ const props = defineProps({
     decision_reasons: { type: Array, default: () => [] },
     queue_defaults: {
         type: Object,
-        default: () => ({ tab: 'my_assignments', range: '30d', per_page: 25 }),
+        default: () => ({ tab: 'pending_queue', range: '30d', per_page: 25 }),
     },
 });
 
 const decisionReasons = ref([...props.decision_reasons]);
 
 const queueTabs = [
+    { key: 'pending_queue', label: 'Pending queue', hint: 'Unassigned cases you can pick up — oldest first' },
     { key: 'my_assignments', label: 'My assignments', hint: 'Cases assigned to you (date range)' },
     { key: 'assigned_today', label: 'Assigned today', hint: 'Everything assigned to you today' },
-    { key: 'pending_queue', label: 'Pending queue', hint: 'All pending verifications, oldest first' },
 ];
 
 const rangePresets = [
@@ -263,11 +263,11 @@ const columns = computed(() => {
     return base;
 });
 
-const activeTab = ref(props.queue_defaults.tab || 'my_assignments');
+const activeTab = ref(props.queue_defaults.tab || 'pending_queue');
 const dateRange = ref(props.queue_defaults.range || '30d');
 const dateFrom = ref('');
 const dateTo = ref('');
-const statusFilter = ref('');
+const statusFilter = ref(activeTab.value === 'pending_queue' ? 'pending' : '');
 const typeFilter = ref('');
 const searchQuery = ref('');
 
@@ -277,8 +277,8 @@ const page = ref(1);
 const perPage = ref(props.queue_defaults.per_page || 25);
 const total = ref(0);
 const totalPages = ref(1);
-const sortKey = ref('submitted_at');
-const sortDir = ref('desc');
+const sortKey = ref(activeTab.value === 'pending_queue' ? 'submitted_at' : 'staff_assigned_at');
+const sortDir = ref(activeTab.value === 'pending_queue' ? 'asc' : 'desc');
 
 const slideOpen = ref(false);
 const detailLoading = ref(false);

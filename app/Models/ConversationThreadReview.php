@@ -10,6 +10,7 @@ class ConversationThreadReview extends Model
 {
     protected $fillable = [
         'quest_conversation_thread_id',
+        'proposal_clarification_thread_id',
         'quest_id',
         'status',
         'priority',
@@ -18,6 +19,9 @@ class ConversationThreadReview extends Model
         'first_flagged_at',
         'last_flagged_at',
         'assigned_staff_id',
+        'super_admin_escalated_at',
+        'super_admin_escalation_by',
+        'super_admin_escalation_note',
         'escalated_to_admin_id',
         'escalated_at',
         'dismiss_reason',
@@ -32,6 +36,7 @@ class ConversationThreadReview extends Model
             'first_flagged_at' => 'datetime',
             'last_flagged_at' => 'datetime',
             'escalated_at' => 'datetime',
+            'super_admin_escalated_at' => 'datetime',
             'reviewed_at' => 'datetime',
         ];
     }
@@ -39,6 +44,16 @@ class ConversationThreadReview extends Model
     public function thread(): BelongsTo
     {
         return $this->belongsTo(QuestConversationThread::class, 'quest_conversation_thread_id');
+    }
+
+    public function clarificationThread(): BelongsTo
+    {
+        return $this->belongsTo(ProposalClarificationThread::class, 'proposal_clarification_thread_id');
+    }
+
+    public function isFocusedQa(): bool
+    {
+        return $this->proposal_clarification_thread_id !== null;
     }
 
     public function quest(): BelongsTo
@@ -54,5 +69,10 @@ class ConversationThreadReview extends Model
     public function assignedStaff(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_staff_id');
+    }
+
+    public function superAdminEscalationBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'super_admin_escalation_by');
     }
 }

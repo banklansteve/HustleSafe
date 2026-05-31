@@ -15,13 +15,23 @@ class ConversationMonitoringScanner
      */
     public function scan(string $body): array
     {
+        $raw = $body;
         $normalized = $this->fuzzy->normalize($body);
         $hits = [];
 
-        foreach ($this->scanOffPlatformPayment($body, $normalized) as $hit) {
+        foreach ($this->scanOffPlatformPayment($raw, $normalized) as $hit) {
             $hits[] = $hit;
         }
-        foreach ($this->scanExternalContact($body, $normalized) as $hit) {
+        foreach ($this->scanExternalContact($raw, $normalized) as $hit) {
+            $hits[] = $hit;
+        }
+        foreach ($this->scanSpokenPhoneNumbers($raw, $normalized) as $hit) {
+            $hits[] = $hit;
+        }
+        foreach ($this->scanEmailAndHandles($raw, $normalized) as $hit) {
+            $hits[] = $hit;
+        }
+        foreach ($this->scanSocialBypass($raw, $normalized) as $hit) {
             $hits[] = $hit;
         }
         foreach ($this->scanAbusiveTerms($normalized) as $hit) {
@@ -77,11 +87,15 @@ class ConversationMonitoringScanner
         $hits = [];
         $maxDist = (int) config('conversation_monitoring.fuzzy.max_levenshtein', 2);
 
-        if (preg_match('/\b0?(?:70|80|81|90|91)\d{8}\b/', $raw)) {
+        if (preg_match('/\b0?(?:70|80|81|90|91|71|81)\d{8}\b/', $raw)) {
             $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[phone:nigerian-mobile]', 1.0);
         }
 
-        if (preg_match('/@[a-z0-9_]{3,32}/i', $raw)) {
+        if (preg_match('/\b0(?:\s*\d){9,12}\b/', $raw)) {
+            $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[phone:spaced-digits]', 0.98);
+        }
+
+        if (preg_match('/@[a-z0-9_]{2,32}/i', $raw)) {
             $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[social:@handle]', 0.95);
         }
 
@@ -96,6 +110,116 @@ class ConversationMonitoringScanner
         }
 
         return $hits;
+    }
+
+    /**
+     * @return list<array{category: ConversationFlagCategory, pattern_redacted: string, confidence: float}>
+     */
+    private function scanSpokenPhoneNumbers(string $raw, string $normalized): array
+    {
+        $hits = [];
+        $digitWords = config('conversation_monitoring.spoken_digit_words', []);
+        $digitPattern = implode('|', array_map(fn ($w) => preg_quote((string) $w, '/'), $digitWords));
+
+        if ($digitPattern === '') {
+            return $hits;
+        }
+
+        if (preg_match('/\b(?:'.$digitPattern.')\s+(?:'.$digitPattern.'|\d)(?:\s+(?:'.$digitPattern.'|\d)){4,}/i', $normalized)) {
+            $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[phone:spoken-sequence]', 0.97);
+        }
+
+        if (preg_match('/\b(?:zero|oh|o)\s+(?:one|two|three|four|five|six|seven|eight|nine|\d)\b/i', $normalized)) {
+            $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[phone:spoken-digit]', 0.92);
+        }
+
+        if (preg_match('/\bcall\s+me\b/i', $normalized) && preg_match('/(?:'.$digitPattern.'|\d)/i', $normalized)) {
+            $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[phone:call-me-context]', 0.9);
+        }
+
+        return $hits;
+    }
+
+    /**
+     * @return list<array{category: ConversationFlagCategory, pattern_redacted: string, confidence: float}>
+     */
+    private function scanEmailAndHandles(string $raw, string $normalized): array
+    {
+        $hits = [];
+
+        if (preg_match('/\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.(com|net|org|co\.uk|io|me)\b/i', $raw)) {
+            $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[email:address]', 1.0);
+        }
+
+        if (preg_match('/@\s*(gmail|yahoo|hotmail|outlook|icloud|protonmail|aol|live|yandex)\b/i', $raw)) {
+            $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[email:provider-handle]', 0.98);
+        }
+
+        if (preg_match('/@\s*[a-z0-9._\-]+\.(com|net|org|co\.uk)\b/i', $raw)) {
+            $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[email:@domain]', 0.97);
+        }
+
+        foreach (['email me', 'send email', 'send me email', 'mail me'] as $phrase) {
+            if ($this->fuzzy->containsPhrase($normalized, $phrase, 1)) {
+                $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[phrase:'.Str::limit($phrase, 24).']', 0.9);
+            }
+        }
+
+        if (preg_match('/\bhandle\s*[:@]/i', $raw)) {
+            $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[social:handle-disclosure]', 0.88);
+        }
+
+        return $hits;
+    }
+
+    /**
+     * @return list<array{category: ConversationFlagCategory, pattern_redacted: string, confidence: float}>
+     */
+    private function scanSocialBypass(string $raw, string $normalized): array
+    {
+        $hits = [];
+        $maxDist = (int) config('conversation_monitoring.fuzzy.max_levenshtein', 2);
+
+        foreach (config('conversation_monitoring.contact_short_tokens', []) as $token) {
+            if ($this->containsShortToken($normalized, (string) $token)) {
+                $hits[] = $this->hit(
+                    ConversationFlagCategory::ExternalContact,
+                    '[token:'.Str::limit((string) $token, 16).']',
+                    0.85,
+                );
+            }
+        }
+
+        $platformPatterns = [
+            '/\b(?:on|via|reach\s+me\s+on|find\s+me\s+on|message\s+me\s+on)\s+(?:x|twitter|tweeter|fb|facebook|snap(?:chat)?|insta(?:gram)?|telegram|teleg|tgm|whatsapp|wa)\b/i',
+            '/\b(?:slide\s+(?:into\s+)?(?:my\s+)?dms?)\b/i',
+            '/\b(?:dm|pm)\s+me\b/i',
+            '/\bmy\s+(?:handle|telegram|whatsapp|snap|insta|twitter|fb)\b/i',
+        ];
+
+        foreach ($platformPatterns as $pattern) {
+            if (preg_match($pattern, $normalized)) {
+                $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[social:platform-bypass]', 0.93);
+            }
+        }
+
+        foreach (['slide', 'handle'] as $word) {
+            if ($this->fuzzy->containsPhrase($normalized, $word, $maxDist) && preg_match('/\b(?:dm|dms|@|telegram|whatsapp|snap|insta|twitter|fb|x)\b/i', $normalized)) {
+                $hits[] = $this->hit(ConversationFlagCategory::ExternalContact, '[social:'.Str::limit($word, 12).'-context]', 0.88);
+            }
+        }
+
+        return $hits;
+    }
+
+    private function containsShortToken(string $normalized, string $token): bool
+    {
+        $token = mb_strtolower(trim($token));
+        if ($token === '') {
+            return false;
+        }
+
+        return (bool) preg_match('/(?<!\w)'.preg_quote($token, '/').'(?!\w)/iu', $normalized);
     }
 
     /**
@@ -214,8 +338,10 @@ class ConversationMonitoringScanner
     {
         $redacted = $body;
         $redacted = preg_replace('/\b\d{10}\b/', '[REDACTED ACCOUNT]', $redacted) ?? $redacted;
-        $redacted = preg_replace('/\b0?(?:70|80|81|90|91)\d{8}\b/', '[REDACTED PHONE]', $redacted) ?? $redacted;
-        $redacted = preg_replace('/@[a-z0-9_]{3,32}/i', '[REDACTED HANDLE]', $redacted) ?? $redacted;
+        $redacted = preg_replace('/\b0?(?:70|80|81|90|91|71)\d{8}\b/', '[REDACTED PHONE]', $redacted) ?? $redacted;
+        $redacted = preg_replace('/\b0(?:\s*\d){9,12}\b/', '[REDACTED PHONE]', $redacted) ?? $redacted;
+        $redacted = preg_replace('/@[a-z0-9_]{2,32}/i', '[REDACTED HANDLE]', $redacted) ?? $redacted;
+        $redacted = preg_replace('/\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.(com|net|org|co\.uk|io|me)\b/i', '[REDACTED EMAIL]', $redacted) ?? $redacted;
         $redacted = preg_replace('/(paystack\.com|flutterwave\.com)\S*/i', '[REDACTED URL]', $redacted) ?? $redacted;
 
         return $redacted;

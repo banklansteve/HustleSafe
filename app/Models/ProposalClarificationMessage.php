@@ -14,7 +14,17 @@ class ProposalClarificationMessage extends Model
         'prompt_key',
         'prompt_category',
         'body',
+        'body_original',
+        'is_redacted',
+        'redaction_label',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_redacted' => 'boolean',
+        ];
+    }
 
     public function thread(): BelongsTo
     {

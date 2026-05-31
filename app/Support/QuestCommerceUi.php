@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Enums\QuestDisputeStatus;
 use App\Models\Quest;
+use App\Models\QuestContract;
 use App\Models\QuestDispute;
 use App\Models\QuestOffer;
 use App\Models\User;
@@ -98,9 +99,49 @@ final class QuestCommerceUi
             return [];
         }
 
+        return array_merge(
+            self::contractForQuest($quest, $viewer),
+            [
+                'escrow_timeline' => app(EscrowTransparencyTimelineService::class)->build($quest),
+                'dispute_prevention_prompts' => app(DisputePreventionPromptService::class)->promptsFor($quest, $viewer),
+            ],
+        );
+    }
+
+    /**
+     * @return array{contract_url: ?string, contract_reference: ?string, contract_status: ?string, contract_status_label: ?string}
+     */
+    public static function contractForQuest(Quest $quest, ?User $viewer): array
+    {
+        $empty = [
+            'contract_url' => null,
+            'contract_reference' => null,
+            'contract_status' => null,
+            'contract_status_label' => null,
+        ];
+
+        if ($viewer === null || ! $quest->isParty($viewer)) {
+            return $empty;
+        }
+
+        $contract = QuestContract::query()
+            ->where('quest_id', $quest->id)
+            ->when(
+                $quest->accepted_quest_offer_id,
+                fn ($query) => $query->where('quest_offer_id', $quest->accepted_quest_offer_id)
+            )
+            ->latest('id')
+            ->first();
+
+        if ($contract === null) {
+            return $empty;
+        }
+
         return [
-            'escrow_timeline' => app(EscrowTransparencyTimelineService::class)->build($quest),
-            'dispute_prevention_prompts' => app(DisputePreventionPromptService::class)->promptsFor($quest, $viewer),
+            'contract_url' => route('contracts.show', $contract->reference_code),
+            'contract_reference' => $contract->reference_code,
+            'contract_status' => $contract->status->value,
+            'contract_status_label' => $contract->status->label(),
         ];
     }
 }

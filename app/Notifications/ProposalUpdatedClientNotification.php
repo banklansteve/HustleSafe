@@ -3,13 +3,14 @@
 namespace App\Notifications;
 
 use App\Models\QuestOffer;
+use App\Notifications\Concerns\SendsBrandedMail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class ProposalUpdatedClientNotification extends Notification
 {
-    use Queueable;
+    use Queueable, SendsBrandedMail;
 
     public function __construct(
         public QuestOffer $offer,
@@ -27,13 +28,19 @@ class ProposalUpdatedClientNotification extends Notification
     {
         $this->offer->loadMissing('quest', 'freelancer');
         $quest = $this->offer->quest;
-        $first = $notifiable->first_name ?: $notifiable->name;
 
-        return (new MailMessage)
-            ->subject(__('Proposal updated on :title', ['title' => $quest?->title ?? 'your quest']))
-            ->line(__('Hi :name,', ['name' => $first]))
-            ->line(__(':who revised their proposal — review the latest numbers and wording.', ['who' => $this->offer->freelancer?->name ?? __('Freelancer')]))
-            ->action(__('Open proposal'), $quest ? route('quests.proposals.show', [$quest, $this->offer], absolute: true) : url('/'));
+        return $this->brandedMail(
+            subject: __('Proposal updated on :title', ['title' => $quest?->title ?? 'your quest']),
+            headline: __('Proposal updated'),
+            notifiable: $notifiable,
+            lines: [
+                __(':who revised their proposal — review the latest numbers and wording.', [
+                    'who' => $this->offer->freelancer?->name ?? __('Freelancer'),
+                ]),
+            ],
+            ctaUrl: $quest ? route('quests.proposals.show', [$quest, $this->offer], absolute: true) : url('/'),
+            ctaLabel: __('Open proposal'),
+        );
     }
 
     /**

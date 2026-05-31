@@ -112,6 +112,16 @@ return [
             'template_subject' => 'Finish your proposal draft',
             'template_body' => "Hi :name,\n\nYou have a proposal draft that has not been submitted. I can help tighten your pitch or pricing before you send it.\n\nReply when you are ready.",
         ],
+        'quest_listing_expiring_no_shortlist' => [
+            'label' => 'Quest · expiring soon, client inactive',
+            'template_subject' => 'Your quest closes soon — need help shortlisting?',
+            'template_body' => "Hi :name,\n\nYour quest is approaching its proposal deadline and we have not seen you shortlist anyone yet. A quick review now helps you award before the listing closes.\n\nReply if you would like help comparing proposals or extending once with a reason.",
+        ],
+        'client_proposals_no_shortlist_5d' => [
+            'label' => 'Client · proposals but no shortlist',
+            'template_subject' => 'Ready to shortlist on your quest?',
+            'template_body' => "Hi :name,\n\nYou have received proposals but have not shortlisted anyone yet. Shortlisting up to five favourites makes comparison easy and signals interest to strong freelancers.\n\nReply if you want help picking your shortlist.",
+        ],
     ],
 
     'proactive_outreach' => [
@@ -121,6 +131,8 @@ return [
         'dispute_no_evidence_hours' => 72,
         'rating_drop_threshold' => 0.5,
         'rating_drop_window_days' => 14,
+        'quest_listing_expiring_soon_days' => 5,
+        'quest_client_inactive_days' => 5,
 
         'situations' => [
             'freelancer_kyc_no_proposal_14d' => [
@@ -170,6 +182,38 @@ return [
                 'priority' => 'urgent',
                 'priority_score' => 90,
                 'default_template_slug' => 'off-platform-payment-warning',
+            ],
+            'quest_listing_expiring_no_shortlist' => [
+                'label' => 'Quest · expiring soon, no shortlist, client inactive',
+                'hint' => 'Open quest nearing proposal deadline with no shortlist and no client activity in 5 days',
+                'category' => 'retention',
+                'priority' => 'high',
+                'priority_score' => 72,
+                'default_template_slug' => 'quest-listing-expiring-no-shortlist',
+            ],
+            'client_proposals_no_shortlist_5d' => [
+                'label' => 'Client · proposals received, no shortlist (5d+)',
+                'hint' => 'Client has proposals but has not shortlisted — may need a nudge or has a question',
+                'category' => 'retention',
+                'priority' => 'high',
+                'priority_score' => 68,
+                'default_template_slug' => 'client-proposals-no-shortlist',
+            ],
+            'quest_journey_low_proposal_quality' => [
+                'label' => 'Quest · low proposal quality (journey survey)',
+                'hint' => 'Client rated proposal quality below satisfied after quest completion',
+                'category' => 'quality',
+                'priority' => 'high',
+                'priority_score' => 78,
+                'default_template_slug' => null,
+            ],
+            'freelancer_low_payment_confidence' => [
+                'label' => 'Freelancer · low payment confidence (journey survey)',
+                'hint' => 'Awarded freelancer reported uncertain payment security — proactive support follow-up',
+                'category' => 'trust',
+                'priority' => 'high',
+                'priority_score' => 76,
+                'default_template_slug' => null,
             ],
         ],
     ],

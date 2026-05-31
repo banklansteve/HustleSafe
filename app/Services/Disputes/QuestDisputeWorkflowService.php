@@ -151,6 +151,14 @@ class QuestDisputeWorkflowService
                 ]);
             }
 
+            $contract = \App\Models\QuestContract::query()
+                ->where('quest_id', $quest->id)
+                ->where('quest_offer_id', $offer->id)
+                ->first();
+            if ($contract !== null) {
+                app(\App\Services\Contracts\ContractLifecycleService::class)->markDisputed($contract, $dispute, $opener);
+            }
+
             $other->notify(new QuestDisputeUpdatedNotification($dispute, __('New dispute opened'), __('A structured dispute was opened on “:title”. Review the case and respond before the countdown expires.', ['title' => $quest->title])));
 
             return $dispute->fresh();
@@ -270,6 +278,7 @@ class QuestDisputeWorkflowService
 
             $this->log($dispute, $actor, 'dispute.settlement_accepted', ['offer_id' => $offer->id]);
             app(DisputeEscrowSettlementService::class)->executeAcceptedSettlement($offer->fresh());
+            $this->reconcileContractAfterDisputeClosed($dispute->fresh());
             $this->notifyBoth($dispute, __('Dispute resolved by settlement'), __('Parties agreed to a split. Escrow movement has been applied where funds were available.'));
         });
     }
@@ -339,6 +348,7 @@ class QuestDisputeWorkflowService
                     'response_required_by' => null,
                     'ruling_required_by' => null,
                 ]);
+                $this->reconcileContractAfterDisputeClosed($dispute->fresh());
                 $this->notifyBoth($dispute, __('Dispute closed mutually'), __('Both parties agreed to resolve without a ruling. Outstanding money movement still follows escrow activation.'));
             } else {
                 $other = $quest->oppositeParty($actor);
@@ -435,6 +445,7 @@ class QuestDisputeWorkflowService
 
             $this->systemMessage($dispute, __('Formal window closed without a settlement. Default 50 / 50 split recorded — disbursement awaits live escrow tooling.'));
 
+            $this->reconcileContractAfterDisputeClosed($dispute->fresh());
             $this->notifyBoth($dispute, __('Dispute auto-resolved'), __('The review window ended. A neutral 50 / 50 split was logged for audit purposes.'));
         });
     }
@@ -458,6 +469,18 @@ class QuestDisputeWorkflowService
 
         foreach (array_filter([$quest->client, $quest->freelancer]) as $u) {
             $u?->notify(new QuestDisputeUpdatedNotification($dispute, $headline, $body));
+        }
+    }
+
+    protected function reconcileContractAfterDisputeClosed(QuestDispute $dispute): void
+    {
+        $contract = \App\Models\QuestContract::query()
+            ->where('quest_id', $dispute->quest_id)
+            ->where('active_dispute_id', $dispute->id)
+            ->first();
+
+        if ($contract !== null) {
+            app(\App\Services\Contracts\ContractLifecycleService::class)->resolveDispute($contract);
         }
     }
 

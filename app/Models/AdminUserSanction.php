@@ -18,6 +18,7 @@ class AdminUserSanction extends Model
         'reversed_at',
         'reversed_by',
         'reversal_reason',
+        'user_acknowledged_at',
     ];
 
     protected function casts(): array
@@ -26,6 +27,7 @@ class AdminUserSanction extends Model
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'reversed_at' => 'datetime',
+            'user_acknowledged_at' => 'datetime',
         ];
     }
 

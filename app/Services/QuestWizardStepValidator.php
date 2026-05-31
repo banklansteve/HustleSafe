@@ -8,6 +8,7 @@ use App\Enums\QuestProjectType;
 use App\Enums\QuestStartTiming;
 use App\Enums\QuestTeamSize;
 use App\Enums\QuestVisibility;
+use App\Support\PlatformSettings;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator as IlluminateValidator;
@@ -162,8 +163,10 @@ class QuestWizardStepValidator
      */
     protected function step6Rules(): array
     {
+        $bounds = PlatformSettings::proposalDeadlineBounds();
+
         return [
-            'auto_listing_expiry_days' => ['nullable', 'integer', 'min:1', 'max:90'],
+            'auto_listing_expiry_days' => ['required', 'integer', 'min:'.$bounds['min'], 'max:'.$bounds['max']],
             'max_offers' => ['nullable', 'integer', 'min:1', 'max:200'],
             'tagged_freelancer_ids' => ['nullable', 'array', 'max:20'],
             'tagged_freelancer_ids.*' => ['integer', 'distinct'],

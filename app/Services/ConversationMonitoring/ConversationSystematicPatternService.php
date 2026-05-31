@@ -4,6 +4,7 @@ namespace App\Services\ConversationMonitoring;
 
 use App\Models\ConversationMessageFlag;
 use App\Models\ConversationSystematicEscalation;
+use App\Models\ProposalClarificationThread;
 use App\Models\QuestConversationThread;
 use Illuminate\Support\Facades\Schema;
 
@@ -41,13 +42,11 @@ class ConversationSystematicPatternService
             $timeline = [];
 
             foreach ($userFlags as $flag) {
-                $thread = QuestConversationThread::query()->find($flag->quest_conversation_thread_id);
-                if (! $thread) {
+                $party = $this->counterpartyForFlag($flag, (int) $userId);
+                if ($party === null) {
                     continue;
                 }
-                $party = (int) $thread->client_id === (int) $userId
-                    ? (int) $thread->freelancer_id
-                    : (int) $thread->client_id;
+
                 $counterparties[$party] = true;
                 if ($flag->quest_offer_id) {
                     $contracts[$flag->quest_offer_id] = true;
@@ -58,6 +57,7 @@ class ConversationSystematicPatternService
                 $timeline[] = [
                     'flag_id' => $flag->id,
                     'thread_id' => $flag->quest_conversation_thread_id,
+                    'clarification_thread_id' => $flag->proposal_clarification_thread_id,
                     'quest_id' => $flag->quest_id,
                     'quest_offer_id' => $flag->quest_offer_id,
                     'counterparty_id' => $party,
@@ -101,5 +101,32 @@ class ConversationSystematicPatternService
         }
 
         return $created;
+    }
+
+    private function counterpartyForFlag(ConversationMessageFlag $flag, int $userId): ?int
+    {
+        if ($flag->quest_conversation_thread_id) {
+            $thread = QuestConversationThread::query()->find($flag->quest_conversation_thread_id);
+            if (! $thread) {
+                return null;
+            }
+
+            return (int) $thread->client_id === $userId
+                ? (int) $thread->freelancer_id
+                : (int) $thread->client_id;
+        }
+
+        if ($flag->proposal_clarification_thread_id) {
+            $thread = ProposalClarificationThread::query()->find($flag->proposal_clarification_thread_id);
+            if (! $thread) {
+                return null;
+            }
+
+            return (int) $thread->client_id === $userId
+                ? (int) $thread->freelancer_id
+                : (int) $thread->client_id;
+        }
+
+        return null;
     }
 }

@@ -11,6 +11,7 @@ use App\Enums\QuestStatus;
 use App\Enums\QuestTeamSize;
 use App\Enums\QuestVisibility;
 use App\Enums\AdminQuestStatus;
+use App\Http\Requests\Quests\ExtendQuestListingRequest;
 use App\Http\Requests\Quests\StoreQuestRequest;
 use App\Http\Requests\Quests\UpdateQuestRequest;
 use App\Jobs\ScanContentForModerationJob;
@@ -28,12 +29,14 @@ use App\Notifications\QuestListingPulseNotification;
 use App\Notifications\QuestPublishedClientConfirmationNotification;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\Admin\AdminActivityFeedService;
+use App\Services\Quest\QuestListingExpiryService;
 use App\Services\QuestCoverService;
 use App\Services\QuestFileStorageService;
 use App\Services\QuestFormFieldProfileService;
 use App\Services\QuestPublishedNotificationService;
 use App\Services\QuestSlugService;
 use App\Services\Verification\VerificationEngineService;
+use App\Support\PlatformSettings;
 use App\Support\QuestCommerceUi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -105,6 +108,7 @@ class QuestController extends Controller
             'freelancersYouFollow' => $this->questCreateFreelancerNetworkFollowing($user),
             'freelancersFollowingYou' => $this->questCreateFreelancerNetworkFollowers($user),
             'quest_stats_hints' => $this->questCreateStatsHints(),
+            'proposal_deadline_bounds' => PlatformSettings::proposalDeadlineBounds(),
         ]);
     }
 
@@ -115,6 +119,7 @@ class QuestController extends Controller
         QuestFileStorageService $questFiles,
         QuestCoverService $cover,
         VerificationEngineService $verificationEngine,
+        QuestListingExpiryService $listingExpiry,
     ): RedirectResponse {
         $user = $request->user();
         $data = $request->validated();
@@ -148,13 +153,13 @@ class QuestController extends Controller
 
         $uploadedFiles = array_values(array_filter($request->file('files', [])));
 
-        $quest = DB::transaction(function () use ($request, $user, $data, $status, $tagged, $slug, $publish, $trafficUtm, $questFiles, $uploadedFiles, $qualityGate): Quest {
+        $quest = DB::transaction(function () use ($request, $user, $data, $status, $tagged, $slug, $publish, $trafficUtm, $questFiles, $uploadedFiles, $qualityGate, $listingExpiry): Quest {
             $dueAt = now()->addDays((int) $data['estimated_completion_days']);
 
-            $listingExpiresAt = null;
-            if ($publish && ! empty($data['auto_listing_expiry_days'])) {
-                $listingExpiresAt = now()->addDays((int) $data['auto_listing_expiry_days']);
-            }
+            $listingDays = $publish
+                ? $listingExpiry->resolveDaysForCreate(isset($data['auto_listing_expiry_days']) ? (int) $data['auto_listing_expiry_days'] : null)
+                : null;
+            $listingExpiresAt = $publish && $listingDays ? now()->addDays($listingDays) : null;
 
             $clientEditUntil = null;
             if ($publish) {
@@ -186,8 +191,9 @@ class QuestController extends Controller
                 'team_size' => isset($data['team_size']) && $data['team_size']
                     ? QuestTeamSize::from($data['team_size'])
                     : null,
-                'auto_listing_expiry_days' => $data['auto_listing_expiry_days'] ?? null,
+                'auto_listing_expiry_days' => $listingDays,
                 'listing_expires_at' => $listingExpiresAt,
+                'listing_extension_count' => 0,
                 'client_edit_until' => $clientEditUntil,
                 'max_offers' => $data['max_offers'] ?? null,
                 'traffic_source' => $data['traffic_source'] ?? null,
@@ -569,6 +575,31 @@ class QuestController extends Controller
         return redirect()->route('quests.index')->with('success', __('Quest removed.'));
     }
 
+    public function extendListing(ExtendQuestListingRequest $request, Quest $quest, QuestListingExpiryService $listingExpiry): RedirectResponse
+    {
+        $this->authorize('update', $quest);
+
+        $listingExpiry->extend(
+            $quest,
+            $request->user(),
+            (int) $request->validated('additional_days'),
+            (string) $request->validated('reason'),
+        );
+
+        return back()->with('success', __('Proposal deadline extended. Freelancers who submitted proposals have been notified.'));
+    }
+
+    public function repost(Request $request, Quest $quest, QuestListingExpiryService $listingExpiry): RedirectResponse
+    {
+        $this->authorize('update', $quest);
+
+        $fresh = $listingExpiry->repost($quest, $request->user());
+
+        return redirect()
+            ->route('quests.show', $fresh)
+            ->with('success', __('Quest reposted with a fresh proposal window.'));
+    }
+
     public function searchFreelancers(Request $request, Quest $quest): SymfonyResponse
     {
         $this->authorize('manageInvites', $quest);
@@ -933,6 +964,10 @@ class QuestController extends Controller
             }
         }
 
+        if ($isOwner && $viewer) {
+            $data = array_merge($data, app(QuestListingExpiryService::class)->clientPayload($quest, $viewer));
+        }
+
         return $data;
     }
 
@@ -1000,7 +1035,7 @@ class QuestController extends Controller
         return QuestOffer::query()
             ->where('quest_id', $quest->id)
             ->visibleInClientInbox()
-            ->with(['freelancer:id,first_name,name,slug,avatar_url,headline'])
+            ->with(['freelancer:id,first_name,last_name,name,slug,avatar_url,headline'])
             ->latest('created_at')
             ->limit(120)
             ->get()

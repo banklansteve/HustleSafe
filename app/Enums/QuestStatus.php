@@ -25,6 +25,7 @@ enum QuestStatus: string
     case WithdrawnByClient = 'withdrawn_by_client';
     case WithdrawnByFreelancer = 'withdrawn_by_freelancer';
     case Closed = 'closed';
+    case ClosedUnawarded = 'closed_unawarded';
     case Archived = 'archived';
 
     /**
@@ -41,6 +42,11 @@ enum QuestStatus: string
             self::InDispute,
             self::CancelledByAdmin,
         ];
+    }
+
+    public function isListingOpen(): bool
+    {
+        return $this === self::Open;
     }
 
     /**

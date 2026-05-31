@@ -32,7 +32,6 @@ class StoreContentReportRequest extends FormRequest
             ])],
             'details' => ['nullable', 'string', 'max:4000'],
             'severity' => ['nullable', 'string', Rule::in(['low', 'standard', 'high', 'urgent'])],
-            'evidence_url' => ['nullable', 'string', 'max:512', 'url'],
         ];
     }
 }

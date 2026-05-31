@@ -82,7 +82,8 @@ Route::get('/api/conversation-monitoring/reviews/{review}', [OperationsConversat
 Route::get('/api/conversation-monitoring/systematic/{escalation}', [OperationsConversationMonitoringController::class, 'systematicDetail'])->name('api.conversation-monitoring.systematic.show');
 Route::post('/api/conversation-monitoring/reviews/{review}/dismiss', [OperationsConversationMonitoringController::class, 'dismiss'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.dismiss');
 Route::post('/api/conversation-monitoring/reviews/{review}/warn', [OperationsConversationMonitoringController::class, 'warn'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.warn');
-Route::post('/api/conversation-monitoring/reviews/{review}/escalate', [OperationsConversationMonitoringController::class, 'escalate'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.escalate');
+Route::post('/api/conversation-monitoring/reviews/{review}/escalate-super-admin', [OperationsConversationMonitoringController::class, 'escalateSuperAdmin'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.escalate-super-admin');
+Route::post('/api/conversation-monitoring/reviews/{review}/suspend-user', [OperationsConversationMonitoringController::class, 'suspendUser'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.suspend-user');
 Route::post('/api/conversation-monitoring/reviews/{review}/flag-risk', [OperationsConversationMonitoringController::class, 'flagRisk'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.flag-risk');
 Route::post('/api/conversation-monitoring/systematic/{escalation}/dismiss', [OperationsConversationMonitoringController::class, 'dismissSystematic'])->middleware('throttle:30,1')->name('api.conversation-monitoring.systematic.dismiss');
 

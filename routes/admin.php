@@ -16,9 +16,11 @@ use App\Http\Controllers\Admin\AdminFinancialControlController;
 use App\Http\Controllers\Admin\AdminFinancialReviewController;
 use App\Http\Controllers\Admin\AdminPlatformFeeLedgerController;
 use App\Http\Controllers\Admin\AdminQuestCompletionEventsController;
+use App\Http\Controllers\Admin\AdminQuestJourneySurveyController;
 use App\Http\Controllers\Admin\AdminQuestReleaseController;
 use App\Http\Controllers\Admin\AdminUserVerificationReviewController;
 use App\Http\Controllers\Shared\UserVerificationDocumentController;
+use App\Http\Controllers\Admin\AdminContractController;
 use App\Http\Controllers\Admin\AdminContractReceiptController;
 use App\Http\Controllers\Admin\AdminLifecycleAnalyticsController;
 use App\Http\Controllers\Admin\AdminPlatformFinancialHealthController;
@@ -67,6 +69,9 @@ Route::get('/lifecycle-analytics', AdminLifecycleAnalyticsController::class)->na
 Route::get('/documentation/dashboard-guide/{topic?}', AdminDocumentationController::class)->name('documentation.guide');
 
 Route::get('/insights', AdminInsightsController::class)->name('insights.index');
+Route::get('/journey-surveys', [AdminQuestJourneySurveyController::class, 'insights'])->name('journey-surveys.insights');
+Route::get('/journey-surveys/responses', [AdminQuestJourneySurveyController::class, 'index'])->name('journey-surveys.index');
+Route::get('/api/journey-surveys/free-text', [AdminQuestJourneySurveyController::class, 'freeTextSearch'])->name('journey-surveys.free-text');
 Route::get('/hr', [AdminHrManagementController::class, 'index'])->name('hr.index');
 Route::get('/hr/roles', [AdminHrManagementController::class, 'rolesIndex'])->name('hr.roles.index');
 Route::get('/hr/leave', [AdminHrManagementController::class, 'leaveIndex'])->name('hr.leave.index');
@@ -174,7 +179,10 @@ Route::get('/api/conversation-monitoring/reviews/{review}', [AdminConversationMo
 Route::get('/api/conversation-monitoring/systematic/{escalation}', [AdminConversationMonitoringController::class, 'systematicDetail'])->name('api.conversation-monitoring.systematic.show');
 Route::post('/api/conversation-monitoring/reviews/{review}/dismiss', [AdminConversationMonitoringController::class, 'dismiss'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.dismiss');
 Route::post('/api/conversation-monitoring/reviews/{review}/warn', [AdminConversationMonitoringController::class, 'warn'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.warn');
-Route::post('/api/conversation-monitoring/reviews/{review}/escalate', [AdminConversationMonitoringController::class, 'escalate'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.escalate');
+Route::post('/api/conversation-monitoring/reviews/{review}/assign', [AdminConversationMonitoringController::class, 'assign'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.assign');
+Route::post('/api/conversation-monitoring/reviews/{review}/escalate-super-admin', [AdminConversationMonitoringController::class, 'escalateSuperAdmin'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.escalate-super-admin');
+Route::post('/api/conversation-monitoring/reviews/{review}/suspend-user', [AdminConversationMonitoringController::class, 'suspendUser'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.suspend-user');
+Route::post('/api/conversation-monitoring/reviews/{review}/ban-user', [AdminConversationMonitoringController::class, 'banUser'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.ban-user');
 Route::post('/api/conversation-monitoring/reviews/{review}/flag-risk', [AdminConversationMonitoringController::class, 'flagRisk'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.flag-risk');
 Route::post('/api/conversation-monitoring/systematic/{escalation}/resolve', [AdminConversationMonitoringController::class, 'resolveSystematic'])->middleware('throttle:20,1')->name('api.conversation-monitoring.systematic.resolve');
 Route::get('/api/conversation-monitoring/terms', [AdminConversationMonitoringController::class, 'terms'])->name('api.conversation-monitoring.terms');
@@ -243,6 +251,11 @@ Route::post('/quests/{quest:id}/release/lift-hold', [AdminQuestReleaseController
     ->name('quests.release.lift-hold');
 Route::get('/contracts/{quest:id}/receipt', [AdminContractReceiptController::class, 'show'])
     ->name('contracts.receipt');
+Route::get('/contracts/view/{contract:reference_code}', [AdminContractController::class, 'show'])
+    ->name('contracts.view');
+Route::post('/contracts/view/{contract:reference_code}/flag', [AdminContractController::class, 'flagForReview'])
+    ->middleware('throttle:20,1')
+    ->name('contracts.flag');
 
 Route::get('/kyc', [AdminKycCentreController::class, 'index'])->name('kyc.index');
 Route::get('/kyc/cases/{case}', [AdminKycCentreController::class, 'show'])->name('kyc.cases.show');

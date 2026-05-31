@@ -89,18 +89,19 @@
                 <div class="grid gap-4 sm:grid-cols-3">
                     <div class="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-100">
                         <label class="text-xs font-bold uppercase tracking-wide text-slate-500">Start date</label>
-                        <input
+                        <PremiumDatePicker
                             v-model="form.started_at"
-                            type="date"
-                            class="mt-1 w-full rounded-lg border-slate-200 text-sm font-semibold shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                            class="mt-1"
+                            placeholder="dd/mm/yyyy"
                         />
                     </div>
                     <div class="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-100">
                         <label class="text-xs font-bold uppercase tracking-wide text-slate-500">Completed</label>
-                        <input
+                        <PremiumDatePicker
                             v-model="form.completed_at"
-                            type="date"
-                            class="mt-1 w-full rounded-lg border-slate-200 text-sm font-semibold shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                            class="mt-1"
+                            placeholder="dd/mm/yyyy"
+                            :min="form.started_at || ''"
                         />
                     </div>
                     <div class="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-100">
@@ -234,10 +235,11 @@
 
 <script setup>
 import AppShell from '@/Layouts/AppShell.vue';
+import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { computed, onUnmounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
     mode: {

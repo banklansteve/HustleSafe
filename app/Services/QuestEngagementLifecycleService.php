@@ -354,6 +354,16 @@ class QuestEngagementLifecycleService
             $party?->notify(new QuestAutoCompletedNotification($quest));
         }
 
+        app(\App\Services\Quest\QuestJourneySurveyService::class)->onQuestFundsReleased($quest->fresh());
+
+        $contract = \App\Models\QuestContract::query()
+            ->where('quest_id', $quest->id)
+            ->where('quest_offer_id', $quest->accepted_quest_offer_id)
+            ->first();
+        if ($contract !== null) {
+            app(\App\Services\Contracts\ContractLifecycleService::class)->markCompleted($contract);
+        }
+
         return true;
     }
 }

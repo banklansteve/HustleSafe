@@ -143,9 +143,12 @@ export function validateQuestCreateStep(step, deps) {
     }
 
     if (step === 6) {
+        const bounds = deps.proposalDeadlineBounds ?? { min: 1, max: 60, default: 14 };
         const exp = form.auto_listing_expiry_days;
-        if (exp != null && exp !== '' && (Number(exp) < 1 || Number(exp) > 90)) {
-            errors.auto_listing_expiry_days = 'Expiry must be between 1 and 90 days.';
+        if (exp == null || exp === '') {
+            errors.auto_listing_expiry_days = `Choose how many days to accept proposals (default ${bounds.default}).`;
+        } else if (Number(exp) < bounds.min || Number(exp) > bounds.max) {
+            errors.auto_listing_expiry_days = `Proposal deadline must be between ${bounds.min} and ${bounds.max} days.`;
         }
         const mo = form.max_offers;
         if (mo != null && mo !== '' && (Number(mo) < 1 || Number(mo) > 200)) {

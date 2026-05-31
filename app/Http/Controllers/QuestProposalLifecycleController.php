@@ -4,22 +4,26 @@ namespace App\Http\Controllers;
 
 use App\Enums\AdminProposalStatus;
 use App\Enums\QuestStatus;
+use App\Events\QuestProposalListUpdated;
+use App\Http\Requests\Quests\ConfirmProposalAwardRequest;
 use App\Models\PaymentEscrow;
 use App\Models\Quest;
 use App\Models\QuestOffer;
-use App\Services\Payments\PaystackClient;
-use App\Notifications\ProposalAwardPendingFreelancerNotification;
 use App\Notifications\ProposalAcceptedClientNotification;
 use App\Notifications\ProposalAcceptedFreelancerNotification;
+use App\Notifications\ProposalAwardPendingFreelancerNotification;
 use App\Notifications\ProposalDeclinedFreelancerNotification;
 use App\Notifications\ProposalEscrowFundedFreelancerNotification;
-use App\Notifications\ProposalShortlistedFreelancerNotification;
 use App\Notifications\ProposalWithdrawnClientNotification;
-use App\Http\Requests\Quests\ConfirmProposalAwardRequest;
 use App\Services\Admin\AdminActivityFeedService;
+use App\Services\Payments\PaystackClient;
+use App\Services\Contracts\ContractGenerationService;
 use App\Services\Proposals\ProposalClarificationPromptService;
 use App\Services\Proposals\ProposalClarificationService;
+use App\Services\Proposals\ProposalShortlistService;
 use App\Services\Proposals\ProposalTrustBehaviourService;
+use App\Services\Verification\VerificationEngineService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,10 +31,9 @@ use Illuminate\Validation\ValidationException;
 
 class QuestProposalLifecycleController extends Controller
 {
-    public function shortlist(Request $request, Quest $quest, QuestOffer $offer): RedirectResponse
+    public function toggleShortlist(Request $request, Quest $quest, QuestOffer $offer, ProposalShortlistService $shortlists): JsonResponse|RedirectResponse
     {
         $this->authorize('respondAsClient', $offer);
-        $request->validate(['confirm' => ['accepted']]);
 
         if ((int) $offer->quest_id !== (int) $quest->id) {
             abort(404);
@@ -39,61 +42,30 @@ class QuestProposalLifecycleController extends Controller
         $this->assertQuestOpenForDecisions($quest);
         $this->assertOfferDecisible($offer);
 
-        if (! in_array($offer->status, ['submitted', 'shortlisted'], true)) {
-            throw ValidationException::withMessages(['proposal' => __('Only open proposals can be shortlisted.')]);
+        $result = $shortlists->toggle($quest, $offer);
+        $fresh = $offer->fresh();
+
+        try {
+            broadcast(new QuestProposalListUpdated((int) $quest->id));
+        } catch (\Throwable $exception) {
+            report($exception);
         }
 
-        $offer->update([
-            'status' => 'shortlisted',
-            'shortlisted_at' => now(),
-        ]);
-
-        $offer->freelancer?->notify(new ProposalShortlistedFreelancerNotification($offer));
-
-        return back()->with('success', __('Shortlisted — the freelancer has been nudged in-app.'));
-    }
-
-    public function unshortlist(Request $request, Quest $quest, QuestOffer $offer): RedirectResponse
-    {
-        $this->authorize('respondAsClient', $offer);
-        $request->validate(['confirm' => ['accepted']]);
-
-        if ((int) $offer->quest_id !== (int) $quest->id) {
-            abort(404);
+        if ($request->wantsJson()) {
+            return response()->json([
+                'shortlisted' => $result['shortlisted'],
+                'status' => $fresh->status,
+                'shortlist_count' => $result['count'],
+                'shortlist_max' => $result['max'],
+                'flash' => $result['shortlisted']
+                    ? __('Shortlisted — the freelancer has been notified in-app.')
+                    : __('Removed from your shortlist.'),
+            ]);
         }
 
-        $this->assertQuestOpenForDecisions($quest);
-
-        if ($offer->status !== 'shortlisted') {
-            throw ValidationException::withMessages(['proposal' => __('This proposal is not shortlisted.')]);
-        }
-
-        $offer->update([
-            'status' => 'submitted',
-            'shortlisted_at' => null,
-        ]);
-
-        return back()->with('success', __('Moved back to the general proposal list.'));
-    }
-
-    public function pin(Request $request, Quest $quest, QuestOffer $offer): RedirectResponse
-    {
-        $this->authorize('respondAsClient', $offer);
-        $request->validate(['confirm' => ['accepted']]);
-
-        if ((int) $offer->quest_id !== (int) $quest->id) {
-            abort(404);
-        }
-
-        $this->assertQuestOpenForDecisions($quest);
-        $this->assertOfferDecisible($offer);
-
-        $wasPinned = $offer->client_pinned_at !== null;
-        $offer->update(['client_pinned_at' => $wasPinned ? null : now()]);
-
-        return back()->with('success', $wasPinned
-            ? __('Unpinned.')
-            : __('Pinned for your review queue — easy to spot later.'));
+        return back()->with('success', $result['shortlisted']
+            ? __('Shortlisted — the freelancer has been notified in-app.')
+            : __('Removed from your shortlist.'));
     }
 
     public function decline(Request $request, Quest $quest, QuestOffer $offer): RedirectResponse
@@ -124,6 +96,8 @@ class QuestProposalLifecycleController extends Controller
 
         $offer->freelancer?->notify(new ProposalDeclinedFreelancerNotification($offer));
 
+        app(\App\Services\Quest\QuestJourneySurveyService::class)->onProposalRejected($quest, $offer, 'declined');
+
         return back()->with('success', __('Proposal declined. The freelancer has been notified.'));
     }
 
@@ -144,6 +118,10 @@ class QuestProposalLifecycleController extends Controller
             'accept_escrow_rules' => ['accepted'],
             'accept_fees_and_terms' => ['accepted'],
             'accept_auto_release_ack' => ['accepted'],
+            'deliverables' => ['required', 'array', 'min:1', 'max:20'],
+            'deliverables.*.title' => ['required', 'string', 'max:255'],
+            'deliverables.*.description' => ['nullable', 'string', 'max:2000'],
+            'revision_definition' => ['nullable', 'string', 'max:2000'],
         ]);
 
         if ((int) $offer->quest_id !== (int) $quest->id) {
@@ -162,6 +140,25 @@ class QuestProposalLifecycleController extends Controller
         }
 
         $terms = $promptService->awardTermsSnapshot($quest, $offer);
+        $terms['client_confirmation'] = [
+            'ip' => $request->ip(),
+            'user_agent' => substr((string) $request->userAgent(), 0, 2000),
+            'confirmed_at' => now()->toIso8601String(),
+            'action' => __('I agree to the terms of this contract'),
+        ];
+        $terms['revisions_included'] = (int) ($offer->corrections_included ? ($offer->corrections_rounds ?: 1) : 0);
+        $terms['revision_definition'] = (string) $request->input(
+            'revision_definition',
+            __('A revision adjusts the agreed deliverable within the original scope. New features or material scope expansion require an amendment.')
+        );
+        $terms['deliverables'] = collect($request->input('deliverables', []))
+            ->map(fn ($row) => [
+                'title' => trim((string) ($row['title'] ?? '')),
+                'description' => trim((string) ($row['description'] ?? '')) ?: null,
+            ])
+            ->filter(fn ($row) => $row['title'] !== '')
+            ->values()
+            ->all();
 
         $offer->update([
             'status' => 'pending_award',
@@ -205,6 +202,12 @@ class QuestProposalLifecycleController extends Controller
             throw ValidationException::withMessages(['proposal' => __('This award is no longer active.')]);
         }
 
+        $otherOfferIds = QuestOffer::query()
+            ->where('quest_id', $quest->id)
+            ->where('id', '<>', $offer->id)
+            ->whereIn('status', ['submitted', 'shortlisted', 'pending_award'])
+            ->pluck('id');
+
         DB::transaction(function () use ($quest, $offer): void {
             QuestOffer::query()
                 ->where('quest_id', $quest->id)
@@ -240,6 +243,27 @@ class QuestProposalLifecycleController extends Controller
 
         $quest->client?->notify(new ProposalAcceptedClientNotification($offer));
         $offer->freelancer?->notify(new ProposalAcceptedFreelancerNotification($offer));
+
+        $snapshot = $offer->award_terms_snapshot ?? [];
+        if (! is_array($snapshot)) {
+            $snapshot = [];
+        }
+        $snapshot['freelancer_confirmation'] = [
+            'ip' => $request->ip(),
+            'user_agent' => substr((string) $request->userAgent(), 0, 2000),
+            'confirmed_at' => now()->toIso8601String(),
+            'action' => __('I agree to the terms of this contract'),
+        ];
+        $offer->update(['award_terms_snapshot' => $snapshot]);
+
+        app(ContractGenerationService::class)->generateFromAward($quest->fresh(), $offer->fresh(), $request);
+
+        $surveyService = app(\App\Services\Quest\QuestJourneySurveyService::class);
+        QuestOffer::query()
+            ->whereIn('id', $otherOfferIds)
+            ->with('freelancer')
+            ->each(fn (QuestOffer $declined) => $surveyService->onProposalRejected($quest, $declined, 'lost_award'));
+
         $quest->loadMissing(['client', 'questCategory', 'stateModel']);
         $offer->loadMissing('freelancer');
         app(AdminActivityFeedService::class)->record(
@@ -316,6 +340,11 @@ class QuestProposalLifecycleController extends Controller
         ]);
 
         $offer->freelancer?->notify(new ProposalEscrowFundedFreelancerNotification($offer));
+        app(\App\Services\Contracts\ContractLifecycleService::class)->activateFromEscrowFunding(
+            $quest->fresh(),
+            $paymentEscrow ?? PaymentEscrow::query()->where('quest_id', $quest->id)->firstOrFail(),
+            $request,
+        );
         $quest->loadMissing(['client', 'questCategory', 'stateModel']);
         $offer->loadMissing('freelancer');
         app(AdminActivityFeedService::class)->record(

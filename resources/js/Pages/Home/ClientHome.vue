@@ -253,64 +253,11 @@
                             </ul>
                         </div>
 
-                        <div
-                            id="notifications"
-                            class="scroll-mt-28 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-6"
-                        >
-                            <div class="flex gap-3">
-                                <span
-                                    class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-secondary-100 text-secondary-800 ring-1 ring-secondary-200/80"
-                                >
-                                    <BellAlertIcon class="h-5 w-5" aria-hidden="true" />
-                                </span>
-                                <div>
-                                    <h3 class="font-display text-base font-bold text-slate-900">
-                                        Notifications
-                                    </h3>
-                                    <p class="mt-1 text-sm font-medium text-slate-600">
-                                        Submissions, disputes, and payout confirmations.
-                                    </p>
-                                </div>
-                            </div>
-                            <ul class="mt-4 max-h-[28rem] space-y-3 overflow-y-auto pr-1">
-                                <li
-                                    v-for="n in notifications"
-                                    :key="n.id"
-                                    class="rounded-xl border px-0 py-0"
-                                    :class="n.read ? 'border-slate-100 bg-slate-50/60' : 'border-secondary-200 bg-secondary-50/70'"
-                                >
-                                    <button
-                                        type="button"
-                                        class="block w-full rounded-xl px-3 py-3 text-left transition hover:bg-white/80 disabled:cursor-wait disabled:opacity-70"
-                                        :disabled="notifBusyId === n.id"
-                                        @click="openDashboardNotification(n)"
-                                    >
-                                        <span class="inline-flex items-center gap-2">
-                                            <ReLoader4Line
-                                                v-if="notifBusyId === n.id"
-                                                class="h-4 w-4 shrink-0 animate-spin text-primary-600"
-                                                aria-hidden="true"
-                                            />
-                                            <p class="text-[10px] font-bold uppercase tracking-wide text-primary-800">
-                                                {{ n.label }}
-                                            </p>
-                                        </span>
-                                        <p class="mt-1 text-sm font-semibold text-slate-900">
-                                            {{ n.line || summarizeNotification(n.data) }}
-                                        </p>
-                                        <p class="mt-1.5 text-xs font-medium text-slate-500">
-                                            {{ formatWhen(n.created_at) }}
-                                        </p>
-                                    </button>
-                                </li>
-                                <li
-                                    v-if="notifications.length === 0"
-                                    class="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-8 text-center text-sm font-semibold text-slate-600"
-                                >
-                                    Inbox zero — we will alert you when freelancers submit work.
-                                </li>
-                            </ul>
-                        </div>
+                        <DashboardNotificationsPanel
+                            :notifications="notifications"
+                            subtitle="Submissions, disputes, and payout confirmations."
+                            empty-message="Inbox zero — we will alert you when freelancers submit work."
+                        />
                     </div>
                 </div>
 
@@ -466,14 +413,13 @@
 </template>
 
 <script setup>
+import DashboardNotificationsPanel from '@/Components/Home/DashboardNotificationsPanel.vue';
 import DashboardStatTile from '@/Components/Home/DashboardStatTile.vue';
 import MiniBarChart from '@/Components/Home/MiniBarChart.vue';
 import PanelIcon from '@/Components/Home/PanelIcon.vue';
 import TrustHalfDonut from '@/Components/Home/TrustHalfDonut.vue';
 import AppShell from '@/Layouts/AppShell.vue';
-import { useNotificationVisit } from '@/composables/useNotificationVisit';
 import {
-    BellAlertIcon,
     ClipboardDocumentListIcon,
     ClockIcon,
     DevicePhoneMobileIcon,
@@ -481,10 +427,7 @@ import {
     InformationCircleIcon,
     StarIcon,
 } from '@heroicons/vue/24/outline';
-import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { Head, Link } from '@inertiajs/vue3';
-
-const { busyId: notifBusyId, visit: visitNotification } = useNotificationVisit();
 
 function questDetailHref(q) {
     if (!q?.slug && !q?.uuid) {
@@ -492,10 +435,6 @@ function questDetailHref(q) {
     }
 
     return route('quests.show', q.slug || q.uuid);
-}
-
-function openDashboardNotification(n) {
-    void visitNotification(n.id);
 }
 
 defineProps({
@@ -571,28 +510,5 @@ function formatWhen(iso) {
     } catch {
         return iso;
     }
-}
-
-function summarizeNotification(data) {
-    if (!data || typeof data !== 'object') {
-        return 'Update';
-    }
-    if (typeof data.quest_title === 'string' && data.quest_title) {
-        return data.quest_title;
-    }
-    if (typeof data.preview === 'string' && data.preview) {
-        return data.preview;
-    }
-    if (typeof data.message === 'string') {
-        return data.message;
-    }
-    if (typeof data.body === 'string') {
-        return data.body;
-    }
-    if (typeof data.title === 'string') {
-        return data.title;
-    }
-
-    return 'Update';
 }
 </script>

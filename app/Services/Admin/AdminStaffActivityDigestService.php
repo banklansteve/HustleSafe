@@ -2,43 +2,98 @@
 
 namespace App\Services\Admin;
 
-use App\Models\AdminActivityFeedEvent;
 use App\Models\AdminActivityLog;
-use App\Models\AdminTask;
-use App\Models\QuestDispute;
 use App\Models\User;
-use App\Models\UserVerification;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class AdminStaffActivityDigestService
 {
+    private const STAFF_ROLES = ['admin', 'super_admin'];
+
     public function payload(Request $request): array
     {
-        $date = $this->date($request);
-        $start = $date->startOfDay();
-        $end = $date->endOfDay();
-        $actorId = $request->integer('admin_id') ?: null;
+        [$start, $end, $rangeMeta] = $this->window($request);
+        $staffId = $request->integer('admin_id') ?: null;
+        $sort = (string) $request->input('sort', 'newest');
+        if (! in_array($sort, ['newest', 'oldest'], true)) {
+            $sort = 'newest';
+        }
 
-        $logs = $this->logs($start, $end, $actorId)->get();
-        $events = $this->feedEvents($start, $end, $actorId)->get();
-        $admins = $this->admins();
+        $logs = $this->staffLogs($start, $end, $staffId, $sort)->get();
+        $staff = $this->staffMembers();
 
         return [
             'filters' => [
-                'date' => $date->toDateString(),
-                'admin_id' => $actorId,
+                'date' => $rangeMeta['anchor_date'],
+                'date_from' => $start->toDateString(),
+                'date_to' => $end->toDateString(),
+                'range' => $rangeMeta['range'],
+                'admin_id' => $staffId,
+                'sort' => $sort,
             ],
-            'admins' => $admins,
-            'summary' => $this->summary($logs, $events, $start, $end, $actorId),
-            'categories' => $this->categories($logs, $events, $start, $end, $actorId),
-            'staff' => $this->staffRows($logs, $events, $admins),
-            'timeline' => $this->timeline($logs, $events),
-            'attention' => $this->attention($start, $end, $actorId),
+            'range_label' => $rangeMeta['label'],
+            'admins' => $staff,
+            'summary' => [
+                ['key' => 'total_actions', 'label' => 'Staff actions', 'value' => $logs->count(), 'tone' => 'blue'],
+                ['key' => 'staff_active', 'label' => 'Staff with activity', 'value' => $logs->pluck('actor_user_id')->unique()->filter()->count(), 'tone' => 'indigo'],
+            ],
+            'timeline' => $logs->map(fn (AdminActivityLog $log) => $this->timelineRow($log))->values()->all(),
+        ];
+    }
+
+    /**
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable, 2: array{range: string, anchor_date: string, label: string}}
+     */
+    private function window(Request $request): array
+    {
+        $range = (string) $request->input('range', 'day');
+        if (! in_array($range, ['day', 'custom'], true)) {
+            $range = 'day';
+        }
+
+        $tz = 'Africa/Lagos';
+
+        if ($range === 'custom') {
+            $fromRaw = (string) $request->input('date_from', '');
+            $toRaw = (string) $request->input('date_to', '');
+
+            try {
+                $start = CarbonImmutable::parse($fromRaw, $tz)->startOfDay();
+                $end = CarbonImmutable::parse($toRaw, $tz)->endOfDay();
+            } catch (\Throwable) {
+                $start = CarbonImmutable::now($tz)->startOfDay();
+                $end = CarbonImmutable::now($tz)->endOfDay();
+            }
+
+            if ($end->lessThan($start)) {
+                [$start, $end] = [$end->startOfDay(), $start->endOfDay()];
+            }
+
+            return [
+                $start,
+                $end,
+                [
+                    'range' => 'custom',
+                    'anchor_date' => $start->toDateString(),
+                    'label' => $start->toDateString().' → '.$end->toDateString(),
+                ],
+            ];
+        }
+
+        $anchor = $this->date($request);
+
+        return [
+            $anchor->startOfDay(),
+            $anchor->endOfDay(),
+            [
+                'range' => 'day',
+                'anchor_date' => $anchor->toDateString(),
+                'label' => $anchor->isToday() ? 'Today · '.$anchor->format('l, j M Y') : $anchor->format('l, j M Y'),
+            ],
         ];
     }
 
@@ -53,123 +108,21 @@ class AdminStaffActivityDigestService
         }
     }
 
-    private function logs(CarbonImmutable $start, CarbonImmutable $end, ?int $actorId = null): Builder
+    private function staffLogs(CarbonImmutable $start, CarbonImmutable $end, ?int $staffId, string $sort): Builder
     {
         return AdminActivityLog::query()
-            ->with('actor:id,name,email,avatar_url')
+            ->with(['actor:id,name,email,avatar_url', 'actor.role:id,slug'])
             ->whereBetween('created_at', [$start, $end])
-            ->when($actorId, fn (Builder $query) => $query->where('actor_user_id', $actorId))
-            ->latest('created_at');
+            ->whereHas('actor.role', fn (Builder $query) => $query->whereIn('slug', self::STAFF_ROLES))
+            ->when($staffId, fn (Builder $query) => $query->where('actor_user_id', $staffId))
+            ->when($sort === 'oldest', fn (Builder $query) => $query->orderBy('created_at'), fn (Builder $query) => $query->orderByDesc('created_at'))
+            ->limit(500);
     }
 
-    private function feedEvents(CarbonImmutable $start, CarbonImmutable $end, ?int $actorId = null): Builder
-    {
-        if (! Schema::hasTable('admin_activity_feed_events')) {
-            return AdminActivityFeedEvent::query()->whereRaw('1 = 0');
-        }
-
-        return AdminActivityFeedEvent::query()
-            ->with('actor:id,name,email,avatar_url')
-            ->whereBetween('occurred_at', [$start, $end])
-            ->when($actorId, fn (Builder $query) => $query->where('actor_user_id', $actorId))
-            ->latest('occurred_at');
-    }
-
-    private function summary(Collection $logs, Collection $events, CarbonImmutable $start, CarbonImmutable $end, ?int $actorId): array
-    {
-        return [
-            ['key' => 'daily_activity', 'label' => 'Daily activity', 'value' => $logs->count() + $events->count(), 'tone' => 'blue'],
-            ['key' => 'resolved', 'label' => 'Resolved today', 'value' => $this->resolvedLogs($logs)->count() + $this->resolvedEvents($events)->count() + $this->resolvedDisputes($start, $end, $actorId)->count(), 'tone' => 'green'],
-            ['key' => 'pending', 'label' => 'Pending handoffs', 'value' => $this->pendingTasks($actorId)->count() + $this->pendingLogs($logs)->count(), 'tone' => 'amber'],
-            ['key' => 'overdue', 'label' => 'Overdue', 'value' => $this->overdueTasks($actorId)->count() + $this->overdueDisputes($actorId)->count(), 'tone' => 'red'],
-            ['key' => 'disputes', 'label' => 'Dispute resolutions', 'value' => $this->resolvedDisputes($start, $end, $actorId)->count(), 'tone' => 'purple'],
-            ['key' => 'verifications', 'label' => 'Verifications completed', 'value' => $this->completedVerifications($start, $end, $actorId)->count(), 'tone' => 'indigo'],
-            ['key' => 'messages', 'label' => 'Messages & notices', 'value' => $this->messageLogs($logs)->count() + $events->where('category', 'communications')->count(), 'tone' => 'cyan'],
-            ['key' => 'updates', 'label' => 'Updates made', 'value' => $this->updateLogs($logs)->count(), 'tone' => 'slate'],
-        ];
-    }
-
-    private function categories(Collection $logs, Collection $events, CarbonImmutable $start, CarbonImmutable $end, ?int $actorId): array
-    {
-        return [
-            'resolved' => [
-                'label' => 'What was resolved',
-                'items' => $this->resolvedLogs($logs)
-                    ->merge($this->resolvedEvents($events))
-                    ->merge($this->resolvedDisputes($start, $end, $actorId)->map(fn (QuestDispute $dispute) => $this->disputeRow($dispute)))
-                    ->take(16)
-                    ->values(),
-            ],
-            'pending' => [
-                'label' => 'Pending work',
-                'items' => $this->pendingTasks($actorId)->map(fn (AdminTask $task) => $this->taskRow($task, 'pending'))
-                    ->merge($this->pendingLogs($logs)->take(8)->map(fn (AdminActivityLog $log) => $this->logRow($log)))
-                    ->values(),
-            ],
-            'overdue' => [
-                'label' => 'Overdue items',
-                'items' => $this->overdueTasks($actorId)->map(fn (AdminTask $task) => $this->taskRow($task, 'overdue'))
-                    ->merge($this->overdueDisputes($actorId)->map(fn (QuestDispute $dispute) => $this->disputeRow($dispute, 'overdue')))
-                    ->values(),
-            ],
-            'verifications' => [
-                'label' => 'Verification outcomes',
-                'items' => $this->completedVerifications($start, $end, $actorId)->map(fn (UserVerification $verification) => $this->verificationRow($verification))->values(),
-            ],
-            'messages' => [
-                'label' => 'Messages, notices, broadcasts',
-                'items' => $this->messageLogs($logs)->take(18)->map(fn (AdminActivityLog $log) => $this->logRow($log))->values(),
-            ],
-            'updates' => [
-                'label' => 'Updates and changes',
-                'items' => $this->updateLogs($logs)->take(22)->map(fn (AdminActivityLog $log) => $this->logRow($log))->values(),
-            ],
-        ];
-    }
-
-    private function staffRows(Collection $logs, Collection $events, Collection $admins): Collection
-    {
-        return $admins->map(function (array $admin) use ($logs, $events): array {
-            $adminLogs = $logs->where('actor_user_id', $admin['id']);
-            $adminEvents = $events->where('actor_user_id', $admin['id']);
-            $last = $adminLogs->first()?->created_at ?? $adminEvents->first()?->occurred_at;
-
-            return [
-                ...$admin,
-                'activity_count' => $adminLogs->count() + $adminEvents->count(),
-                'resolved_count' => $this->resolvedLogs($adminLogs)->count() + $this->resolvedEvents($adminEvents)->count(),
-                'message_count' => $this->messageLogs($adminLogs)->count() + $adminEvents->where('category', 'communications')->count(),
-                'update_count' => $this->updateLogs($adminLogs)->count(),
-                'last_seen' => $last?->toIso8601String(),
-            ];
-        })->sortByDesc('activity_count')->values();
-    }
-
-    private function timeline(Collection $logs, Collection $events): Collection
-    {
-        $logRows = $logs->take(120)->map(fn (AdminActivityLog $log) => $this->logRow($log));
-        $eventRows = $events->take(80)->map(fn (AdminActivityFeedEvent $event) => $this->eventRow($event));
-
-        return $logRows
-            ->merge($eventRows)
-            ->sortByDesc('sort_at')
-            ->take(160)
-            ->values()
-            ->map(fn (array $row) => collect($row)->except('sort_at')->all());
-    }
-
-    private function attention(CarbonImmutable $start, CarbonImmutable $end, ?int $actorId): array
-    {
-        return [
-            'tasks_due_today' => $this->tasksDueBetween($start, $end, $actorId)->map(fn (AdminTask $task) => $this->taskRow($task, 'due_today'))->values(),
-            'disputes_needing_ruling' => $this->overdueDisputes($actorId)->map(fn (QuestDispute $dispute) => $this->disputeRow($dispute, 'needs_ruling'))->values(),
-        ];
-    }
-
-    private function admins(): Collection
+    private function staffMembers(): Collection
     {
         return User::query()
-            ->whereHas('role', fn (Builder $query) => $query->whereIn('slug', ['admin', 'super_admin']))
+            ->whereHas('role', fn (Builder $query) => $query->whereIn('slug', self::STAFF_ROLES))
             ->orderBy('name')
             ->get(['id', 'name', 'email', 'avatar_url'])
             ->map(fn (User $user) => [
@@ -180,212 +133,70 @@ class AdminStaffActivityDigestService
             ]);
     }
 
-    private function resolvedLogs(Collection $logs): Collection
+    /**
+     * @return array<string, mixed>
+     */
+    private function timelineRow(AdminActivityLog $log): array
     {
-        return $logs->filter(fn (AdminActivityLog $log) => $this->matches($log->action, ['resolved', 'approved', 'completed', 'decided', 'decision', 'released', 'closed']));
-    }
+        $at = $log->created_at?->timezone('Africa/Lagos');
 
-    private function resolvedEvents(Collection $events): Collection
-    {
-        return $events->filter(fn (AdminActivityFeedEvent $event) => $this->matches($event->event_key.' '.$event->title, ['resolved', 'completed', 'approved', 'closed', 'funded']));
-    }
-
-    private function pendingLogs(Collection $logs): Collection
-    {
-        return $logs->filter(fn (AdminActivityLog $log) => $this->matches($log->action, ['created', 'opened', 'assigned', 'referred', 'under_review', 'action_required']));
-    }
-
-    private function messageLogs(Collection $logs): Collection
-    {
-        return $logs->filter(fn (AdminActivityLog $log) => $this->matches($log->action, ['message', 'email', 'notice', 'notification', 'broadcast', 'contact', 'communication']));
-    }
-
-    private function updateLogs(Collection $logs): Collection
-    {
-        return $logs->filter(fn (AdminActivityLog $log) => $this->matches($log->action, ['updated', 'changed', 'status', 'decision', 'created', 'deleted', 'flag', 'note', 'sanction', 'suspend']));
-    }
-
-    private function pendingTasks(?int $actorId): Collection
-    {
-        if (! Schema::hasTable('admin_tasks')) {
-            return collect();
-        }
-
-        return AdminTask::query()
-            ->with(['creator:id,name,email', 'assignee:id,name,email'])
-            ->where('status', '!=', 'done')
-            ->when($actorId, fn (Builder $query) => $query->where(fn (Builder $q) => $q->where('assigned_to_admin_id', $actorId)->orWhere('created_by_admin_id', $actorId)))
-            ->orderBy('due_at')
-            ->limit(30)
-            ->get();
-    }
-
-    private function overdueTasks(?int $actorId): Collection
-    {
-        if (! Schema::hasTable('admin_tasks')) {
-            return collect();
-        }
-
-        return AdminTask::query()
-            ->with(['creator:id,name,email', 'assignee:id,name,email'])
-            ->where('status', '!=', 'done')
-            ->whereDate('due_at', '<', now('Africa/Lagos')->toDateString())
-            ->when($actorId, fn (Builder $query) => $query->where(fn (Builder $q) => $q->where('assigned_to_admin_id', $actorId)->orWhere('created_by_admin_id', $actorId)))
-            ->orderBy('due_at')
-            ->limit(30)
-            ->get();
-    }
-
-    private function tasksDueBetween(CarbonImmutable $start, CarbonImmutable $end, ?int $actorId): Collection
-    {
-        if (! Schema::hasTable('admin_tasks')) {
-            return collect();
-        }
-
-        return AdminTask::query()
-            ->with(['creator:id,name,email', 'assignee:id,name,email'])
-            ->where('status', '!=', 'done')
-            ->whereBetween('due_at', [$start->toDateString(), $end->toDateString()])
-            ->when($actorId, fn (Builder $query) => $query->where(fn (Builder $q) => $q->where('assigned_to_admin_id', $actorId)->orWhere('created_by_admin_id', $actorId)))
-            ->orderBy('due_at')
-            ->limit(20)
-            ->get();
-    }
-
-    private function resolvedDisputes(CarbonImmutable $start, CarbonImmutable $end, ?int $actorId): Collection
-    {
-        if (! Schema::hasTable('quest_disputes')) {
-            return collect();
-        }
-
-        return QuestDispute::query()
-            ->with(['quest:id,title,reference_code', 'awaitingUser:id,name,email'])
-            ->whereBetween('resolved_at', [$start, $end])
-            ->limit(20)
-            ->get();
-    }
-
-    private function overdueDisputes(?int $actorId): Collection
-    {
-        if (! Schema::hasTable('quest_disputes')) {
-            return collect();
-        }
-
-        return QuestDispute::query()
-            ->with('quest:id,title,reference_code')
-            ->whereNull('resolved_at')
-            ->where(fn (Builder $query) => $query
-                ->where('response_required_by', '<', now())
-                ->orWhere('ruling_required_by', '<', now()))
-            ->limit(20)
-            ->get();
-    }
-
-    private function completedVerifications(CarbonImmutable $start, CarbonImmutable $end, ?int $actorId): Collection
-    {
-        if (! Schema::hasTable('user_verifications')) {
-            return collect();
-        }
-
-        return UserVerification::query()
-            ->with(['user:id,name,email', 'reviewer:id,name,email'])
-            ->whereBetween('reviewed_at', [$start, $end])
-            ->when($actorId, fn (Builder $query) => $query->where('reviewed_by', $actorId))
-            ->latest('reviewed_at')
-            ->limit(30)
-            ->get();
-    }
-
-    private function taskRow(AdminTask $task, string $tone): array
-    {
-        return [
-            'id' => 'task-'.$task->id,
-            'type' => 'task',
-            'tone' => $tone,
-            'title' => $task->title,
-            'summary' => $task->description ?: 'Admin task',
-            'actor' => $task->assignee?->name ?? $task->creator?->name ?? 'Unassigned',
-            'meta' => collect([$task->priority, $task->status, $task->due_at?->toDateString()])->filter()->join(' · '),
-            'at' => $task->due_at?->toIso8601String(),
-        ];
-    }
-
-    private function disputeRow(QuestDispute $dispute, string $tone = 'resolved'): array
-    {
-        return [
-            'id' => 'dispute-'.$dispute->id,
-            'type' => 'dispute',
-            'tone' => $tone,
-            'title' => $dispute->quest?->title ?? 'Dispute '.$dispute->uuid,
-            'summary' => $dispute->resolution_outcome ?: $dispute->reason,
-            'actor' => $dispute->awaitingUser?->name ?? 'Dispute desk',
-            'meta' => collect([$dispute->quest?->reference_code, $dispute->status?->value ?? (string) $dispute->status])->filter()->join(' · '),
-            'at' => ($dispute->resolved_at ?? $dispute->ruling_required_by ?? $dispute->response_required_by)?->toIso8601String(),
-        ];
-    }
-
-    private function verificationRow(UserVerification $verification): array
-    {
-        return [
-            'id' => 'verification-'.$verification->id,
-            'type' => 'verification',
-            'tone' => $verification->status?->value === 'approved' ? 'resolved' : 'pending',
-            'title' => 'Verification '.$this->label((string) ($verification->verification_type ?? $verification->category?->value ?? 'review')),
-            'summary' => $verification->user?->email ?? 'User verification reviewed',
-            'actor' => $verification->reviewer?->name ?? $verification->reviewer?->email ?? 'System',
-            'meta' => $this->label($verification->status?->value ?? (string) $verification->status),
-            'at' => $verification->reviewed_at?->toIso8601String(),
-        ];
-    }
-
-    private function logRow(AdminActivityLog $log): array
-    {
         return [
             'id' => 'log-'.$log->id,
-            'type' => 'audit',
-            'tone' => $this->toneFor($log->action),
-            'title' => $this->label($log->action),
-            'summary' => $this->propertiesSummary($log->properties ?? []),
-            'actor' => $log->actor?->name ?? $log->actor?->email ?? 'System',
+            'at' => $at?->toIso8601String(),
+            'at_label' => $at ? $at->format('D, j M Y · g:i A').' WAT' : '—',
+            'actor' => $log->actor?->name ?? $log->actor?->email ?? 'Unknown staff',
             'actor_email' => $log->actor?->email,
-            'subject' => $this->subject($log->subject_type, $log->subject_id),
+            'actor_role' => $log->actor?->role?->slug,
+            'title' => $this->actionLabel($log->action),
+            'action' => $log->action,
+            'summary' => $this->propertiesSummary($log->properties ?? []),
+            'subject' => $this->subjectLabel($log->subject_type, $log->subject_id, $log->properties ?? []),
+            'tone' => $this->toneFor($log->action),
             'meta' => collect([$log->ip_address, $this->device($log->user_agent)])->filter()->join(' · '),
-            'at' => $log->created_at?->toIso8601String(),
-            'sort_at' => $log->created_at?->timestamp ?? 0,
         ];
     }
 
-    private function eventRow(AdminActivityFeedEvent $event): array
+    private function actionLabel(string $action): string
     {
-        return [
-            'id' => 'event-'.$event->id,
-            'type' => 'feed',
-            'tone' => $event->severity ?: 'info',
-            'title' => $event->title,
-            'summary' => $event->summary,
-            'actor' => $event->actor?->name ?? $event->actor?->email ?? 'System',
-            'actor_email' => $event->actor?->email,
-            'subject' => $this->subject($event->subject_type, $event->subject_id),
-            'meta' => $this->label($event->category),
-            'at' => $event->occurred_at?->toIso8601String(),
-            'sort_at' => $event->occurred_at?->timestamp ?? 0,
+        $map = [
+            'conversation_monitoring.user_warned' => 'Conversation monitoring · user warned',
+            'conversation_monitoring.user_suspended' => 'Conversation monitoring · user suspended',
+            'conversation_monitoring.user_banned' => 'Conversation monitoring · user banned',
+            'conversation_monitoring.assigned' => 'Conversation monitoring · case assigned',
+            'conversation_monitoring.escalated' => 'Conversation monitoring · escalated to super admin',
+            'conversation_monitoring.dismissed' => 'Conversation monitoring · case dismissed',
+            'conversation_monitoring.systematic_resolved' => 'Conversation monitoring · systematic escalation resolved',
+            'support_ticket.opened' => 'Support ticket opened',
+            'support_ticket.status_changed' => 'Support ticket updated',
+            'support_chat.claimed' => 'Live support session claimed',
+            'support_chat.reply' => 'Live support reply sent',
+            'customer_support.reassigned' => 'Support ticket reassigned',
+            'customer_support.closed' => 'Support ticket closed',
+            'verification.approved' => 'Verification approved',
+            'verification.rejected' => 'Verification rejected',
+            'verification.requested_info' => 'Verification · info requested',
+            'operations.user.contacted' => 'User contacted by staff',
+            'operations.user.note_created' => 'Staff note on user account',
+            'operations.user.flagged_for_review' => 'User flagged for review',
+            'operations.user.unsuspended' => 'User unsuspended',
+            'admin.quest.status_changed' => 'Quest status changed',
+            'admin.quest.flag_created' => 'Quest flagged by staff',
         ];
+
+        return $map[$action] ?? Str::of($action)->replace(['.', '_', '-'], ' ')->headline()->toString();
     }
 
-    private function matches(string $value, array $needles): bool
+    private function subjectLabel(?string $type, ?int $id, array $properties): string
     {
-        $haystack = Str::of($value)->lower()->toString();
-
-        return collect($needles)->contains(fn (string $needle) => str_contains($haystack, $needle));
-    }
-
-    private function label(string $value): string
-    {
-        return Str::of($value)->replace(['.', '_', '-'], ' ')->headline()->toString();
-    }
-
-    private function subject(?string $type, ?int $id): string
-    {
+        if (isset($properties['target_user_email'])) {
+            return 'User · '.$properties['target_user_email'];
+        }
+        if (isset($properties['target_user_name'])) {
+            return 'User · '.$properties['target_user_name'];
+        }
+        if (isset($properties['user_email'])) {
+            return 'User · '.$properties['user_email'];
+        }
         if (! $type) {
             return 'Platform';
         }
@@ -395,24 +206,56 @@ class AdminStaffActivityDigestService
 
     private function toneFor(string $action): string
     {
-        return match (true) {
-            $this->matches($action, ['resolved', 'approved', 'completed', 'released']) => 'resolved',
-            $this->matches($action, ['deleted', 'suspend', 'rejected', 'flag']) => 'overdue',
-            $this->matches($action, ['created', 'opened', 'assigned', 'referred']) => 'pending',
-            default => 'neutral',
-        };
+        if (str_contains($action, 'warn') || str_contains($action, 'suspend') || str_contains($action, 'ban') || str_contains($action, 'flag')) {
+            return 'overdue';
+        }
+        if (str_contains($action, 'approved') || str_contains($action, 'resolved') || str_contains($action, 'closed')) {
+            return 'resolved';
+        }
+        if (str_contains($action, 'opened') || str_contains($action, 'assigned') || str_contains($action, 'claimed') || str_contains($action, 'escalated')) {
+            return 'pending';
+        }
+
+        return 'neutral';
     }
 
     private function propertiesSummary(array $properties): string
     {
-        $reason = $properties['reason'] ?? $properties['resolution_note'] ?? $properties['description'] ?? $properties['note'] ?? null;
-        if (is_string($reason) && $reason !== '') {
-            return Str::limit($reason, 150);
+        $preferred = [
+            'note',
+            'reason',
+            'resolution_note',
+            'description',
+            'message',
+            'status',
+            'target_user_name',
+            'quest_title',
+            'template_slug',
+        ];
+
+        foreach ($preferred as $key) {
+            $value = $properties[$key] ?? null;
+            if (is_string($value) && trim($value) !== '') {
+                return Str::limit(trim($value), 220);
+            }
         }
 
-        $keys = collect($properties)->keys()->take(5)->map(fn ($key) => $this->label((string) $key))->join(', ');
+        if ($properties === []) {
+            return 'Staff action recorded.';
+        }
 
-        return $keys ? 'Fields: '.$keys : 'Audit footprint recorded.';
+        $pairs = collect($properties)
+            ->reject(fn ($value, $key) => in_array($key, ['ip', 'user_agent'], true) || is_array($value))
+            ->take(4)
+            ->map(fn ($value, $key) => $this->label((string) $key).': '.Str::limit((string) $value, 80))
+            ->join(' · ');
+
+        return $pairs !== '' ? $pairs : 'Staff action recorded.';
+    }
+
+    private function label(string $value): string
+    {
+        return Str::of($value)->replace(['.', '_', '-'], ' ')->headline()->toString();
     }
 
     private function device(?string $userAgent): ?string

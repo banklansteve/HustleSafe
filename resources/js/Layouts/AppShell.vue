@@ -71,6 +71,16 @@
                         Wallet
                     </Link>
                     <Link
+                        :href="route('contracts.index')"
+                        prefetch="false"
+                        preserve-scroll
+                        class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                        :class="pillClass(contractsActive)"
+                    >
+                        <DocumentTextIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                        My contracts
+                    </Link>
+                    <Link
                         v-if="adminEntryUrl"
                         :href="adminEntryUrl"
                         prefetch="false"
@@ -215,7 +225,14 @@
                                     You are all caught up.
                                 </li>
                             </ul>
-                            <div class="border-t border-slate-100 px-2 py-2">
+                            <div class="border-t border-slate-100 px-2 py-2 space-y-1">
+                                <Link
+                                    :href="route('account.policy-notices.index')"
+                                    class="block rounded-xl px-3 py-2 text-center text-xs font-black text-amber-900 hover:bg-amber-50"
+                                    @click="notifOpen = false"
+                                >
+                                    Policy notices
+                                </Link>
                                 <Link
                                     :href="`${route('dashboard')}#notifications`"
                                     class="block rounded-xl px-3 py-2 text-center text-xs font-black text-primary-800 hover:bg-primary-50"
@@ -290,13 +307,13 @@
                 </ol>
             </div>
             <div
-                v-if="clientNudgeItems.length"
+                v-if="visibleClientNudgeItems.length"
                 class="mb-6 rounded-2xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm font-semibold text-amber-950 shadow-sm ring-1 ring-amber-100 sm:px-5 sm:py-4"
                 role="status"
             >
                 <p class="text-xs font-black uppercase tracking-wide text-amber-900">Your attention</p>
                 <ul class="mt-3 space-y-3">
-                    <li v-for="(item, i) in clientNudgeItems" :key="i" class="list-none rounded-xl border border-amber-100/80 bg-white/70 px-3 py-2.5 ring-1 ring-white/60">
+                    <li v-for="(item, i) in visibleClientNudgeItems" :key="item.key || i" class="list-none rounded-xl border border-amber-100/80 bg-white/70 px-3 py-2.5 ring-1 ring-white/60">
                         <p class="text-[13px] font-semibold leading-snug text-amber-950">
                             {{ item.message }}
                         </p>
@@ -304,6 +321,7 @@
                             v-if="item.action_url"
                             :href="item.action_url"
                             class="mt-2 inline-flex items-center gap-1 text-xs font-black uppercase tracking-wide text-amber-900 underline decoration-amber-400 underline-offset-2 hover:text-amber-800"
+                            @click="dismissClientNudge(item)"
                         >
                             {{ item.action_label || 'Open' }}
                             <span aria-hidden="true">→</span>
@@ -351,11 +369,12 @@ import CustomerSupportBubble from '@/Components/Support/CustomerSupportBubble.vu
 import NavUserMenu from '@/Components/Layout/NavUserMenu.vue';
 import AppToastHost from '@/Components/Ui/AppToastHost.vue';
 import { useNotificationVisit } from '@/composables/useNotificationVisit';
+import { useUserNotificationEcho } from '@/composables/useUserNotificationEcho';
 import { pathMatches, usePathname } from '@/composables/usePathname';
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { BanknotesIcon, BellAlertIcon, BriefcaseIcon, ChartBarIcon, ChartPieIcon, ClipboardDocumentListIcon, HomeIcon, MagnifyingGlassIcon, PlusCircleIcon, XMarkIcon } from '@heroicons/vue/24/outline';
+import { BanknotesIcon, BellAlertIcon, BriefcaseIcon, ChartBarIcon, ChartPieIcon, ClipboardDocumentListIcon, DocumentTextIcon, HomeIcon, MagnifyingGlassIcon, PlusCircleIcon, XMarkIcon } from '@heroicons/vue/24/outline';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const page = usePage();
 const pathname = usePathname(page);
@@ -365,12 +384,21 @@ const { busyId: notifBusyId, visit: visitNotification } = useNotificationVisit()
 const notifRoot = ref(null);
 const notifOpen = ref(false);
 const inertiaNavPending = ref(false);
+const polledRecentNotifications = ref(page.props.recentNotifications ?? []);
+const polledUnreadNotificationsCount = ref(Number(page.props.unreadNotificationsCount ?? 0) || 0);
+const dismissedClientNudgeKeys = ref([]);
 
 const systemBusy = computed(() => inertiaNavPending.value || notifBusyId.value !== null);
 const systemBusyLabel = computed(() => (notifBusyId.value ? 'Opening notification…' : 'Loading…'));
 
 let removeInertiaListeners = [];
 let notifPollTimer = null;
+
+useUserNotificationEcho(
+    computed(() => page.props.auth?.user?.id),
+    computed(() => page.props.broadcast),
+    () => silentNotificationPoll(),
+);
 
 async function openNotification(n) {
     notifOpen.value = false;
@@ -380,9 +408,37 @@ async function openNotification(n) {
     await visitNotification(n.id, merge || null);
 }
 
-const recentNotifications = computed(() => page.props.recentNotifications ?? []);
+const recentNotifications = computed(() => polledRecentNotifications.value);
 
-const unreadNotificationsCount = computed(() => Number(page.props.unreadNotificationsCount ?? 0) || 0);
+const unreadNotificationsCount = computed(() => polledUnreadNotificationsCount.value);
+
+watch(
+    () => page.props.recentNotifications,
+    (items) => {
+        polledRecentNotifications.value = items ?? [];
+    },
+);
+
+watch(
+    () => page.props.unreadNotificationsCount,
+    (count) => {
+        polledUnreadNotificationsCount.value = Number(count ?? 0) || 0;
+    },
+);
+
+async function silentNotificationPoll() {
+    if (document.visibilityState !== 'visible' || notifOpen.value) {
+        return;
+    }
+
+    try {
+        const { data } = await window.axios.get(route('api.notifications.nav'), { timeout: 8000 });
+        polledRecentNotifications.value = data.recentNotifications ?? [];
+        polledUnreadNotificationsCount.value = Number(data.unreadNotificationsCount ?? 0) || 0;
+    } catch {
+        /* best-effort background refresh */
+    }
+}
 
 const customerSupportWidget = computed(() => page.props.customer_support_widget ?? { enabled: false });
 
@@ -431,16 +487,7 @@ onMounted(() => {
     ];
 
     if (page.props.auth?.user) {
-        const tick = () => {
-            if (document.visibilityState !== 'visible' || notifOpen.value) {
-                return;
-            }
-            router.reload({
-                only: ['recentNotifications', 'unreadNotificationsCount'],
-                preserveScroll: true,
-                preserveState: true,
-            });
-        };
+        const tick = () => silentNotificationPoll();
         const onNotificationsChanged = () => tick();
         window.addEventListener('focus', tick);
         window.addEventListener('app:notifications-changed', onNotificationsChanged);
@@ -509,7 +556,7 @@ const freelancerNudgeItems = computed(() => {
         }
     }
 
-    return items.slice(0, 5);
+    return items.slice(0, 2);
 });
 
 const clientNudgeItems = computed(() => {
@@ -520,6 +567,41 @@ const clientNudgeItems = computed(() => {
 
     return raw.filter((x) => x && typeof x.message === 'string');
 });
+
+const hideClientNudgeOnQuestWorkspacePages = computed(() => {
+    if (roleSlug.value !== 'client') {
+        return false;
+    }
+
+    const p = pathname.value;
+    const m = p.match(/^\/quests\/([^/]+)(?:\/proposals)?\/?$/);
+    if (!m) {
+        return false;
+    }
+
+    const reserved = new Set(['create', 'explore', 'field-profile']);
+
+    return !reserved.has(m[1]);
+});
+
+const visibleClientNudgeItems = computed(() => {
+    if (hideClientNudgeOnQuestWorkspacePages.value) {
+        return [];
+    }
+
+    return clientNudgeItems.value.filter(
+        (item) => !dismissedClientNudgeKeys.value.includes(item.key || item.message),
+    );
+});
+
+function dismissClientNudge(item) {
+    const key = item?.key || item?.message;
+    if (!key || dismissedClientNudgeKeys.value.includes(key)) {
+        return;
+    }
+
+    dismissedClientNudgeKeys.value = [...dismissedClientNudgeKeys.value, key];
+}
 
 const roleSlug = computed(() => page.props.auth?.user?.role?.slug ?? '');
 const isFreelancer = computed(() => roleSlug.value === 'freelancer');
@@ -548,6 +630,7 @@ const homeActive = computed(() => pathname.value === '/');
 
 const dashboardActive = computed(() => pathMatches(pathname, route('dashboard')));
 const walletActive = computed(() => pathMatches(pathname, route('wallet.index')));
+const contractsActive = computed(() => pathMatches(pathname, route('contracts.index')) || pathname.value.startsWith('/contracts/'));
 
 const adminActive = computed(() => pathname.value.startsWith('/admin'));
 

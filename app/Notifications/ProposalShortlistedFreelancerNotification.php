@@ -4,7 +4,6 @@ namespace App\Notifications;
 
 use App\Models\QuestOffer;
 use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class ProposalShortlistedFreelancerNotification extends Notification
@@ -20,20 +19,7 @@ class ProposalShortlistedFreelancerNotification extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['database', 'mail'];
-    }
-
-    public function toMail(object $notifiable): MailMessage
-    {
-        $this->offer->loadMissing('quest');
-        $quest = $this->offer->quest;
-        $first = $notifiable->first_name ?: $notifiable->name;
-
-        return (new MailMessage)
-            ->subject(__('You were shortlisted on :title', ['title' => $quest?->title ?? 'a quest']))
-            ->line(__('Hi :name,', ['name' => $first]))
-            ->line(__('You\'ve been shortlisted — the client may reach out soon. Keep an eye on clarifications and messages for this quest.'))
-            ->action(__('View proposal'), $quest ? route('quests.proposals.show', [$quest, $this->offer], absolute: true) : url('/'));
+        return ['database'];
     }
 
     /**
@@ -43,13 +29,15 @@ class ProposalShortlistedFreelancerNotification extends Notification
     {
         $this->offer->loadMissing('quest');
         $quest = $this->offer->quest;
+        $title = $quest?->title ?? __('a quest');
 
         return [
             'kind' => 'proposal_shortlisted_freelancer',
-            'headline' => __('Shortlisted — nice one'),
-            'title' => __('Shortlisted — nice one'),
+            'headline' => __('Shortlisted'),
+            'title' => __('Shortlisted'),
             'quest_title' => $quest?->title,
-            'body' => __('You\'ve been shortlisted — the client may reach out soon.'),
+            'body' => __('Your proposal has been shortlisted for :title. The client may reach out with questions.', ['title' => $title]),
+            'line' => __('Your proposal has been shortlisted for :title. The client may reach out with questions.', ['title' => $title]),
             'href' => $quest ? route('quests.proposals.show', [$quest, $this->offer], absolute: false) : '/',
         ];
     }

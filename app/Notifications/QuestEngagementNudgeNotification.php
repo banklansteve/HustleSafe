@@ -3,13 +3,14 @@
 namespace App\Notifications;
 
 use App\Models\Quest;
+use App\Notifications\Concerns\SendsBrandedMail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class QuestEngagementNudgeNotification extends Notification
 {
-    use Queueable;
+    use Queueable, SendsBrandedMail;
 
     /**
      * @param  list<string>  $bodyLines
@@ -33,18 +34,15 @@ class QuestEngagementNudgeNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $first = $notifiable->first_name ?: $notifiable->name;
-        $message = (new MailMessage)
-            ->subject($this->subjectLine)
-            ->greeting(__('Hi :name,', ['name' => $first]));
-
-        foreach ($this->bodyLines as $line) {
-            $message->line($line);
-        }
-
-        return $message
-            ->action($this->primaryLabel, $this->primaryUrl)
-            ->line(__('This is an automated reminder from HustleSafe to keep your quest moving.'));
+        return $this->brandedMail(
+            subject: $this->subjectLine,
+            headline: $this->subjectLine,
+            notifiable: $notifiable,
+            lines: $this->bodyLines,
+            ctaUrl: $this->primaryUrl,
+            ctaLabel: $this->primaryLabel,
+            footerLine: __('This is an automated reminder from HustleSafe to keep your quest moving.'),
+        );
     }
 
     /**

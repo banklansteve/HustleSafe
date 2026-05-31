@@ -93,6 +93,13 @@ return [
         'live_presence' => ['label' => 'Selfie + ID (high-value quest unlock)', 'enabled' => true, 'manual_review' => true, 'freelancer_only' => true],
         'portfolio_review' => ['label' => 'Portfolio Review Verification', 'enabled' => false, 'manual_review' => true, 'soft' => true],
     ],
+    /**
+     * Final-tier manual reviews reserved for Super Admin (staff admins handle earlier steps).
+     */
+    'staff_review' => [
+        'client_super_admin_only_types' => ['bvn'],
+        'freelancer_super_admin_only_types' => ['live_presence'],
+    ],
     'limits' => [
         'client_posting_minor' => [0 => 0, 1 => 5_000_000, 2 => 50_000_000, 3 => 200_000_000, 4 => 100_000_000, 5 => 1_000_000_000],
         'freelancer_proposal_minor' => [0 => 0, 1 => 5_000_000, 2 => 50_000_000, 3 => 200_000_000, 4 => 500_000_000, 5 => 1_000_000_000],

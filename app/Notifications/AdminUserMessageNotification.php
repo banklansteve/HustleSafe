@@ -2,47 +2,32 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\SendsBrandedMail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class AdminUserMessageNotification extends Notification
 {
-    use Queueable;
+    use Queueable, SendsBrandedMail;
 
-    /**
-     * @param  array<string, mixed>  $meta
-     */
     public function __construct(
-        private readonly string $subject,
-        private readonly string $message,
-        private readonly array $meta = [],
+        public string $subject,
+        public string $message,
     ) {}
 
-    /**
-     * @return array<int, string>
-     */
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['mail'];
     }
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject($this->subject)
-            ->line($this->message);
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function toArray(object $notifiable): array
-    {
-        return array_merge([
-            'title' => $this->subject,
-            'body' => $this->message,
-            'source' => 'admin_team',
-        ], $this->meta);
+        return $this->brandedMail(
+            subject: $this->subject,
+            headline: $this->subject,
+            notifiable: $notifiable,
+            lines: [$this->message],
+        );
     }
 }

@@ -12,11 +12,24 @@ class ConversationPolicyWarning extends Model
         'thread_review_id',
         'issued_by',
         'note',
+        'acknowledged_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'acknowledged_at' => 'datetime',
+        ];
+    }
 
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function issuedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'issued_by');
     }
 
     public function review(): BelongsTo

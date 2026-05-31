@@ -30,6 +30,7 @@ class AdminDashboardController extends Controller
         $payload['platform_health'] = $this->platformHealth->snapshot();
         if (request()->user()?->role?->slug === 'super_admin') {
             $payload['platform_financial_health'] = app(\App\Services\Admin\PlatformFinancialHealthService::class)->snapshot();
+            $payload['journey_survey_panel'] = app(\App\Services\Quest\QuestJourneySurveyInsightsService::class)->dashboardPanel();
         }
 
         return Inertia::render('Admin/Dashboard', $payload);

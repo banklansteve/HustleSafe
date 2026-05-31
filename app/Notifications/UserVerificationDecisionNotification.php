@@ -51,6 +51,8 @@ class UserVerificationDecisionNotification extends Notification
             'body' => $this->bodyText(),
             'source' => 'verification_team',
             'category' => 'kyc',
+            'kind' => 'verification_decision',
+            'href' => '/verifications?verification_id='.$this->verification->id,
             'action_url' => $this->actionUrl(),
             'verification_id' => $this->verification->id,
             'action' => $this->action,

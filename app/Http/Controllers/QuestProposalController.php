@@ -9,6 +9,7 @@ use App\Models\QuestOffer;
 use App\Notifications\ProposalViewedMilestoneNotification;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\Proposals\ProposalClarificationService;
+use App\Services\QuestProposalPricingHintService;
 use App\Services\UserNotificationInboxService;
 use App\Support\PlatformSettings;
 use App\Support\QuestCommerceUi;
@@ -194,6 +195,7 @@ class QuestProposalController extends Controller
             'is_author' => (bool) $isFreelancerAuthor,
             'observer_mode' => (bool) $isObserver,
             'can_download_pdf' => (bool) ($user?->can('downloadPdf', $offer) ?? false),
+            'client_proposals_hub_url' => $isClient ? route('quests.client.proposals.index', $quest) : null,
             'conversation_with_freelancer_url' => $isClient && $offer->freelancer?->slug
                 ? route('quests.messages.show', [$quest->getRouteKey(), $offer->freelancer->slug])
                 : null,

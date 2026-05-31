@@ -13,6 +13,7 @@ use App\Models\QuestCategory;
 use App\Models\User;
 use App\Services\QuestDescriptionSanitizer;
 use App\Services\QuestFormFieldProfileService;
+use App\Support\PlatformSettings;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -37,6 +38,8 @@ class StoreQuestRequest extends FormRequest
      */
     public function rules(): array
     {
+        $bounds = PlatformSettings::proposalDeadlineBounds();
+
         return [
             'title' => ['required', 'string', 'max:200'],
             'description' => ['required', 'string', 'max:50000'],
@@ -63,7 +66,13 @@ class StoreQuestRequest extends FormRequest
             'project_type' => ['nullable', Rule::enum(QuestProjectType::class)],
             'estimated_hours' => ['nullable', 'integer', 'min:1', 'max:2000'],
             'team_size' => ['nullable', Rule::enum(QuestTeamSize::class)],
-            'auto_listing_expiry_days' => ['nullable', 'integer', 'min:1', 'max:90'],
+            'auto_listing_expiry_days' => [
+                Rule::requiredIf(fn () => $this->boolean('publish_now', true)),
+                'nullable',
+                'integer',
+                'min:'.$bounds['min'],
+                'max:'.$bounds['max'],
+            ],
             'max_offers' => ['nullable', 'integer', 'min:1', 'max:200'],
             'traffic_source' => ['nullable', 'string', 'max:128'],
             'traffic_utm' => ['nullable', 'array'],

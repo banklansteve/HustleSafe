@@ -8,6 +8,7 @@ use App\Models\Quest;
 use App\Models\QuestConversationMessage;
 use App\Models\QuestOffer;
 use App\Services\QuestEngagementLifecycleService;
+use App\Support\PlatformSettings;
 use Carbon\Carbon;
 
 class QuestHealthScoreService
@@ -21,7 +22,7 @@ class QuestHealthScoreService
     public function score(Quest $quest): int
     {
         if (! $quest->accepted_quest_offer_id) {
-            return 100;
+            return $this->listingPhaseScore($quest);
         }
 
         $score = 100;
@@ -49,6 +50,17 @@ class QuestHealthScoreService
     public function refreshActiveEngagements(): int
     {
         $count = 0;
+
+        Quest::query()
+            ->where('status', QuestStatus::Open)
+            ->where('offers_count', '>', 0)
+            ->chunkById(100, function ($quests) use (&$count): void {
+                foreach ($quests as $quest) {
+                    $this->refresh($quest);
+                    $count++;
+                }
+            });
+
         Quest::query()
             ->whereNotNull('accepted_quest_offer_id')
             ->whereIn('status', [
@@ -65,6 +77,47 @@ class QuestHealthScoreService
             });
 
         return $count;
+    }
+
+    private function listingPhaseScore(Quest $quest): int
+    {
+        if ($quest->status !== QuestStatus::Open) {
+            return 100;
+        }
+
+        $offersCount = (int) ($quest->offers_count ?? 0);
+        if ($offersCount === 0) {
+            return 100;
+        }
+
+        $shortlistCount = QuestOffer::query()
+            ->where('quest_id', $quest->id)
+            ->where('status', 'shortlisted')
+            ->count();
+
+        if ($shortlistCount > 0) {
+            return min(100, 88 + min(12, $shortlistCount * 3));
+        }
+
+        $firstProposalAt = QuestOffer::query()
+            ->where('quest_id', $quest->id)
+            ->min('created_at');
+
+        if (! $firstProposalAt) {
+            return 100;
+        }
+
+        $days = Carbon::parse($firstProposalAt)->diffInDays(now());
+        $reviewDays = max(1, PlatformSettings::shortlistSettings()['no_shortlist_review_days']);
+        if ($days >= $reviewDays) {
+            return max(35, 75 - min(40, ($days - $reviewDays) * 5));
+        }
+
+        if ($days >= 3) {
+            return 82;
+        }
+
+        return 92;
     }
 
     private function responsivenessPenalty(Quest $quest): int

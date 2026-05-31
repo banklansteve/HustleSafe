@@ -299,8 +299,11 @@ class DashboardController extends Controller
         $recentLogins = LoginEvent::query()
             ->where('user_id', $user->id)
             ->latest('logged_in_at')
+            ->take(20)
+            ->get(['logged_in_at', 'ip_address', 'user_agent'])
+            ->unique(fn (LoginEvent $e) => $e->logged_in_at?->format('Y-m-d H:i').'|'.($e->ip_address ?? '').'|'.UserAgentFriendly::label($e->user_agent))
             ->take(5)
-            ->get(['logged_in_at', 'ip_address', 'user_agent']);
+            ->values();
 
         $activities = ActivityLog::query()
             ->where(function ($q) use ($user) {

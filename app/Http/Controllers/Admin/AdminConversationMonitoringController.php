@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreConversationMonitoringTermRequest;
-use App\Http\Requests\Operations\ConversationMonitoringActionRequest;
 use App\Models\ConversationMonitoringTerm;
 use App\Models\ConversationSystematicEscalation;
 use App\Models\ConversationThreadReview;
+use App\Models\User;
 use App\Services\ConversationMonitoring\ConversationMonitoringAdminService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,11 +18,12 @@ class AdminConversationMonitoringController extends Controller
 {
     public function __construct(private readonly ConversationMonitoringAdminService $service) {}
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
         return Inertia::render('Admin/ConversationMonitoring/Index', [
             'summary' => $this->service->summary(),
             'isSuperAdmin' => true,
+            'openReviewId' => $request->integer('review') ?: null,
         ]);
     }
 
@@ -40,7 +41,7 @@ class AdminConversationMonitoringController extends Controller
     {
         $reveal = $request->boolean('reveal');
 
-        return response()->json($this->service->threadDetail($review, revealFull: $reveal));
+        return response()->json($this->service->threadDetail($review, revealFull: $reveal, viewer: $request->user()));
     }
 
     public function systematicDetail(ConversationSystematicEscalation $escalation): JsonResponse
@@ -58,17 +59,63 @@ class AdminConversationMonitoringController extends Controller
 
     public function warn(Request $request, ConversationThreadReview $review): JsonResponse
     {
-        $data = $request->validate(['note' => ['required', 'string', 'max:2000']]);
-        $this->service->warnUser($review, $request->user(), (string) $data['note']);
+        $data = $request->validate([
+            'note' => ['required', 'string', 'max:2000'],
+            'target_user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'template_slug' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $this->service->warnUser(
+            $review,
+            $request->user(),
+            (string) $data['note'],
+            isset($data['target_user_id']) ? (int) $data['target_user_id'] : null,
+            $data['template_slug'] ?? null,
+        );
 
         return response()->json(['message' => 'Warning issued.']);
     }
 
-    public function escalate(Request $request, ConversationThreadReview $review): JsonResponse
+    public function assign(Request $request, ConversationThreadReview $review): JsonResponse
     {
-        $this->service->escalate($review, $request->user());
+        $data = $request->validate(['staff_id' => ['required', 'integer', 'exists:users,id']]);
+        $this->service->assignToStaff($review, $request->user(), (int) $data['staff_id']);
 
-        return response()->json(['message' => 'Escalated.']);
+        return response()->json(['message' => 'Assigned to staff admin.']);
+    }
+
+    public function escalateSuperAdmin(Request $request, ConversationThreadReview $review): JsonResponse
+    {
+        $data = $request->validate(['note' => ['required', 'string', 'min:8', 'max:2000']]);
+        $this->service->escalateToSuperAdmin($review, $request->user(), (string) $data['note']);
+
+        return response()->json(['message' => 'Escalated to Super Admin.']);
+    }
+
+    public function suspendUser(Request $request, ConversationThreadReview $review): JsonResponse
+    {
+        $data = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $target = User::query()->findOrFail((int) $data['user_id']);
+        $this->service->suspendUser($request->user(), $target, $review, $data['note'] ?? null);
+
+        return response()->json(['message' => 'User suspended.']);
+    }
+
+    public function banUser(Request $request, ConversationThreadReview $review): JsonResponse
+    {
+        $data = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $target = User::query()->findOrFail((int) $data['user_id']);
+        $this->service->banUser($request->user(), $target, $review, $data['note'] ?? null);
+
+        return response()->json(['message' => 'User permanently banned.']);
     }
 
     public function flagRisk(ConversationThreadReview $review): JsonResponse

@@ -5,6 +5,7 @@ namespace App\Services\ConversationMonitoring;
 use App\Models\ConversationMessageFlag;
 use App\Models\ConversationThreadReview;
 use App\Models\ConversationUserHealthScore;
+use App\Models\ProposalClarificationThread;
 use App\Models\QuestConversationThread;
 use App\Models\User;
 use App\Models\UserRiskProfile;
@@ -36,11 +37,22 @@ class ConversationHealthScoreService
                 default => (int) ($penalties['blacklisted_keyword'] ?? 8),
             };
 
-            $thread = QuestConversationThread::query()->find($flag->quest_conversation_thread_id);
+            $thread = $flag->quest_conversation_thread_id
+                ? QuestConversationThread::query()->find($flag->quest_conversation_thread_id)
+                : null;
+            $clarificationThread = $flag->proposal_clarification_thread_id
+                ? ProposalClarificationThread::query()->find($flag->proposal_clarification_thread_id)
+                : null;
+
             if ($thread) {
                 $counterparty = (int) $thread->client_id === $userId
                     ? (int) $thread->freelancer_id
                     : (int) $thread->client_id;
+                $counterparties[$counterparty] = ($counterparties[$counterparty] ?? 0) + 1;
+            } elseif ($clarificationThread) {
+                $counterparty = (int) $clarificationThread->client_id === $userId
+                    ? (int) $clarificationThread->freelancer_id
+                    : (int) $clarificationThread->client_id;
                 $counterparties[$counterparty] = ($counterparties[$counterparty] ?? 0) + 1;
             }
 

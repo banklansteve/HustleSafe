@@ -88,6 +88,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('freelancers:send-setup-reminders')->dailyAt('09:00');
         $schedule->command('quests:process-lifecycle')->hourly();
         $schedule->command('quests:process-engagement')->hourly();
+        $schedule->command('contracts:expire-pending-escrow')->hourly();
         $schedule->command('proposals:scan-client-ghosting')->dailyAt('07:00');
         $schedule->command('admin-reports:process-scheduled')->hourly();
         $schedule->command('admin-reports:refresh-aggregates')->hourly();

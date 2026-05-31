@@ -32,7 +32,6 @@ class QuestContentReportController extends Controller
             'details' => $request->validated()['details'] ?? null,
             'severity' => $request->validated()['severity'] ?? 'standard',
             'intake_channel' => 'in_app',
-            'evidence_url' => $request->validated()['evidence_url'] ?? null,
             'status' => 'open',
         ]);
 
@@ -71,7 +70,6 @@ class QuestContentReportController extends Controller
             'details' => $request->validated()['details'] ?? null,
             'severity' => $request->validated()['severity'] ?? 'standard',
             'intake_channel' => 'in_app',
-            'evidence_url' => $request->validated()['evidence_url'] ?? null,
             'status' => 'open',
         ]);
 

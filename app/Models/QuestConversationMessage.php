@@ -11,7 +11,17 @@ class QuestConversationMessage extends Model
         'quest_conversation_thread_id',
         'user_id',
         'body',
+        'body_original',
+        'is_redacted',
+        'redaction_label',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_redacted' => 'boolean',
+        ];
+    }
 
     /**
      * @return BelongsTo<QuestConversationThread, $this>

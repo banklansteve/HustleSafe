@@ -16,6 +16,7 @@ use App\Models\StaffProactiveOutreachItem;
 use App\Models\User;
 use App\Models\UserVerification;
 use App\Services\TrustRisk\UserRiskMonitoringService;
+use App\Services\Verification\VerificationStaffReviewPolicy;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -68,7 +69,7 @@ class StaffOperationsDashboardService
             $this->tile('quest_review', 'Quests needing review', Quest::query()->whereIn('status', [QuestStatus::PendingReview->value, QuestStatus::Open->value])->count(), 'Open or review-stage Quests the operations team can inspect.', route('operations.quests.index'), 'primary'),
             $this->tile('proposals_flagged', 'Proposals flagged today', $this->flaggedProposalsToday(), 'Proposal moderation activity requiring staff triage.', route('operations.proposals.index', ['quick' => 'flagged_today']), 'orange'),
             $this->tile('disputes', 'Active disputes', QuestDispute::query()->whereIn('status', $this->openDisputeStatuses())->count(), 'Open mediation and ruling queue.', route('operations.disputes.index'), 'rose'),
-            $this->tile('kyc', 'Pending verifications', UserVerification::query()->whereIn('status', ['pending', 'in_review', 'flagged'])->count(), 'KYC, BVN, NIN, utility, identity, and credential reviews.', route('operations.verifications.index'), 'emerald'),
+            $this->tile('kyc', 'Pending verifications', $this->staffPendingVerificationCount(), 'Identity, NIN, address, and other staff-reviewable KYC submissions.', route('operations.verifications.index'), 'emerald'),
             $this->tile('users_flagged', 'Users flagged', $this->flaggedUsers(), 'Accounts with bans, suspensions, restrictions, or active concerns.', route('operations.users.index', ['quick' => 'flagged']), 'slate'),
             $this->tile('risk_queue', 'Risk queue', app(UserRiskMonitoringService::class)->queueCount(), 'Users above the monitoring threshold with live composite risk scores.', route('operations.trust.index', ['tab' => 'queue']), 'rose'),
             $this->tile('proactive_outreach', 'Proactive outreach', $this->proactiveOutreachCount(), 'Retention and trust situations needing human outreach.', route('operations.outreach.index'), 'indigo'),
@@ -166,7 +167,7 @@ class StaffOperationsDashboardService
             ['label' => 'Open Support hub', 'href' => route('operations.support.index'), 'description' => 'Tickets, quest-thread chats, disputes, and user context.'],
             ['label' => 'Open CS Inbox', 'href' => route('operations.communications.index'), 'description' => 'Legacy communications and enquiry threads.'],
             ['label' => 'Trust & risk monitoring', 'href' => route('operations.trust.index'), 'description' => 'Risk queue, watchlist feed, and fraud network investigation.'],
-            ['label' => 'Conversation monitoring', 'href' => route('operations.conversation-monitoring.index'), 'description' => 'Review automatically flagged quest thread messages.'],
+            ['label' => 'Conversation monitoring', 'href' => route('operations.conversation-monitoring.index'), 'description' => 'Flagged quest & focused Q&A messages — warn, suspend, or escalate.'],
         ];
     }
 
@@ -251,6 +252,14 @@ class StaffOperationsDashboardService
             ->where(function ($q): void {
                 $q->whereNull('snoozed_until')->orWhere('snoozed_until', '<=', now());
             })
+            ->count();
+    }
+
+    private function staffPendingVerificationCount(): int
+    {
+        return app(VerificationStaffReviewPolicy::class)
+            ->staffQueueQuery(UserVerification::query())
+            ->whereIn('status', ['pending', 'in_review', 'unverified'])
             ->count();
     }
 

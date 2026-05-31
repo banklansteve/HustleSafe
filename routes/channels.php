@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ProposalClarificationThread;
 use App\Models\Quest;
 use App\Models\QuestConversationThread;
 use App\Models\StaffTeamChatRoom;
@@ -25,6 +26,20 @@ Broadcast::channel('quest-threads.{threadId}', function ($user, string $threadId
     }
 
     $thread = QuestConversationThread::query()->find($threadId);
+    if ($thread === null) {
+        return false;
+    }
+
+    return (int) $user->id === (int) $thread->client_id
+        || (int) $user->id === (int) $thread->freelancer_id;
+});
+
+Broadcast::channel('proposal-clarifications.{threadId}', function ($user, string $threadId) {
+    if ($user === null) {
+        return false;
+    }
+
+    $thread = ProposalClarificationThread::query()->find($threadId);
     if ($thread === null) {
         return false;
     }

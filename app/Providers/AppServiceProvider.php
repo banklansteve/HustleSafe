@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Listeners\BroadcastUserDatabaseNotification;
 use App\Listeners\RecordUserLogin;
 use App\Models\Portfolio;
 use App\Models\ModerationCase;
@@ -28,6 +29,7 @@ use App\Services\TrustScoreOrchestrator;
 use App\Services\Verification\VerificationEngineService;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Verified;
+use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -77,6 +79,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerTrustRiskModelHooks();
 
         Event::listen(Login::class, RecordUserLogin::class);
+        Event::listen(NotificationSent::class, BroadcastUserDatabaseNotification::class);
 
         Event::listen(Verified::class, function (Verified $event): void {
             $userId = $event->user->getKey();

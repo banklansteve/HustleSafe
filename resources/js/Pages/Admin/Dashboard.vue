@@ -7,6 +7,35 @@
 
         <PlatformFinancialHealthPanel v-if="isSuperAdmin && platform_financial_health" :initial="platform_financial_health" />
 
+        <AdminPanel v-if="isSuperAdmin && journey_survey_panel" eyebrow="Experience" title="Survey insights">
+            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div class="rounded-2xl border border-primary-100 bg-primary-50/50 p-4">
+                    <p class="text-xs font-bold uppercase text-primary-700">Submitted</p>
+                    <p class="mt-1 text-2xl font-black text-slate-900">{{ journey_survey_panel.summary.total_submitted }}</p>
+                </div>
+                <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                    <p class="text-xs font-bold uppercase text-slate-500">In progress</p>
+                    <p class="mt-1 text-2xl font-black text-slate-900">{{ journey_survey_panel.summary.started_not_finished }}</p>
+                </div>
+                <div class="rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
+                    <p class="text-xs font-bold uppercase text-amber-800">Dual low quests</p>
+                    <p class="mt-1 text-2xl font-black text-slate-900">{{ journey_survey_panel.dual_low_quests.length }}</p>
+                </div>
+                <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                    <p class="text-xs font-bold uppercase text-slate-500">Not-selected FL</p>
+                    <p class="mt-1 text-2xl font-black text-slate-900">{{ journey_survey_panel.summary.freelancer_rejected }}</p>
+                </div>
+            </div>
+            <Link
+                :href="route('admin.journey-surveys.insights')"
+                prefetch="false"
+                class="mt-4 inline-flex rounded-2xl border border-primary-100 bg-white px-4 py-3 text-sm font-black text-primary-900 transition hover:border-primary-200"
+                :class="shell.card"
+            >
+                Open full Survey Insights panel
+            </Link>
+        </AdminPanel>
+
         <AdminPanel v-if="isSuperAdmin" eyebrow="Growth" title="User lifecycle">
             <Link
                 :href="route('admin.lifecycle-analytics.index')"
@@ -169,6 +198,7 @@ const props = defineProps({
     live_activity: { type: Object, default: null },
     platform_health: { type: Object, default: null },
     platform_financial_health: { type: Object, default: null },
+    journey_survey_panel: { type: Object, default: null },
 });
 
 const { shell } = useInjectedAdminTheme();

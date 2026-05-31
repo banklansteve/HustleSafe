@@ -59,6 +59,18 @@ class NotificationReadController extends Controller
             }
         }
 
+        if (in_array($data['kind'] ?? '', ['proposal_clarification_question', 'proposal_clarification_answer'], true)) {
+            $qid = (int) ($data['quest_id'] ?? 0);
+            $oid = (int) ($data['offer_id'] ?? 0);
+            if ($qid > 0 && $oid > 0) {
+                $inbox->markProposalClarificationForOffer($user, $qid, $oid);
+            }
+        }
+
+        if (($data['kind'] ?? '') === 'conversation_policy_warning') {
+            $inbox->markConversationPolicyWarnings($user);
+        }
+
         $target = $this->resolveTargetUrl($notification->data);
 
         if ($request->expectsJson()) {
@@ -73,6 +85,12 @@ class NotificationReadController extends Controller
     protected function resolveTargetUrl(mixed $data): string
     {
         $href = is_array($data) ? ($data['href'] ?? null) : null;
+        if ((! is_string($href) || $href === '') && is_array($data) && ! empty($data['action_url'])) {
+            $parts = parse_url((string) $data['action_url']);
+            if (is_array($parts) && isset($parts['path'])) {
+                $href = $parts['path'].(isset($parts['query']) ? '?'.$parts['query'] : '');
+            }
+        }
         if (is_string($href) && $href !== '') {
             if (str_starts_with($href, '/')) {
                 return $href;

@@ -106,8 +106,8 @@ class StaffResponseTemplateService
         $user = $item->targetUser;
 
         return [
-            'name' => $user?->name ?? 'there',
-            'first_name' => Str::before($user?->name ?? 'there', ' '),
+            'name' => $user?->first_name ?: $user?->name ?: 'there',
+            'first_name' => $user?->first_name ?: Str::before($user?->name ?? 'there', ' ') ?: 'there',
             'email' => $user?->email ?? '',
             'quest_title' => $item->quest?->title ?? ($context['quest_title'] ?? 'your quest'),
             'quest_reference' => $item->quest?->reference_code ?? ($context['quest_reference'] ?? ''),

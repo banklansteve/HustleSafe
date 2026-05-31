@@ -5,13 +5,14 @@ namespace App\Http\Controllers;
 use App\Events\QuestConversationMessageSent;
 use App\Events\QuestConversationTyping;
 use App\Http\Requests\Quests\StoreQuestConversationMessageRequest;
-use App\Jobs\ScanConversationMessageJob;
 use App\Models\Quest;
 use App\Models\QuestConversationMessage;
 use App\Models\QuestConversationThread;
 use App\Models\QuestOffer;
 use App\Models\User;
 use App\Notifications\QuestThreadMessageNotification;
+use App\Services\ConversationMonitoring\ConversationMessageRedactionService;
+use App\Services\ConversationMonitoring\ConversationMonitoringService;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\UserNotificationInboxService;
 use App\Support\MessagingViewPresence;
@@ -158,7 +159,8 @@ class QuestConversationController extends Controller
             'user_id' => $user->id,
             'body' => $request->validated()['body'],
         ]);
-        ScanConversationMessageJob::dispatch((int) $message->id)->afterResponse();
+
+        app(ConversationMonitoringService::class)->processMessage($message->fresh());
 
         $thread->increment('messages_count');
         $thread->forceFill(['last_message_at' => now()])->save();
@@ -342,10 +344,15 @@ class QuestConversationController extends Controller
     protected function messagePayload(QuestConversationMessage $m, User $viewer): array
     {
         $u = $m->user;
+        $redaction = app(ConversationMessageRedactionService::class)->publicMessagePayload(
+            (string) $m->body,
+            (bool) $m->is_redacted,
+            $m->redaction_label,
+        );
 
         return [
             'id' => $m->id,
-            'body' => $m->body,
+            ...$redaction,
             'created_at' => $m->created_at?->timezone('Africa/Lagos')->toIso8601String(),
             'sender' => $this->messageSenderPayload($u, $viewer),
         ];
@@ -357,10 +364,15 @@ class QuestConversationController extends Controller
     protected function messageBroadcastPayload(QuestConversationMessage $m): array
     {
         $u = $m->user;
+        $redaction = app(ConversationMessageRedactionService::class)->publicMessagePayload(
+            (string) $m->body,
+            (bool) $m->is_redacted,
+            $m->redaction_label,
+        );
 
         return [
             'id' => $m->id,
-            'body' => $m->body,
+            ...$redaction,
             'created_at' => $m->created_at?->timezone('Africa/Lagos')->toIso8601String(),
             'sender' => $this->messageSenderPayload($u, null),
         ];

@@ -4,6 +4,8 @@ namespace App\Services\ConversationMonitoring;
 
 use App\Models\ConversationMessageFlag;
 use App\Models\ConversationThreadReview;
+use App\Models\ProposalClarificationMessage;
+use App\Models\ProposalClarificationThread;
 use App\Models\QuestConversationMessage;
 use App\Models\QuestOffer;
 use Illuminate\Support\Facades\Schema;
@@ -13,6 +15,7 @@ class ConversationMonitoringService
     public function __construct(
         private readonly ConversationMonitoringScanner $scanner,
         private readonly ConversationHealthScoreService $healthScores,
+        private readonly ConversationMessageRedactionService $redaction,
     ) {}
 
     public function processMessage(QuestConversationMessage $message): void
@@ -57,17 +60,62 @@ class ConversationMonitoringService
             ]);
         }
 
+        $this->redaction->applyToConversationMessage($message, $hits);
+
         $categories = collect($hits)->map(fn ($h) => $h['category']->value)->unique()->values()->all();
-        $this->syncThreadReview($message, $categories);
+        $this->syncConversationThreadReview($message->quest_conversation_thread_id, $quest?->id, $categories);
         $this->healthScores->recalculateForUser((int) $message->user_id);
+    }
+
+    public function processClarificationMessage(ProposalClarificationMessage $message): void
+    {
+        if (! Schema::hasTable('conversation_message_flags')) {
+            return;
+        }
+
+        $message->loadMissing('thread.quest', 'thread.offer');
+        $body = trim((string) $message->body);
+        if ($body === '') {
+            return;
+        }
+
+        $hits = $this->scanner->scan($body);
+        if ($hits === []) {
+            return;
+        }
+
+        $thread = $message->thread;
+        if (! $thread) {
+            return;
+        }
+
+        foreach ($hits as $hit) {
+            ConversationMessageFlag::query()->create([
+                'proposal_clarification_thread_id' => $thread->id,
+                'proposal_clarification_message_id' => $message->id,
+                'sender_user_id' => $message->author_user_id,
+                'quest_id' => $thread->quest_id,
+                'quest_offer_id' => $thread->quest_offer_id,
+                'trigger_category' => $hit['category']->value,
+                'matched_pattern_redacted' => $hit['pattern_redacted'],
+                'confidence' => $hit['confidence'],
+                'status' => 'pending',
+                'flagged_at' => now(),
+            ]);
+        }
+
+        $this->redaction->applyToClarificationMessage($message, $hits);
+
+        $categories = collect($hits)->map(fn ($h) => $h['category']->value)->unique()->values()->all();
+        $this->syncClarificationThreadReview($thread, $categories);
+        $this->healthScores->recalculateForUser((int) $message->author_user_id);
     }
 
     /**
      * @param  list<string>  $categories
      */
-    private function syncThreadReview(QuestConversationMessage $message, array $categories): void
+    private function syncConversationThreadReview(int $threadId, ?int $questId, array $categories): void
     {
-        $threadId = (int) $message->quest_conversation_thread_id;
         $pendingCount = ConversationMessageFlag::query()
             ->where('quest_conversation_thread_id', $threadId)
             ->where('status', 'pending')
@@ -77,6 +125,43 @@ class ConversationMonitoringService
             'quest_conversation_thread_id' => $threadId,
         ]);
 
+        $existed = $review->exists;
+        $this->fillThreadReview($review, $questId, $categories, $pendingCount);
+        $review->save();
+
+        app(ConversationMonitoringAssignmentService::class)->afterReviewSynced($review, $existed);
+    }
+
+    /**
+     * @param  list<string>  $categories
+     */
+    private function syncClarificationThreadReview(ProposalClarificationThread $thread, array $categories): void
+    {
+        $pendingCount = ConversationMessageFlag::query()
+            ->where('proposal_clarification_thread_id', $thread->id)
+            ->where('status', 'pending')
+            ->count();
+
+        $review = ConversationThreadReview::query()->firstOrNew([
+            'proposal_clarification_thread_id' => $thread->id,
+        ]);
+
+        $existed = $review->exists;
+        $this->fillThreadReview($review, $thread->quest_id, $categories, $pendingCount);
+        $review->save();
+
+        app(ConversationMonitoringAssignmentService::class)->afterReviewSynced($review, $existed);
+    }
+
+    /**
+     * @param  list<string>  $categories
+     */
+    private function fillThreadReview(
+        ConversationThreadReview $review,
+        ?int $questId,
+        array $categories,
+        int $pendingCount,
+    ): void {
         if ($review->exists && in_array($review->status, ['dismissed', 'resolved'], true)) {
             $review->status = 'pending';
         } elseif (! $review->exists) {
@@ -91,13 +176,12 @@ class ConversationMonitoringService
             : 'normal';
 
         $review->fill([
-            'quest_id' => $message->thread?->quest_id,
+            'quest_id' => $questId ?? $review->quest_id,
             'priority' => $priority,
             'trigger_categories' => $mergedCategories,
             'flag_count' => $pendingCount,
             'first_flagged_at' => $review->first_flagged_at ?? now(),
             'last_flagged_at' => now(),
         ]);
-        $review->save();
     }
 }

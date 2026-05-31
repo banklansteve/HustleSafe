@@ -7,6 +7,7 @@ use App\Models\Quest;
 use App\Models\QuestNudgeLog;
 use App\Models\User;
 use App\Notifications\QuestEngagementNudgeNotification;
+use App\Services\Proposals\ProposalShortlistService;
 use App\Services\QuestEngagementLifecycleService;
 use Illuminate\Support\Facades\DB;
 
@@ -25,11 +26,13 @@ class QuestAutoNudgeService
             'proposals_no_client_login' => 0,
             'awarded_no_escrow' => 0,
             'delivery_pending_client_action' => 0,
+            'shortlist_ready_no_award' => 0,
         ];
 
         $this->processProposalsNoClientLogin($sent);
         $this->processAwardedNoEscrow($sent);
         $this->processDeliveryPendingClientAction($sent);
+        $this->processShortlistReadyNoAward($sent);
 
         return $sent;
     }
@@ -170,6 +173,54 @@ class QuestAutoNudgeService
                         __('Review delivery'),
                     )) {
                         $sent['delivery_pending_client_action']++;
+                    }
+                }
+            });
+    }
+
+    /**
+     * @param  array<string, int>  $sent
+     */
+    private function processShortlistReadyNoAward(array &$sent): void
+    {
+        $shortlists = app(ProposalShortlistService::class);
+        $graceDays = $shortlists->awardNudgeGraceDays();
+        $cutoff = now()->subDays($graceDays);
+
+        Quest::query()
+            ->where('status', QuestStatus::Open)
+            ->whereNull('accepted_quest_offer_id')
+            ->whereNull('pending_award_offer_id')
+            ->whereNotNull('listing_expires_at')
+            ->where('listing_expires_at', '<=', $cutoff)
+            ->whereHas('offers', fn ($q) => $q->where('status', 'shortlisted'))
+            ->with('client')
+            ->chunkById(50, function ($quests) use (&$sent, $shortlists): void {
+                foreach ($quests as $quest) {
+                    $client = $quest->client;
+                    if (! $client) {
+                        continue;
+                    }
+
+                    $shortlistCount = $shortlists->countForQuest($quest);
+
+                    if ($this->sendNudge(
+                        $quest,
+                        $client,
+                        'shortlist_ready_no_award',
+                        __('Your shortlist for “:title” is ready', ['title' => $quest->title]),
+                        [
+                            trans_choice(
+                                'You have :count freelancer waiting on your shortlist.|You have :count freelancers waiting on your shortlist.',
+                                $shortlistCount,
+                                ['count' => $shortlistCount],
+                            ),
+                            __('Award the quest to get started — your shortlist is already curated.'),
+                        ],
+                        route('quests.client.proposals.index', $quest, absolute: true).'?tab=shortlist',
+                        __('Review shortlist'),
+                    )) {
+                        $sent['shortlist_ready_no_award']++;
                     }
                 }
             });

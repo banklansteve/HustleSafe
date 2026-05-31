@@ -10,6 +10,7 @@ use App\Models\UserVerification;
 use App\Services\AdminActivityLogger;
 use App\Services\Verification\UserVerificationDecisionService;
 use App\Services\Verification\UserVerificationPresentationService;
+use App\Services\Verification\VerificationStaffReviewPolicy;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -23,6 +24,7 @@ class StaffVerificationService
         private readonly UserVerificationDecisionService $decisions,
         private readonly UserVerificationPresentationService $presentation,
         private readonly AdminActivityLogger $logger,
+        private readonly VerificationStaffReviewPolicy $reviewPolicy,
     ) {}
 
     public function paginatedListing(Request $request, User $staff): LengthAwarePaginator
@@ -76,7 +78,7 @@ class StaffVerificationService
         return $query
             ->paginate($perPage)
             ->withQueryString()
-            ->through(fn (UserVerification $verification) => $this->row($verification));
+            ->through(fn (UserVerification $verification) => $this->row($verification, $staff));
     }
 
     public function assignToStaff(UserVerification $verification, User $staff): UserVerification
@@ -113,13 +115,14 @@ class StaffVerificationService
         }
 
         $presentation = $this->presentation->forReview($verification, 'operations.api.verifications.document');
-        $presentation['staff_can_decide'] = $this->staffCanDecide($verification);
+        $presentation['staff_can_decide'] = $this->staffCanDecide($verification, $staff);
+        $presentation['requires_super_admin_review'] = $this->reviewPolicy->requiresSuperAdminReview($verification);
         $presentation['is_escalated_to_super_admin'] = $this->isEscalatedToSuperAdmin($verification);
 
         return [
-            'verification' => $this->row($verification, true),
+            'verification' => $this->row($verification, $staff, true),
             'presentation' => $presentation,
-            'allowed_actions' => $this->allowedActions($verification),
+            'allowed_actions' => $this->allowedActions($verification, $staff),
             'decision_reasons' => app(\App\Services\Verification\VerificationDecisionReasonService::class)->options(),
         ];
     }
@@ -138,9 +141,11 @@ class StaffVerificationService
             $verification = $this->assignToStaff($verification, $staff);
         }
 
-        if (! $this->staffCanDecide($verification)) {
+        if (! $this->staffCanDecide($verification, $staff)) {
             throw ValidationException::withMessages([
-                'action' => __('This verification is with Super Admin. You can review it again once it is returned to the queue.'),
+                'action' => $this->reviewPolicy->requiresSuperAdminReview($verification)
+                    ? __('This verification tier is reviewed by Super Admin only.')
+                    : __('This verification is with Super Admin. You can review it again once it is returned to the queue.'),
             ]);
         }
 
@@ -197,7 +202,7 @@ class StaffVerificationService
         ];
     }
 
-    public function staffCanDecide(UserVerification $verification): bool
+    public function staffCanDecide(UserVerification $verification, User $staff): bool
     {
         $status = $verification->status?->value ?? (string) $verification->status;
 
@@ -209,7 +214,11 @@ class StaffVerificationService
             return false;
         }
 
-        return ! $this->isEscalatedToSuperAdmin($verification);
+        if ($this->isEscalatedToSuperAdmin($verification)) {
+            return false;
+        }
+
+        return $this->reviewPolicy->staffCanReview($verification, $staff);
     }
 
     public function isEscalatedToSuperAdmin(UserVerification $verification): bool
@@ -226,9 +235,9 @@ class StaffVerificationService
     /**
      * @return list<string>
      */
-    private function allowedActions(UserVerification $verification): array
+    private function allowedActions(UserVerification $verification, User $staff): array
     {
-        return $this->staffCanDecide($verification)
+        return $this->staffCanDecide($verification, $staff)
             ? ['approve', 'reject', 'request_corrections', 'escalate']
             : [];
     }
@@ -261,6 +270,8 @@ class StaffVerificationService
         }
 
         if ($tab === 'pending_queue') {
+            app(VerificationStaffReviewPolicy::class)->staffQueueQuery($query, $staff);
+
             return;
         }
 
@@ -292,16 +303,15 @@ class StaffVerificationService
     private function applyStatusFilter(Builder $query, string $status, string $tab): void
     {
         if ($tab === 'pending_queue') {
-            $query->whereIn('status', [
-                UserVerificationStatus::Pending->value,
-                UserVerificationStatus::InReview->value,
-                UserVerificationStatus::Flagged->value,
-                UserVerificationStatus::Unverified->value,
-            ]);
+            $statuses = $status !== ''
+                ? [$status]
+                : [
+                    UserVerificationStatus::Pending->value,
+                    UserVerificationStatus::InReview->value,
+                    UserVerificationStatus::Unverified->value,
+                ];
 
-            if ($status !== '') {
-                $query->where('status', $status);
-            }
+            $query->whereIn('status', $statuses);
 
             return;
         }
@@ -424,7 +434,7 @@ class StaffVerificationService
             ]);
     }
 
-    private function row(UserVerification $verification, bool $expanded = false): array
+    private function row(UserVerification $verification, User $staff, bool $expanded = false): array
     {
         $verification->loadMissing([
             'user:id,name,email,avatar_url,current_verification_level,verification_tier,created_at',
@@ -441,7 +451,8 @@ class StaffVerificationService
             'status_label' => $review['status_label'],
             'is_escalated' => $review['is_escalated'],
             'is_escalated_to_super_admin' => $this->isEscalatedToSuperAdmin($verification),
-            'staff_can_decide' => $this->staffCanDecide($verification),
+            'requires_super_admin_review' => $this->reviewPolicy->requiresSuperAdminReview($verification),
+            'staff_can_decide' => $this->staffCanDecide($verification, $staff),
             'submitted_at' => $verification->submitted_at?->toIso8601String(),
             'submitted_at_label' => \App\Support\FormatsHumanDateTime::format($verification->submitted_at, config('app.timezone')),
             'staff_assigned_at' => $verification->staff_assigned_at?->toIso8601String(),

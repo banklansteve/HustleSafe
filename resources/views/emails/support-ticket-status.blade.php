@@ -11,8 +11,8 @@
             <td align="center">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #e2e8f0;border-radius:24px;overflow:hidden;box-shadow:0 24px 60px rgba(15,23,42,0.10);">
                     <tr>
-                        <td style="padding:30px 34px;background:linear-gradient(135deg,#0f766e,#0f172a);">
-                            <p style="margin:0 0 8px;font-size:11px;font-weight:900;letter-spacing:.28em;text-transform:uppercase;color:#ccfbf1;">HustleSafe Support</p>
+                        <td style="padding:30px 34px;background:linear-gradient(135deg,#0f766e,#14b8a6);text-align:center;">
+                            <img src="{{ \App\Support\BrandedMail::logoUrl() }}" alt="{{ \App\Support\BrandedMail::brandName() }}" style="max-width:200px;height:auto;margin:0 auto 12px;display:block;">
                             <h1 style="margin:0;font-size:24px;line-height:1.25;color:white;font-weight:900;">
                                 @if(in_array($event, ['closed', 'resolved'], true))
                                     Your support request is resolved

@@ -9,7 +9,12 @@
             {{ decisionBanner.message }}
         </div>
 
-        <section v-if="presentation?.is_escalated" class="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-950">
+        <section v-if="presentation?.requires_super_admin_review && !presentation?.staff_can_decide" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950">
+            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-800">Super Admin review</p>
+            <p class="mt-2 text-xs leading-relaxed">This is a final-tier verification for this account type. It is routed to Super Admin only — you can view the submission but cannot approve or reject it here.</p>
+        </section>
+
+        <section v-else-if="presentation?.is_escalated" class="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-950">
             <p class="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">{{ presentation.escalation?.label || 'Escalated to Super Admin' }}</p>
             <p v-if="presentation.escalation?.reason" class="mt-2 text-xs leading-relaxed">{{ presentation.escalation.reason }}</p>
         </section>

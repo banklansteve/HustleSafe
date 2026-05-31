@@ -234,7 +234,7 @@ final class UserVerificationCatalogService
 
         if (! $liveApproved) {
             $slot = $this->slotFor($user, 'live_presence', $verifications, true);
-            if ($slot['status'] !== 'hidden') {
+            if ($slot['status'] !== 'hidden' && ! ($slot['status'] === 'locked' && $daysRemaining > 0)) {
                 $content = $this->engine->stageContentFor($user, 5);
                 $info = $content['info_bar'] ?? $this->freelancerUnlockHint($user, 5, $trust);
 

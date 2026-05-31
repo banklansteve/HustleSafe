@@ -95,49 +95,17 @@
                 </ul>
             </div>
 
-            <div id="notifications" class="scroll-mt-28 rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8">
-                <h3 class="font-display text-lg font-bold text-slate-900 sm:text-xl">
-                    Notifications
-                </h3>
-                <p class="mt-2 text-sm font-semibold text-slate-600">
-                    System notices — expand with queues & alerts later.
-                </p>
-                <ul class="mt-6 space-y-4">
-                    <li
-                        v-for="n in notifications"
-                        :key="n.id"
-                        class="rounded-2xl border px-0 py-0"
-                        :class="n.read ? 'border-slate-100 bg-slate-50/60' : 'border-secondary-200 bg-secondary-50/70'"
-                    >
-                        <button
-                            type="button"
-                            class="block w-full rounded-2xl px-4 py-4 text-left transition hover:bg-white/80 disabled:cursor-wait disabled:opacity-70"
-                            :disabled="notifBusyId === n.id"
-                            @click="openDashboardNotification(n)"
-                        >
-                            <span class="inline-flex items-center gap-2">
-                                <ReLoader4Line
-                                    v-if="notifBusyId === n.id"
-                                    class="h-4 w-4 shrink-0 animate-spin text-primary-600"
-                                    aria-hidden="true"
-                                />
-                                <p class="text-sm font-bold uppercase tracking-wide text-primary-800">
-                                    {{ n.label }}
-                                </p>
-                            </span>
-                            <p class="mt-2 text-base font-semibold text-slate-900">
-                                {{ n.line || summarizeNotification(n.data) }}
-                            </p>
-                            <p class="mt-2 text-sm font-medium text-slate-500">
-                                {{ formatWhen(n.created_at) }}
-                            </p>
-                        </button>
-                    </li>
-                    <li v-if="notifications.length === 0" class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-base font-semibold text-slate-600">
-                        No operational pings yet — hook queues & risk alerts here later.
-                    </li>
-                </ul>
-            </div>
+            <DashboardNotificationsPanel
+                :notifications="notifications"
+                subtitle="System notices and operational updates."
+                empty-message="No operational pings yet."
+                panel-class="rounded-[1.75rem] border border-slate-100 sm:p-8"
+                title-class="sm:text-xl"
+                item-button-class="rounded-2xl px-4 py-4"
+                label-class="text-sm"
+                line-class="text-base"
+                when-class="text-sm"
+            />
         </section>
 
         <section class="mt-12 rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8">
@@ -168,17 +136,10 @@
 </template>
 
 <script setup>
+import DashboardNotificationsPanel from '@/Components/Home/DashboardNotificationsPanel.vue';
 import StatCard from '@/Components/Home/StatCard.vue';
 import AppShell from '@/Layouts/AppShell.vue';
-import { useNotificationVisit } from '@/composables/useNotificationVisit';
-import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { Head, Link } from '@inertiajs/vue3';
-
-const { busyId: notifBusyId, visit: visitNotification } = useNotificationVisit();
-
-function openDashboardNotification(n) {
-    void visitNotification(n.id);
-}
 
 const props = defineProps({
     copy: {
@@ -231,28 +192,5 @@ function formatWhen(iso) {
     } catch {
         return iso;
     }
-}
-
-function summarizeNotification(data) {
-    if (!data || typeof data !== 'object') {
-        return 'Update';
-    }
-    if (typeof data.quest_title === 'string' && data.quest_title) {
-        return data.quest_title;
-    }
-    if (typeof data.preview === 'string' && data.preview) {
-        return data.preview;
-    }
-    if (typeof data.message === 'string') {
-        return data.message;
-    }
-    if (typeof data.body === 'string') {
-        return data.body;
-    }
-    if (typeof data.title === 'string') {
-        return data.title;
-    }
-
-    return 'Update';
 }
 </script>

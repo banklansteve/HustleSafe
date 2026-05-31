@@ -10,6 +10,7 @@ use App\Services\Operations\StaffNotificationCentreService;
 use App\Models\AdminRiskRule;
 use App\Models\AdminTask;
 use App\Models\Quest;
+use App\Models\QuestContract;
 use App\Models\QuestDispute;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -65,7 +66,18 @@ class AdminCommandCentreService
             ->get(['reference', 'description'])
             ->map(fn (AdminFinancialLedgerEntry $entry) => ['type' => 'Transaction', 'label' => $entry->reference, 'description' => $entry->description, 'href' => route('admin.financial.index', ['q' => $entry->reference])]);
 
-        return ['actions' => $actions, 'results' => $users->concat($quests)->concat($disputes)->concat($ledger)->values()];
+        $contracts = QuestContract::query()
+            ->where('reference_code', 'like', "%{$q}%")
+            ->limit(4)
+            ->get(['reference_code', 'status'])
+            ->map(fn (QuestContract $contract) => [
+                'type' => 'Contract',
+                'label' => $contract->reference_code,
+                'description' => $contract->status->label(),
+                'href' => route('admin.contracts.view', $contract->reference_code),
+            ]);
+
+        return ['actions' => $actions, 'results' => $users->concat($quests)->concat($disputes)->concat($ledger)->concat($contracts)->values()];
     }
 
     public function notificationPayload(?User $admin = null): array

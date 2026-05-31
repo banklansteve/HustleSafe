@@ -95,6 +95,11 @@ class Quest extends Model
         'completed_on_time',
         'dispute_opened',
         'closure_type',
+        'listing_extension_count',
+        'listing_extended_at',
+        'listing_extension_reason',
+        'listing_expiry_warning_sent_at',
+        'reposted_from_quest_id',
     ];
 
     protected static function booted(): void
@@ -205,6 +210,8 @@ class Quest extends Model
             'scheduled_start_date' => 'date',
             'estimated_delivery_date' => 'date',
             'listing_expires_at' => 'datetime',
+            'listing_extended_at' => 'datetime',
+            'listing_expiry_warning_sent_at' => 'datetime',
             'client_edit_until' => 'datetime',
             'admin_status_changed_at' => 'datetime',
             'terms_accepted_at' => 'datetime',
@@ -283,6 +290,14 @@ class Quest extends Model
     }
 
     /**
+     * @return HasMany<QuestListingExtensionLog, $this>
+     */
+    public function listingExtensionLogs(): HasMany
+    {
+        return $this->hasMany(QuestListingExtensionLog::class)->latest('id');
+    }
+
+    /**
      * @return HasMany<QuestConversationThread, $this>
      */
     public function conversationThreads(): HasMany
@@ -352,6 +367,14 @@ class Quest extends Model
     public function paymentEscrow(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(PaymentEscrow::class);
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<\App\Models\QuestContract, $this>
+     */
+    public function contract(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(\App\Models\QuestContract::class);
     }
 
     /**

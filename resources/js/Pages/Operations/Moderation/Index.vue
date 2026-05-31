@@ -1,5 +1,19 @@
 <template>
     <component :is="shellComponent" title="Moderation centre" subtitle="Tabbed quest and proposal queues with slide-in review panels. Search and sort happen on the loaded queue without extra page reloads.">
+        <Link
+            v-if="route_prefix !== 'admin' && conversation_monitoring_summary?.moderation_queue"
+            :href="route('operations.conversation-monitoring.index')"
+            class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-gradient-to-r from-rose-50 via-white to-amber-50/60 px-4 py-3 ring-1 ring-rose-100"
+        >
+            <div>
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-rose-800">Conversation monitoring</p>
+                <p class="mt-1 text-sm font-semibold text-slate-800">
+                    {{ conversation_monitoring_summary.moderation_queue }} flagged conversation{{ conversation_monitoring_summary.moderation_queue === 1 ? '' : 's' }} awaiting review
+                </p>
+            </div>
+            <span class="rounded-full bg-rose-600 px-4 py-2 text-xs font-black uppercase text-white">Open queue</span>
+        </Link>
+
         <div class="mb-4 flex flex-wrap gap-2">
             <button
                 v-for="mod in modules"
@@ -386,6 +400,7 @@ import QuestRichDescriptionEditor from '@/Components/Quests/QuestRichDescription
 import { useClientQueue } from '@/composables/useClientQueue';
 import { useOperationsToast } from '@/composables/useOperationsToast';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { Link } from '@inertiajs/vue3';
 
 const { toast } = useOperationsToast();
 
@@ -396,6 +411,7 @@ const props = defineProps({
     capabilities: { type: Object, required: true },
     route_prefix: { type: String, default: 'operations' },
     use_admin_shell: { type: Boolean, default: false },
+    conversation_monitoring_summary: { type: Object, default: () => ({}) },
 });
 
 const shellComponent = computed(() => (props.use_admin_shell ? AdminShell : OperationsShell));

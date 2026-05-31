@@ -3,13 +3,14 @@
 namespace App\Notifications;
 
 use App\Models\QuestOffer;
+use App\Notifications\Concerns\SendsBrandedMail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class ProposalDeclinedFreelancerNotification extends Notification
 {
-    use Queueable;
+    use Queueable, SendsBrandedMail;
 
     public function __construct(
         public QuestOffer $offer,
@@ -27,13 +28,17 @@ class ProposalDeclinedFreelancerNotification extends Notification
     {
         $this->offer->loadMissing('quest');
         $quest = $this->offer->quest;
-        $first = $notifiable->first_name ?: $notifiable->name;
 
-        return (new MailMessage)
-            ->subject(__('Update on your proposal for :title', ['title' => $quest?->title ?? 'a quest']))
-            ->line(__('Hi :name,', ['name' => $first]))
-            ->line(__('The client declined this proposal. You remain free to pursue other quests on HustleSafe.'))
-            ->action(__('Browse open quests'), url('/quests/explore'));
+        return $this->brandedMail(
+            subject: __('Update on your proposal for :title', ['title' => $quest?->title ?? 'a quest']),
+            headline: __('Proposal declined'),
+            notifiable: $notifiable,
+            lines: [
+                __('The client declined this proposal. You remain free to pursue other quests on HustleSafe.'),
+            ],
+            ctaUrl: route('quests.explore', absolute: true),
+            ctaLabel: __('Browse open quests'),
+        );
     }
 
     /**

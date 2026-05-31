@@ -22,7 +22,7 @@ class OperationsVerificationsController extends Controller
         return Inertia::render('Operations/Verifications/Index', [
             'decision_reasons' => app(\App\Services\Verification\VerificationDecisionReasonService::class)->options(),
             'queue_defaults' => [
-                'tab' => 'my_assignments',
+                'tab' => 'pending_queue',
                 'range' => '30d',
                 'per_page' => (int) config('operations.verification_queue.per_page', 25),
             ],

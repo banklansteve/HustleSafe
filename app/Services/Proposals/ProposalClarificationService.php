@@ -2,7 +2,10 @@
 
 namespace App\Services\Proposals;
 
+use App\Events\ProposalClarificationMessageSent;
 use App\Models\ProposalClarificationMessage;
+use App\Services\ConversationMonitoring\ConversationMessageRedactionService;
+use App\Services\ConversationMonitoring\ConversationMonitoringService;
 use App\Models\ProposalClarificationThread;
 use App\Models\Quest;
 use App\Models\QuestOffer;
@@ -38,15 +41,21 @@ class ProposalClarificationService
      */
     public function payloadFor(QuestOffer $offer, User $viewer): array
     {
-        $offer->loadMissing(['quest', 'freelancer']);
+        $offer->loadMissing(['quest.client:id,first_name,name,avatar_url', 'freelancer:id,first_name,name,slug,avatar_url']);
         $quest = $offer->quest;
         $thread = $this->threadForOffer($offer);
-        $thread->load(['messages.author:id,first_name,name,avatar_url']);
+        $thread->load([
+            'messages' => fn ($query) => $query
+                ->orderByDesc('created_at')
+                ->with('author:id,first_name,name,avatar_url'),
+        ]);
 
         $isClient = (int) $viewer->id === (int) $quest->client_id;
         $isFreelancer = (int) $viewer->id === (int) $offer->freelancer_id;
 
         return [
+            'is_client' => $isClient,
+            'is_freelancer' => $isFreelancer,
             'thread' => [
                 'id' => $thread->id,
                 'status' => $thread->status,
@@ -56,27 +65,19 @@ class ProposalClarificationService
                     && in_array($offer->status, ['submitted', 'shortlisted'], true)
                     && $quest->status->value === 'open',
                 'can_answer' => $isFreelancer && $thread->isOpen(),
-                'messages' => $thread->messages->map(fn (ProposalClarificationMessage $m) => [
-                    'id' => $m->id,
-                    'role' => $m->role,
-                    'prompt_key' => $m->prompt_key,
-                    'prompt_category' => $m->prompt_category,
-                    'body' => $m->body,
-                    'author' => [
-                        'name' => $m->author?->first_name ?: $m->author?->name,
-                        'avatar_url' => $m->author?->avatar_url,
-                    ],
-                    'created_at' => $m->created_at?->toIso8601String(),
-                ])->values()->all(),
+                'messages' => $thread->messages->map(fn (ProposalClarificationMessage $m) => $this->formatMessage($m))->values()->all(),
             ],
             'suggested_prompts' => $isClient ? $this->prompts->suggestedPrompts($quest, $offer) : [],
             'offer' => [
                 'id' => $offer->id,
                 'status' => $offer->status,
                 'freelancer' => [
-                    'name' => $offer->freelancer?->first_name ?: $offer->freelancer?->name,
+                    'name' => $offer->freelancer?->name ?: $offer->freelancer?->first_name,
                     'slug' => $offer->freelancer?->slug,
                 ],
+            ],
+            'client' => [
+                'name' => $quest->client?->name ?: $quest->client?->first_name,
             ],
             'quest' => [
                 'title' => $quest->title,
@@ -84,6 +85,58 @@ class ProposalClarificationService
                 'status' => $quest->status->value,
             ],
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function formatMessage(ProposalClarificationMessage $message): array
+    {
+        $message->loadMissing('author:id,first_name,name,avatar_url');
+        $redaction = app(ConversationMessageRedactionService::class)->publicMessagePayload(
+            (string) $message->body,
+            (bool) $message->is_redacted,
+            $message->redaction_label,
+        );
+
+        return [
+            'id' => $message->id,
+            'role' => $message->role,
+            'prompt_key' => $message->prompt_key,
+            'prompt_category' => $message->prompt_category,
+            ...$redaction,
+            'author' => [
+                'name' => $message->author?->name ?: $message->author?->first_name,
+                'avatar_url' => $message->author?->avatar_url,
+            ],
+            'created_at' => $message->created_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function threadMetaFor(ProposalClarificationThread $thread, QuestOffer $offer, Quest $quest): array
+    {
+        $thread->refresh();
+
+        return [
+            'questions_asked' => $thread->questions_asked,
+            'can_ask' => $thread->isOpen()
+                && $thread->questions_asked < ProposalClarificationPromptService::MAX_QUESTIONS
+                && in_array($offer->status, ['submitted', 'shortlisted'], true)
+                && $quest->status->value === 'open',
+            'can_answer' => $thread->isOpen(),
+        ];
+    }
+
+    private function broadcastMessage(ProposalClarificationThread $thread, ProposalClarificationMessage $message, QuestOffer $offer): void
+    {
+        $offer->loadMissing('quest');
+        $formatted = $this->formatMessage($message);
+        $meta = $this->threadMetaFor($thread, $offer, $offer->quest);
+
+        ProposalClarificationMessageSent::dispatch($thread->id, $formatted, $meta);
     }
 
     public function askQuestion(QuestOffer $offer, User $client, string $body, ?string $promptKey = null, ?string $promptCategory = null): ProposalClarificationMessage
@@ -120,8 +173,13 @@ class ProposalClarificationService
                 'body' => $body,
             ]);
 
+            app(ConversationMonitoringService::class)->processClarificationMessage($message->fresh());
+
             $thread->increment('questions_asked');
+            $thread->refresh();
+            $message = $message->fresh();
             $offer->freelancer?->notify(new ProposalClarificationQuestionNotification($offer, $message));
+            $this->broadcastMessage($thread, $message, $offer);
 
             return $message;
         });
@@ -169,7 +227,11 @@ class ProposalClarificationService
             'body' => $body,
         ]);
 
+        app(ConversationMonitoringService::class)->processClarificationMessage($message->fresh());
+        $message = $message->fresh();
+
         $offer->quest->client?->notify(new ProposalClarificationAnswerNotification($offer, $message));
+        $this->broadcastMessage($thread, $message, $offer);
 
         return $message;
     }

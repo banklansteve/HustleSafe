@@ -61,9 +61,12 @@
                             <p class="text-[10px] font-black uppercase tracking-wide" :class="m.sender.is_me ? 'text-primary-100' : 'text-slate-500'">
                                 {{ m.sender.is_me ? 'You' : m.sender.first_name || m.sender.name }}
                             </p>
-                            <p class="mt-1 whitespace-pre-wrap leading-relaxed">
-                                {{ m.body }}
-                            </p>
+                            <RedactedMessageBody
+                                :body="m.body"
+                                :is-redacted="m.is_redacted"
+                                :redaction-label="m.redaction_label"
+                                class="mt-1"
+                            />
                             <p class="mt-1 text-[10px] font-bold opacity-70">
                                 {{ formatChatMessageTime(m.created_at) }}
                             </p>
@@ -112,6 +115,7 @@
 
 <script setup>
 import BackChevronLink from '@/Components/Ui/BackChevronLink.vue';
+import RedactedMessageBody from '@/Components/ConversationMonitoring/RedactedMessageBody.vue';
 import InputError from '@/Components/InputError.vue';
 import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
 import AppShell from '@/Layouts/AppShell.vue';
