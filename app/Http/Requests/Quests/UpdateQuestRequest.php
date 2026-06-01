@@ -26,11 +26,18 @@ class UpdateQuestRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $profiles = app(QuestFormFieldProfileService::class);
+        $quest = $this->route('quest');
+        $catId = (int) ($this->input('quest_category_id', $quest?->quest_category_id ?? 0));
+        $profile = $profiles->profileForLeafCategoryId($catId > 0 ? $catId : null);
+
+        $data = $this->all();
+
         if ($this->has('description')) {
-            $this->merge([
-                'description' => app(QuestDescriptionSanitizer::class)->clean((string) $this->input('description')),
-            ]);
+            $data['description'] = app(QuestDescriptionSanitizer::class)->clean((string) $data['description']);
         }
+
+        $this->replace($profiles->normalizeSubmittedPayload($data, $profile));
     }
 
     public function withValidator($validator): void
@@ -115,15 +122,11 @@ class UpdateQuestRequest extends FormRequest
                 Rule::exists('local_governments', 'id')->where('state_id', (int) $this->input('state_id', $quest?->state_id ?? 0)),
             ],
             'city' => ['sometimes', 'string', 'max:160'],
-            'budget_amount_minor' => ['sometimes', 'integer', 'min:10000', 'max:100000000'],
+            'budget_amount_minor' => ['sometimes', 'integer', 'min:10000', 'max:500000000'],
             'start_timing' => ['sometimes', Rule::enum(QuestStartTiming::class)],
             'scheduled_start_date' => ['nullable', 'date'],
             'estimated_completion_days' => ['sometimes', 'integer', 'min:1', 'max:365'],
             'estimated_delivery_date' => ['nullable', 'date'],
-            'site_visits_allowed' => ['sometimes', 'boolean'],
-            'site_access_level' => ['nullable', 'string', Rule::in(['ground_level_easy', 'stairs_no_lift', 'stairs_with_lift', 'ladder_or_height_work', 'narrow_or_difficult_access', 'other'])],
-            'pets_on_site' => ['sometimes', 'boolean'],
-            'pets_detail' => ['nullable', 'string', 'max:255'],
             'visibility' => ['sometimes', Rule::enum(QuestVisibility::class)],
             'freelancer_location_pref' => ['sometimes', Rule::enum(QuestFreelancerLocationPref::class)],
             'availability_need' => ['nullable', Rule::enum(QuestAvailabilityNeed::class)],

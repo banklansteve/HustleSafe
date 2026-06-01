@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('admin_activity_feed_events')) {
+            return;
+        }
+
         Schema::create('admin_activity_feed_events', function (Blueprint $table): void {
             $table->id();
             $table->uuid('uuid')->unique();

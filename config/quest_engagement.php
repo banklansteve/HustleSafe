@@ -21,20 +21,23 @@ return [
         ],
     ],
     'post_deadline' => [
-        'when' => 'After the completion anchor: emails at +24h, +48h, and +72h (catch-up friendly if a run was missed).',
+        'when' => 'After the agreed delivery anchor: client-only emails at +0h (due day), +24h, and +36h (catch-up friendly if a run was missed).',
+        'audience' => 'Client only — freelancers are not emailed on this schedule.',
         'topics' => [
-            'Align on remaining work or agree a revised plan in the quest thread.',
-            'Remind about the 72h silent-completion window and dispute option.',
+            'Due day: review reminder on the agreed delivery date.',
+            '+24h: reminder to mark complete or open a dispute.',
+            '+36h: final reminder before the auto-release window closes.',
         ],
     ],
     'auto_complete' => [
-        'when' => 'Hourly job `quests:process-lifecycle` when: quest is `in_progress`, escrow `funded`, `completed_at` and `auto_completed_at` are empty, no blocking dispute exists, and now ≥ anchor + 72 hours.',
+        'when' => 'Hourly job `quests:process-lifecycle` when: quest is `in_progress`, escrow `funded`, `completed_at` and `auto_completed_at` are empty, no blocking dispute exists, and now ≥ agreed delivery anchor + `financial.auto_release_hours` (default 72).',
         'blocking_disputes' => 'Statuses treated as blocking: open, self_resolving, escalated, awaiting_ruling.',
         'effects' => [
             'Sets `status` to completed, stamps `completed_at`, `auto_completed_at`, `closure_type` = auto_completed_silent_72h, `completed_on_time` = false.',
+            'If delivery was not acknowledged, sets `delivery_acknowledged_at` automatically before release.',
             'If the accepted proposal has `quoted_amount_minor` > 0, `paid_out_minor` is set from it; otherwise unchanged.',
         ],
-        'notifications' => 'Both parties receive `QuestAutoCompletedNotification` (mail + in-app database channel).',
+        'notifications' => 'Both parties receive `QuestAutoCompletedNotification` (mail + in-app database channel) when funds auto-release.',
     ],
     'email_logging' => 'Every engagement email is deduplicated via `quest_lifecycle_email_logs` (quest_id + email_key + recipient_user_id).',
 ];

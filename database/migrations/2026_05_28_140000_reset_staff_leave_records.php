@@ -8,10 +8,19 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (! Schema::hasTable('staff_leave_requests') && ! Schema::hasTable('staff_leave_balances')) {
+            return;
+        }
+
         Schema::disableForeignKeyConstraints();
 
-        DB::table('staff_leave_requests')->delete();
-        DB::table('staff_leave_balances')->delete();
+        if (Schema::hasTable('staff_leave_requests')) {
+            DB::table('staff_leave_requests')->delete();
+        }
+
+        if (Schema::hasTable('staff_leave_balances')) {
+            DB::table('staff_leave_balances')->delete();
+        }
 
         Schema::enableForeignKeyConstraints();
     }

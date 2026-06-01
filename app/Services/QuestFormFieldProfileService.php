@@ -154,4 +154,36 @@ class QuestFormFieldProfileService
             'leaf_slug' => null,
         ];
     }
+
+    /**
+     * Drop or null conditional wizard fields that are hidden for this category profile.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, bool|string|null>  $profile
+     * @return array<string, mixed>
+     */
+    public function normalizeSubmittedPayload(array $data, array $profile): array
+    {
+        if (empty($profile['show_site_access'])) {
+            unset($data['site_access_level'], $data['pets_on_site'], $data['pets_detail']);
+        }
+
+        if (empty($profile['show_site_visit'])) {
+            unset($data['site_visits_allowed']);
+        }
+
+        if (empty($profile['show_availability'])) {
+            $data['availability_need'] = null;
+        }
+
+        if (empty($profile['show_team_size'])) {
+            $data['team_size'] = null;
+        }
+
+        if (empty($profile['show_hourly_fields']) || ($data['project_type'] ?? null) !== 'hourly') {
+            $data['estimated_hours'] = null;
+        }
+
+        return $data;
+    }
 }

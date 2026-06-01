@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Enums\QuestStatus;
 use App\Models\Quest;
 use App\Models\QuestCategory;
+use App\Support\PlatformSettings;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -47,7 +48,7 @@ class CategoryManagementService
                 ->map(fn (QuestCategory $category) => $this->archivedPayload($category, $openCounts, $freelancerCounts))
                 ->values(),
             'defaults' => [
-                'client_fee_percent' => (float) config('escrow.client_fee_percent', config('escrow.platform_fee_percent', 5)),
+                'client_fee_percent' => PlatformSettings::platformFeePercent(),
                 'freelancer_fee_percent' => (float) config('escrow.freelancer_fee_percent', 10),
             ],
             'icons' => $this->iconLibrary(),

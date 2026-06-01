@@ -93,7 +93,7 @@ class UserVerificationDecisionService
         ], $request);
 
         if ($verification->user) {
-            $verification->user->notify(new UserVerificationDecisionNotification(
+            $verification->user->notifyNow(new UserVerificationDecisionNotification(
                 $verification->fresh(),
                 $action,
                 $reasonDisplay,

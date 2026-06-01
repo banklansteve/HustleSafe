@@ -32,10 +32,10 @@
             >
                 <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Fair resolution</p>
                 <p class="mt-2 leading-relaxed text-slate-700">
-                    Every funded quest runs on escrow and a documented dispute path if expectations diverge. Skim how disputes work before you publish —
-                    <Link :href="route('disputes.index')" class="font-black text-primary-800 underline decoration-primary-300 underline-offset-2">Disputes centre</Link>
+                    Every funded quest runs on escrow and a documented dispute path if expectations diverge. Read how it works before you publish —
+                    <Link :href="route('legal.escrow')" class="font-black text-primary-800 underline decoration-primary-300 underline-offset-2">Escrow Policy</Link>
                     ·
-                    <a href="/docs/dispute-workflow.md" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline decoration-primary-300 underline-offset-2">Workflow (Markdown)</a>
+                    <Link :href="route('legal.dispute')" class="font-black text-primary-800 underline decoration-primary-300 underline-offset-2">Dispute Policy</Link>
                     ·
                     <Link :href="route('legal.terms')" class="font-black text-primary-800 underline decoration-primary-300 underline-offset-2">Terms</Link>.
                 </p>
@@ -320,6 +320,12 @@
                                         <span>Min {{ formatNgn(minBudgetMinor) }}</span>
                                         <span>Max {{ formatNgn(effectiveMaxBudgetMinor) }}</span>
                                     </div>
+                                    <p
+                                        v-if="clampedBudgetMinor >= maxBudgetMinor"
+                                        class="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold leading-relaxed text-slate-700 ring-1 ring-slate-100"
+                                    >
+                                        Need a budget above {{ formatNgn(maxBudgetMinor) }}? Please get in touch with our team — we will help you post high-value quests safely.
+                                    </p>
                                     <p
                                         v-if="verificationLimit && verificationLimit < maxBudgetMinor"
                                         class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-black leading-relaxed text-amber-800"
@@ -679,14 +685,14 @@ import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useQuestCreateDraft } from '@/composables/useQuestCreateDraft';
-import { validateQuestCreateStep } from '@/utils/questCreateClientValidation';
+import { validateQuestCreateStep, resolveQuestCreateSubmitErrors } from '@/utils/questCreateClientValidation';
 import { htmlToPlainText } from '@/utils/htmlPlainText';
 
 const props = defineProps({
     locations: { type: Array, required: true },
     categoryTree: { type: Array, required: true },
     startTimingOptions: { type: Array, required: true },
-    maxBudgetMinor: { type: Number, default: 100_000_000 },
+    maxBudgetMinor: { type: Number, default: 500_000_000 },
     verificationLimit: { type: Number, default: null },
     minBudgetMinor: { type: Number, default: 10_000 },
     fieldProfileUrl: { type: String, required: true },
@@ -1254,7 +1260,7 @@ const { clearDraft } = useQuestCreateDraft(
         }
         if (data.form && typeof data.form === 'object') {
             for (const [key, val] of Object.entries(data.form)) {
-                if (key === 'files') {
+                if (key === 'files' || key === 'accepted_terms') {
                     continue;
                 }
                 if (key in form) {
@@ -1262,6 +1268,7 @@ const { clearDraft } = useQuestCreateDraft(
                 }
             }
         }
+        form.accepted_terms = false;
         maxReachedStep.value = Math.max(maxReachedStep.value, step.value, 1);
     },
 );
@@ -1575,6 +1582,53 @@ onUnmounted(() => {
     }
 });
 
+function buildSubmitPayload(data) {
+    const payload = {
+        ...data,
+        publish_now: !!data.publish_now,
+        accepted_terms: !!data.accepted_terms,
+        traffic_utm: buildPayload().traffic_utm,
+        tagged_freelancer_ids: data.tagged_freelancer_ids.length ? data.tagged_freelancer_ids.map((x) => Number(x)) : [],
+        availability_need: fieldProfile.show_availability ? (data.availability_need || null) : null,
+        project_type: data.project_type || null,
+        estimated_hours: fieldProfile.show_hourly_fields && data.project_type === 'hourly' ? data.estimated_hours || null : null,
+        team_size: fieldProfile.show_team_size ? (data.team_size || null) : null,
+        auto_listing_expiry_days: data.auto_listing_expiry_days ?? props.proposal_deadline_bounds?.default ?? 14,
+        max_offers: data.max_offers || null,
+        traffic_source: data.traffic_source?.trim() || null,
+        estimated_delivery_date: data.estimated_delivery_date || null,
+        scheduled_start_date: data.scheduled_start_date || null,
+    };
+
+    if (fieldProfile.show_site_visit) {
+        payload.site_visits_allowed = !!data.site_visits_allowed;
+    } else {
+        delete payload.site_visits_allowed;
+    }
+
+    if (fieldProfile.show_site_access) {
+        payload.site_access_level = data.site_access_level || null;
+        payload.pets_on_site = data.pets_on_site === true;
+        payload.pets_detail = data.pets_on_site === true ? (data.pets_detail || null) : null;
+    } else {
+        delete payload.site_access_level;
+        delete payload.pets_on_site;
+        delete payload.pets_detail;
+    }
+
+    return payload;
+}
+
+function applyServerSubmitErrors(errors) {
+    const { message, step: targetStep } = resolveQuestCreateSubmitErrors(errors);
+    clientStepBanner.value = message;
+    applyClientErrors(errors);
+    if (targetStep < 7) {
+        step.value = targetStep;
+    }
+    scrollToStepAlert();
+}
+
 function submit() {
     if (step.value !== 7) {
         return;
@@ -1612,27 +1666,17 @@ function submit() {
     }
     clientStepBanner.value = '';
     form
-        .transform((data) => ({
-            ...data,
-            site_visits_allowed: !!data.site_visits_allowed,
-            publish_now: !!data.publish_now,
-            accepted_terms: !!data.accepted_terms,
-            traffic_utm: buildPayload().traffic_utm,
-            tagged_freelancer_ids: data.tagged_freelancer_ids.length ? data.tagged_freelancer_ids.map((x) => Number(x)) : [],
-            availability_need: data.availability_need || null,
-            project_type: data.project_type || null,
-            estimated_hours: data.estimated_hours || null,
-            team_size: data.team_size || null,
-            auto_listing_expiry_days: data.auto_listing_expiry_days ?? props.proposal_deadline_bounds?.default ?? 14,
-            max_offers: data.max_offers || null,
-            traffic_source: data.traffic_source?.trim() || null,
-            estimated_delivery_date: data.estimated_delivery_date || null,
-            scheduled_start_date: data.scheduled_start_date || null,
-        }))
+        .transform((data) => buildSubmitPayload(data))
         .post(route('quests.store'), {
             forceFormData: true,
             preserveScroll: true,
             onSuccess: () => clearDraft(),
+            onError: (errors) => applyServerSubmitErrors(errors),
+            onFinish: () => {
+                if (Object.keys(form.errors || {}).length > 0 && !clientStepBanner.value) {
+                    applyServerSubmitErrors(form.errors);
+                }
+            },
         });
 }
 </script>

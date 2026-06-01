@@ -110,7 +110,30 @@ class QuestDisputeWorkflowService
 
         $hours = (int) config('disputes.self_resolution_response_hours', 48);
 
-        return DB::transaction(function () use ($opener, $quest, $offer, $reason, $structuredIntake, $openingSummary, $other, $hours): QuestDispute {
+        $contract = \App\Models\QuestContract::query()
+            ->where('quest_id', $quest->id)
+            ->where('quest_offer_id', $offer->id)
+            ->first();
+
+        if ($contract !== null) {
+            $attributedExtension = \App\Models\QuestContractDeliveryExtension::query()
+                ->where('quest_contract_id', $contract->id)
+                ->where('client_attributed_delay', true)
+                ->latest('id')
+                ->first();
+
+            if ($attributedExtension !== null) {
+                $structuredIntake['client_attributed_extension'] = [
+                    'flag' => 'Client-attributed delay',
+                    'extension_id' => $attributedExtension->id,
+                    'reason_category' => $attributedExtension->reason_category->value,
+                    'scope_change_message_id' => $attributedExtension->scope_change_message_id,
+                    'explanation' => $attributedExtension->explanation,
+                ];
+            }
+        }
+
+        return DB::transaction(function () use ($opener, $quest, $offer, $reason, $structuredIntake, $openingSummary, $other, $hours, $contract): QuestDispute {
             $dispute = QuestDispute::query()->create([
                 'quest_id' => $quest->id,
                 'quest_offer_id' => $offer->id,
@@ -132,6 +155,11 @@ class QuestDisputeWorkflowService
                 'reason' => $reason->value,
             ]);
 
+            $escrow = \App\Models\PaymentEscrow::query()->where('quest_id', $quest->id)->first();
+            if ($escrow !== null) {
+                app(\App\Services\Finance\FinancialEscrowRecordService::class)->markDisputed($escrow);
+            }
+
             $this->systemMessage($dispute, __(
                 'Self-resolution window is active. :name has :hours hours to acknowledge and respond with evidence or a settlement position.',
                 ['name' => $other->first_name ?: $other->name, 'hours' => $hours]
@@ -151,7 +179,7 @@ class QuestDisputeWorkflowService
                 ]);
             }
 
-            $contract = \App\Models\QuestContract::query()
+            $contract = $contract ?? \App\Models\QuestContract::query()
                 ->where('quest_id', $quest->id)
                 ->where('quest_offer_id', $offer->id)
                 ->first();

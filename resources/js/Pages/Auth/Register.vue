@@ -272,6 +272,23 @@
                             />
                             <InputError class="mt-2" :message="fieldError('password_confirmation')" />
                         </div>
+                        <label
+                            v-if="form.account_type === 'sponsor'"
+                            class="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-sm font-semibold text-slate-800"
+                        >
+                            <input
+                                v-model="form.accepted_terms"
+                                type="checkbox"
+                                class="mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span>
+                                I agree to the
+                                <Link :href="route('legal.terms')" target="_blank" class="font-black text-primary-800 underline underline-offset-2">Terms of Service</Link>
+                                and
+                                <Link :href="route('legal.privacy')" target="_blank" class="font-black text-primary-800 underline underline-offset-2">Privacy Policy</Link>.
+                            </span>
+                        </label>
+                        <InputError v-if="form.account_type === 'sponsor'" :message="fieldError('accepted_terms')" />
                     </div>
 
                     <!-- Step 6 — Safe Hustler work categories -->
@@ -312,6 +329,20 @@
                                 </div>
                             </div>
                         </div>
+                        <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-sm font-semibold text-slate-800">
+                            <input
+                                v-model="form.accepted_terms"
+                                type="checkbox"
+                                class="mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span>
+                                I agree to the
+                                <Link :href="route('legal.terms')" target="_blank" class="font-black text-primary-800 underline underline-offset-2">Terms of Service</Link>
+                                and
+                                <Link :href="route('legal.privacy')" target="_blank" class="font-black text-primary-800 underline underline-offset-2">Privacy Policy</Link>.
+                            </span>
+                        </label>
+                        <InputError :message="fieldError('accepted_terms')" />
                     </div>
                 </Transition>
 
@@ -337,8 +368,8 @@
                             v-if="showCreateAccount"
                             type="button"
                             class="inline-flex w-full items-center justify-center rounded-2xl border border-transparent bg-primary-700 px-6 py-4 text-sm font-bold text-white shadow-lg shadow-primary-900/25 transition hover:bg-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 sm:w-auto sm:min-w-[200px]"
-                            :class="{ 'cursor-not-allowed opacity-60': form.processing }"
-                            :disabled="form.processing"
+                            :class="{ 'cursor-not-allowed opacity-60': form.processing || !form.accepted_terms }"
+                            :disabled="form.processing || !form.accepted_terms"
                             @click="submit"
                         >
                             Create account
@@ -404,6 +435,7 @@ const form = useForm({
     quest_category_ids: [],
     password: '',
     password_confirmation: '',
+    accepted_terms: false,
 });
 
 const maxStep = computed(() => (form.account_type === 'hustler' ? 6 : 5));
@@ -548,6 +580,12 @@ const rules = computed(() => ({
                 || (Array.isArray(form.quest_category_ids) && form.quest_category_ids.length >= 1),
         ),
     },
+    accepted_terms: {
+        mustAccept: helpers.withMessage(
+            'You must agree to the Terms of Service and Privacy Policy.',
+            (value) => value === true,
+        ),
+    },
 }));
 
 const v$ = useVuelidate(rules, form);
@@ -628,6 +666,11 @@ async function submit() {
     if (!ok) {
         return;
     }
+    if (!form.accepted_terms) {
+        form.setError('accepted_terms', 'You must agree to the Terms of Service and Privacy Policy.');
+
+        return;
+    }
     form
         .transform((data) => {
             const payload = {
@@ -637,6 +680,7 @@ async function submit() {
                 company_name: data.company_name === '' ? null : data.company_name,
                 state_id: Number(data.state_id) || null,
                 local_government_id: Number(data.local_government_id) || null,
+                accepted_terms: !!data.accepted_terms,
             };
             if (payload.account_type === 'sponsor') {
                 delete payload.quest_category_ids;

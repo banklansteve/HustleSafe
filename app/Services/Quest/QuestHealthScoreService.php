@@ -8,6 +8,7 @@ use App\Models\Quest;
 use App\Models\QuestConversationMessage;
 use App\Models\QuestOffer;
 use App\Services\QuestEngagementLifecycleService;
+use App\Support\EscrowAutoReleasePolicy;
 use App\Support\PlatformSettings;
 use Carbon\Carbon;
 
@@ -228,10 +229,18 @@ class QuestHealthScoreService
             return 0;
         }
 
+        $contract = \App\Models\QuestContract::query()
+            ->where('quest_id', $quest->id)
+            ->where('quest_offer_id', $quest->accepted_quest_offer_id)
+            ->first();
+        if ($contract !== null && ($contract->pending_extension_id !== null || $contract->deadline_clock_paused_at !== null)) {
+            return 0;
+        }
+
         $now = now();
 
         if ($quest->delivered_at !== null && $quest->delivery_acknowledged_at === null) {
-            $autoReleaseAt = $due->copy()->addHours(72);
+            $autoReleaseAt = EscrowAutoReleasePolicy::releaseAt($due);
             $hoursUntilRelease = $now->diffInHours($autoReleaseAt, false);
 
             if ($hoursUntilRelease <= 24 && $hoursUntilRelease > 0) {

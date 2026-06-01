@@ -180,6 +180,21 @@
                         <ArrowLeftOnRectangleIcon class="h-5 w-5 shrink-0" aria-hidden="true" />
                         <span v-show="!sidebarCollapsed">Back to main app</span>
                     </Link>
+                    <button
+                        type="button"
+                        :title="sidebarCollapsed ? 'Log out' : undefined"
+                        class="inline-flex items-center justify-center rounded-xl border text-sm font-bold transition"
+                        :class="[
+                            shell.btnGhost,
+                            'border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-200 dark:hover:bg-rose-950/40',
+                            sidebarCollapsed ? 'h-10 w-10 p-0' : 'w-full px-4 py-2.5 gap-2',
+                        ]"
+                        :disabled="logoutForm.processing"
+                        @click="logout"
+                    >
+                        <ArrowRightOnRectangleIcon class="h-5 w-5 shrink-0" aria-hidden="true" />
+                        <span v-show="!sidebarCollapsed">Log out</span>
+                    </button>
                 </div>
             </aside>
 
@@ -245,6 +260,16 @@
                                 </span>
                             </Link>
                             <AdminThemeToggle class="lg:hidden" />
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black uppercase tracking-wide transition"
+                                :class="[shell.btnGhost, 'border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-200 dark:hover:bg-rose-950/40']"
+                                :disabled="logoutForm.processing"
+                                @click="logout"
+                            >
+                                <ArrowRightOnRectangleIcon class="h-4 w-4" aria-hidden="true" />
+                                Log out
+                            </button>
                             <p v-if="subtitle" class="max-w-xl text-xs font-semibold leading-relaxed" :class="shell.canvasMuted">
                                 {{ subtitle }}
                             </p>
@@ -416,7 +441,19 @@
                             </div>
                         </div>
                     </nav>
-                    <AdminThemeToggle class="mt-4" />
+                    <div class="mt-4 space-y-2 border-t pt-4" :class="shell.tableDivide">
+                        <AdminThemeToggle class="mt-0" />
+                        <button
+                            type="button"
+                            class="flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold text-rose-700 transition hover:bg-rose-50 dark:text-rose-200 dark:hover:bg-rose-950/40"
+                            :class="shell.btnGhost"
+                            :disabled="logoutForm.processing"
+                            @click="logout"
+                        >
+                            <ArrowRightOnRectangleIcon class="h-5 w-5 shrink-0" aria-hidden="true" />
+                            Log out
+                        </button>
+                    </div>
                 </aside>
             </Transition>
         </Teleport>
@@ -467,10 +504,11 @@ import { useBrandFavicon } from '@/composables/useBrandFavicon';
 import { provideAdminTheme } from '@/composables/useAdminTheme';
 import { useAdminSidebar } from '@/composables/useAdminSidebar';
 import { matchPathPrefix } from '@/utils/navPathMatch';
-import { Link, router, usePage } from '@inertiajs/vue3';
+import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
     ArrowLeftOnRectangleIcon,
+    ArrowRightOnRectangleIcon,
     Bars3Icon,
     BellIcon,
     BoltIcon,
@@ -507,6 +545,13 @@ defineProps({
 });
 
 const page = usePage();
+const logoutForm = useForm({});
+
+function logout() {
+    mobileNavOpen.value = false;
+    logoutForm.post(route('logout'));
+}
+
 const { shell, isDark } = provideAdminTheme();
 const { collapsed: sidebarCollapsed, toggleCollapsed } = useAdminSidebar();
 const logoTheme = computed(() => (isDark.value ? 'dark' : 'light'));
@@ -870,10 +915,12 @@ const navGroups = [
         items: [
             { label: 'Payments & Escrow', href: route('admin.payments-escrow.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/payments-escrow') },
             { label: 'Financial review queue', href: route('admin.financial-review.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial-review') },
-            { label: 'Financial Control', href: route('admin.financial.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial') && !p.startsWith('/admin/financial-review') },
+            { label: 'Financial Control', href: route('admin.financial.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial') && !p.startsWith('/admin/financial-review') && !p.startsWith('/admin/financial-audit') },
+            { label: 'Financial audit', href: route('admin.financial-audit.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial-audit') },
             { label: 'Treasury', href: route('admin.treasury.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/treasury') },
             { label: 'Reports & analytics', href: route('admin.reports.index'), icon: ChartBarSquareIcon, match: (p) => p.startsWith('/admin/reports') },
             { label: 'Promotions & Growth', href: route('admin.promotions.index'), icon: RocketLaunchIcon, match: (p) => p.startsWith('/admin/promotions') },
+            { label: 'Quest Boosts', href: route('admin.quest-boosts.index'), icon: RocketLaunchIcon, match: (p) => p.startsWith('/admin/quest-boosts') },
             { label: 'Email Broadcasts', href: route('admin.communications.email-broadcasts.index'), icon: EnvelopeIcon, match: (p) => p.startsWith('/admin/communications/email-broadcasts') },
         ],
     },

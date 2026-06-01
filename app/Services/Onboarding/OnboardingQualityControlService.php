@@ -12,6 +12,7 @@ use App\Models\UserVerification;
 use App\Notifications\AdminUserMessageNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -34,10 +35,25 @@ class OnboardingQualityControlService
             [
                 'user_type' => $this->userType($user),
                 'status' => OnboardingQualityReviewStatus::Pending,
-                'review_deadline_at' => $user->created_at?->copy()->addHours($hours) ?? now()->addHours($hours),
+                'review_deadline_at' => $this->reviewDeadlineFor($user, $hours),
                 'status_changed_at' => now(),
             ],
         );
+    }
+
+    private function reviewDeadlineFor(User $user, int $hours): Carbon
+    {
+        $createdAt = $user->created_at;
+
+        if ($createdAt instanceof \DateTimeInterface) {
+            return Carbon::instance($createdAt)->addHours($hours);
+        }
+
+        if (is_string($createdAt) && trim($createdAt) !== '') {
+            return Carbon::parse($createdAt)->addHours($hours);
+        }
+
+        return now()->addHours($hours);
     }
 
     public function syncEvaluation(User $user): void

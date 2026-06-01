@@ -1,64 +1,80 @@
 <template>
     <section class="grid gap-2 xl:grid-cols-2">
-        <AdminPanel eyebrow="Acquisition" title="User growth (14 days)">
-            <VueApexCharts type="area" height="280" :options="signupChartOptions" :series="signupSeries" />
-        </AdminPanel>
+        <template v-if="mode === 'financial'">
+            <AdminPanel eyebrow="Treasury" title="Escrow held (daily)">
+                <VueApexCharts type="area" height="280" :options="escrowChartOptions" :series="escrowSeries" />
+            </AdminPanel>
 
-        <AdminPanel eyebrow="Treasury" title="Escrow held (daily)">
-            <VueApexCharts type="area" height="280" :options="escrowChartOptions" :series="escrowSeries" />
-        </AdminPanel>
+            <AdminPanel eyebrow="Revenue" title="Escrow funded (daily inflows)">
+                <VueApexCharts type="area" height="280" :options="inflowChartOptions" :series="inflowSeries" />
+            </AdminPanel>
 
-        <AdminPanel eyebrow="Mix" title="Quests by status">
-            <VueApexCharts type="donut" height="300" :options="statusDonutOptions" :series="statusDonutSeries" />
-        </AdminPanel>
+            <AdminPanel eyebrow="Revenue" title="Platform fee recognised (daily)">
+                <VueApexCharts type="area" height="280" :options="feeChartOptions" :series="feeSeries" />
+            </AdminPanel>
 
-        <AdminPanel eyebrow="Funnel" title="Proposal → hire → complete">
-            <VueApexCharts type="bar" height="300" :options="funnelOptions" :series="funnelSeries" />
-        </AdminPanel>
+            <AdminPanel eyebrow="Tax" title="VAT accrued on platform fees (daily)">
+                <VueApexCharts type="area" height="280" :options="vatChartOptions" :series="vatSeries" />
+            </AdminPanel>
+        </template>
 
-        <AdminPanel eyebrow="Demand" title="Jobs per category">
-            <VueApexCharts type="bar" height="320" :options="categoryBarOptions" :series="categoryBarSeries" />
-        </AdminPanel>
+        <template v-else>
+            <AdminPanel eyebrow="Acquisition" title="User growth (14 days)">
+                <VueApexCharts type="area" height="280" :options="signupChartOptions" :series="signupSeries" />
+            </AdminPanel>
 
-        <AdminPanel eyebrow="Revenue" title="Paid out by category">
-            <VueApexCharts type="bar" height="320" :options="revenueBarOptions" :series="revenueBarSeries" />
-        </AdminPanel>
+            <AdminPanel eyebrow="Mix" title="Quests by status">
+                <VueApexCharts type="donut" height="300" :options="statusDonutOptions" :series="statusDonutSeries" />
+            </AdminPanel>
 
-        <AdminPanel eyebrow="Geography" title="Jobs by Nigerian state">
-            <VueApexCharts type="bar" height="320" :options="geoOptions" :series="geoSeries" />
-        </AdminPanel>
+            <AdminPanel eyebrow="Funnel" title="Proposal → hire → complete">
+                <VueApexCharts type="bar" height="300" :options="funnelOptions" :series="funnelSeries" />
+            </AdminPanel>
 
-        <AdminPanel eyebrow="Retention" title="Cohort return rate">
-            <VueApexCharts type="line" height="280" :options="cohortOptions" :series="cohortSeries" />
-        </AdminPanel>
+            <AdminPanel eyebrow="Demand" title="Jobs per category">
+                <VueApexCharts type="bar" height="320" :options="categoryBarOptions" :series="categoryBarSeries" />
+            </AdminPanel>
 
-        <AdminPanel eyebrow="Leaderboard" title="Top freelancers (trust)">
-            <ul class="space-y-2">
-                <li
-                    v-for="row in leaderboards.freelancers"
-                    :key="row.id"
-                    class="flex items-center justify-between rounded-xl border px-3 py-2 text-sm"
-                    :class="shell.card"
-                >
-                    <span class="font-semibold" :class="shell.cardTitle">{{ row.name }}</span>
-                    <span class="text-xs font-bold text-teal-600">{{ row.metric }}</span>
-                </li>
-            </ul>
-        </AdminPanel>
+            <AdminPanel eyebrow="Revenue" title="Paid out by category">
+                <VueApexCharts type="bar" height="320" :options="revenueBarOptions" :series="revenueBarSeries" />
+            </AdminPanel>
 
-        <AdminPanel eyebrow="Leaderboard" title="Top spending clients">
-            <ul class="space-y-2">
-                <li
-                    v-for="row in leaderboards.clients"
-                    :key="row.id"
-                    class="flex items-center justify-between rounded-xl border px-3 py-2 text-sm"
-                    :class="shell.card"
-                >
-                    <span class="font-semibold" :class="shell.title">{{ row.name }}</span>
-                    <span class="text-xs font-bold text-teal-600">₦{{ (row.metric / 100).toLocaleString() }}</span>
-                </li>
-            </ul>
-        </AdminPanel>
+            <AdminPanel eyebrow="Geography" title="Jobs by Nigerian state">
+                <VueApexCharts type="bar" height="320" :options="geoOptions" :series="geoSeries" />
+            </AdminPanel>
+
+            <AdminPanel eyebrow="Retention" title="Cohort return rate">
+                <VueApexCharts type="line" height="280" :options="cohortOptions" :series="cohortSeries" />
+            </AdminPanel>
+
+            <AdminPanel eyebrow="Leaderboard" title="Top freelancers (trust)">
+                <ul class="space-y-2">
+                    <li
+                        v-for="row in leaderboards.freelancers"
+                        :key="row.id"
+                        class="flex items-center justify-between rounded-xl border px-3 py-2 text-sm"
+                        :class="shell.card"
+                    >
+                        <span class="font-semibold" :class="shell.cardTitle">{{ row.name }}</span>
+                        <span class="text-xs font-bold text-teal-600">{{ row.metric }}</span>
+                    </li>
+                </ul>
+            </AdminPanel>
+
+            <AdminPanel eyebrow="Leaderboard" title="Top spending clients">
+                <ul class="space-y-2">
+                    <li
+                        v-for="row in leaderboards.clients"
+                        :key="row.id"
+                        class="flex items-center justify-between rounded-xl border px-3 py-2 text-sm"
+                        :class="shell.card"
+                    >
+                        <span class="font-semibold" :class="shell.title">{{ row.name }}</span>
+                        <span class="text-xs font-bold text-teal-600">₦{{ (row.metric / 100).toLocaleString() }}</span>
+                    </li>
+                </ul>
+            </AdminPanel>
+        </template>
     </section>
 </template>
 
@@ -71,7 +87,8 @@ import VueApexCharts from 'vue3-apexcharts';
 
 const props = defineProps({
     charts: { type: Object, required: true },
-    leaderboards: { type: Object, required: true },
+    leaderboards: { type: Object, default: () => ({ freelancers: [], clients: [] }) },
+    mode: { type: String, default: 'financial' },
 });
 
 const { shell, chartMode, isDark } = useInjectedAdminTheme();
@@ -88,21 +105,45 @@ const chartBase = computed(() => ({
     tooltip: { theme: chartMode.value },
 }));
 
+const moneyYAxis = {
+    labels: { formatter: (v) => `₦${Math.round(v / 100).toLocaleString()}` },
+};
+
+function dailySeries(key, name) {
+    return computed(() => [{ name, data: (props.charts[key] || []).map((d) => d.minor) }]);
+}
+
+function dailyOptions(key) {
+    return computed(() => ({
+        ...chartBase.value,
+        colors: ['#0d9488'],
+        stroke: { curve: 'smooth', width: 2 },
+        xaxis: { categories: (props.charts[key] || []).map((d) => d.date.slice(5)) },
+        yaxis: moneyYAxis,
+    }));
+}
+
+const escrowSeries = dailySeries('escrow_daily', 'Escrow held');
+const escrowChartOptions = dailyOptions('escrow_daily');
+const inflowSeries = dailySeries('escrow_inflow_daily', 'Escrow funded');
+const inflowChartOptions = dailyOptions('escrow_inflow_daily');
+const feeSeries = dailySeries('platform_fee_daily', 'Platform fees');
+const feeChartOptions = computed(() => ({
+    ...dailyOptions('platform_fee_daily').value,
+    colors: ['#f59e0b'],
+}));
+const vatSeries = dailySeries('vat_daily', 'VAT accrued');
+const vatChartOptions = computed(() => ({
+    ...dailyOptions('vat_daily').value,
+    colors: ['#6366f1'],
+}));
+
 const signupSeries = computed(() => [{ name: 'Signups', data: (props.charts.signups || []).map((d) => d.count) }]);
 const signupChartOptions = computed(() => ({
     ...chartBase.value,
     colors: ['#14b8a6'],
     stroke: { curve: 'smooth', width: 2 },
     xaxis: { categories: (props.charts.signups || []).map((d) => d.date.slice(5)) },
-}));
-
-const escrowSeries = computed(() => [{ name: 'Escrow (minor)', data: (props.charts.escrow_daily || []).map((d) => d.minor) }]);
-const escrowChartOptions = computed(() => ({
-    ...chartBase.value,
-    colors: ['#0d9488'],
-    stroke: { curve: 'smooth', width: 2 },
-    xaxis: { categories: (props.charts.escrow_daily || []).map((d) => d.date.slice(5)) },
-    yaxis: { labels: { formatter: (v) => `₦${Math.round(v / 100).toLocaleString()}` } },
 }));
 
 const statusDonutSeries = computed(() => (props.charts.quest_mix || []).map((r) => r.count));

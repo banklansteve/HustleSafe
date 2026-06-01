@@ -28,7 +28,7 @@ class AdminKycCentreController extends Controller
 
         return Inertia::render('Admin/Kyc/Index', [
             'section' => $section,
-            'summary' => fn () => $this->kyc->summary(),
+            'summary' => fn () => $this->kyc->summary($request->user()),
             'queue' => fn () => $this->kyc->queue($request),
             'analytics' => fn () => $this->kyc->analytics(),
             'settings' => fn () => $this->kyc->settings(),

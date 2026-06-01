@@ -242,9 +242,12 @@ class FreelancerWorkspaceReadinessService
         }
 
         if ($quest->visibility === QuestVisibility::InviteOnly && ! $quest->isInvitedFreelancer($user)) {
-            throw ValidationException::withMessages([
-                'offer' => [__('Only freelancers invited by the client can propose on this quest.')],
-            ]);
+            $isPro = app(\App\Services\Freelancer\FreelancerProSubscriptionService::class)->isPro($user);
+            if (! $isPro) {
+                throw ValidationException::withMessages([
+                    'offer' => [__('Only freelancers invited by the client can propose on this quest. Pro members get early access to invite-only quests.')],
+                ]);
+            }
         }
 
         if ($quest->offers()->where('freelancer_id', $user->id)->whereIn('status', ['submitted', 'shortlisted', 'accepted'])->exists()) {

@@ -21,6 +21,7 @@ use App\Models\Role;
 use App\Models\State;
 use App\Models\User;
 use App\Models\UserVerification;
+use App\Services\Contracts\DeliveryReliabilityScoreService;
 use App\Services\Verification\VerificationEngineService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -217,6 +218,9 @@ class AdvancedUserManagementService
                     ])
                     ->values(),
             ],
+            'delivery_reliability' => ($user->role?->slug ?? '') === 'freelancer'
+                ? app(DeliveryReliabilityScoreService::class)->snapshot($user)
+                : null,
             'trust' => $this->trustBreakdown($user),
             'sanctions' => $user->sanctions->map(fn (AdminUserSanction $sanction) => [
                 'id' => $sanction->id,

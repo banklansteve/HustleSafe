@@ -7,6 +7,7 @@ use App\Models\QuestCategory;
 use App\Models\Role;
 use App\Models\State;
 use App\Models\User;
+use App\Support\SeededUserIdentity;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -75,14 +76,17 @@ class FakeMarketplaceUsersSeeder extends Seeder
             [$state, $lga] = $this->randomLocation($states);
             $first = fake()->firstName();
             $last = fake()->lastName();
-            $email = sprintf('fake.freelancer%02d@hustlesafe.test', $i);
+            $uid = sprintf('FF%06d', $i);
+
+            $existing = User::query()->where('uid', $uid)->first();
+            $identity = SeededUserIdentity::forNames($first, $last, $existing?->id);
 
             $user = User::query()->updateOrCreate(
-                ['email' => $email],
+                ['uid' => $uid],
                 [
-                    'username' => sprintf('fake_freelancer_%02d', $i),
-                    'slug' => sprintf('fake-freelancer-%02d', $i),
-                    'uid' => sprintf('FF%06d', $i),
+                    'email' => $identity['email'],
+                    'username' => $identity['username'],
+                    'slug' => $identity['slug'],
                     'first_name' => $first,
                     'last_name' => $last,
                     'name' => $first.' '.$last,
@@ -119,14 +123,17 @@ class FakeMarketplaceUsersSeeder extends Seeder
             [$state, $lga] = $this->randomLocation($states);
             $first = fake()->firstName();
             $last = fake()->lastName();
-            $email = sprintf('fake.client%02d@hustlesafe.test', $i);
+            $uid = sprintf('FC%06d', $i);
+
+            $existing = User::query()->where('uid', $uid)->first();
+            $identity = SeededUserIdentity::forNames($first, $last, $existing?->id);
 
             User::query()->updateOrCreate(
-                ['email' => $email],
+                ['uid' => $uid],
                 [
-                    'username' => sprintf('fake_client_%02d', $i),
-                    'slug' => sprintf('fake-client-%02d', $i),
-                    'uid' => sprintf('FC%06d', $i),
+                    'email' => $identity['email'],
+                    'username' => $identity['username'],
+                    'slug' => $identity['slug'],
                     'first_name' => $first,
                     'last_name' => $last,
                     'name' => $first.' '.$last,
@@ -152,7 +159,36 @@ class FakeMarketplaceUsersSeeder extends Seeder
             );
         }
 
-        $this->command?->info('Seeded 20 fake freelancers and 10 fake clients. Password for all: password');
+        $this->normalizeLegacyFakeEmails();
+
+        $this->command?->info('Seeded 20 fake freelancers and 10 fake clients.');
+        $this->command?->info('Identity: username=firstname(+number), slug=firstname-lastname, email=firstname.lastname@mail.com');
+        $this->command?->info('Password for all: password');
+    }
+
+    private function normalizeLegacyFakeEmails(): void
+    {
+        User::query()
+            ->where(function ($query): void {
+                $query->where('email', 'like', 'fake.freelancer%@hustlesafe.test')
+                    ->orWhere('email', 'like', 'fake.client%@hustlesafe.test')
+                    ->orWhere('username', 'like', 'fake_freelancer_%')
+                    ->orWhere('username', 'like', 'fake_client_%');
+            })
+            ->orderBy('id')
+            ->each(function (User $user): void {
+                if (! filled($user->first_name) || ! filled($user->last_name)) {
+                    return;
+                }
+
+                $identity = SeededUserIdentity::forNames(
+                    (string) $user->first_name,
+                    (string) $user->last_name,
+                    (int) $user->id,
+                );
+
+                $user->forceFill($identity)->save();
+            });
     }
 
     /**

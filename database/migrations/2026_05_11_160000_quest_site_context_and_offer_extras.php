@@ -8,47 +8,67 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('quests', function (Blueprint $table) {
-            if (! Schema::hasColumn('quests', 'site_access_level')) {
-                $table->string('site_access_level', 40)->nullable()->after('site_visits_allowed');
-            }
-            if (! Schema::hasColumn('quests', 'pets_on_site')) {
-                $table->boolean('pets_on_site')->nullable()->after('site_access_level');
-            }
-            if (! Schema::hasColumn('quests', 'pets_detail')) {
-                $table->string('pets_detail', 255)->nullable()->after('pets_on_site');
-            }
-        });
+        if (Schema::hasTable('quests')) {
+            Schema::table('quests', function (Blueprint $table) {
+                if (! Schema::hasColumn('quests', 'site_access_level')) {
+                    $table->string('site_access_level', 40)->nullable();
+                }
+                if (! Schema::hasColumn('quests', 'pets_on_site')) {
+                    $table->boolean('pets_on_site')->nullable();
+                }
+                if (! Schema::hasColumn('quests', 'pets_detail')) {
+                    $table->string('pets_detail', 255)->nullable();
+                }
+            });
+        }
+
+        if (! Schema::hasTable('quest_offers')) {
+            return;
+        }
 
         Schema::table('quest_offers', function (Blueprint $table) {
             if (! Schema::hasColumn('quest_offers', 'estimated_duration_days')) {
-                $table->unsignedSmallInteger('estimated_duration_days')->nullable()->after('planned_finish_date');
+                $table->unsignedSmallInteger('estimated_duration_days')->nullable();
             }
             if (! Schema::hasColumn('quest_offers', 'corrections_included')) {
-                $table->boolean('corrections_included')->default(false)->after('estimated_duration_days');
+                $table->boolean('corrections_included')->default(false);
             }
             if (! Schema::hasColumn('quest_offers', 'corrections_rounds')) {
-                $table->unsignedTinyInteger('corrections_rounds')->nullable()->after('corrections_included');
+                $table->unsignedTinyInteger('corrections_rounds')->nullable();
             }
             if (! Schema::hasColumn('quest_offers', 'progress_report_frequency')) {
-                $table->string('progress_report_frequency', 32)->nullable()->after('corrections_rounds');
+                $table->string('progress_report_frequency', 32)->nullable();
             }
         });
     }
 
     public function down(): void
     {
-        Schema::table('quest_offers', function (Blueprint $table) {
-            $table->dropColumn([
-                'estimated_duration_days',
-                'corrections_included',
-                'corrections_rounds',
-                'progress_report_frequency',
-            ]);
-        });
+        if (Schema::hasTable('quest_offers')) {
+            Schema::table('quest_offers', function (Blueprint $table) {
+                $columns = array_filter([
+                    Schema::hasColumn('quest_offers', 'estimated_duration_days') ? 'estimated_duration_days' : null,
+                    Schema::hasColumn('quest_offers', 'corrections_included') ? 'corrections_included' : null,
+                    Schema::hasColumn('quest_offers', 'corrections_rounds') ? 'corrections_rounds' : null,
+                    Schema::hasColumn('quest_offers', 'progress_report_frequency') ? 'progress_report_frequency' : null,
+                ]);
+                if ($columns !== []) {
+                    $table->dropColumn($columns);
+                }
+            });
+        }
 
-        Schema::table('quests', function (Blueprint $table) {
-            $table->dropColumn(['site_access_level', 'pets_on_site', 'pets_detail']);
-        });
+        if (Schema::hasTable('quests')) {
+            Schema::table('quests', function (Blueprint $table) {
+                $columns = array_filter([
+                    Schema::hasColumn('quests', 'site_access_level') ? 'site_access_level' : null,
+                    Schema::hasColumn('quests', 'pets_on_site') ? 'pets_on_site' : null,
+                    Schema::hasColumn('quests', 'pets_detail') ? 'pets_detail' : null,
+                ]);
+                if ($columns !== []) {
+                    $table->dropColumn($columns);
+                }
+            });
+        }
     }
 };

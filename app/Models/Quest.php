@@ -11,6 +11,8 @@ use App\Enums\QuestStatus;
 use App\Enums\QuestTeamSize;
 use App\Enums\QuestVisibility;
 use App\Enums\AdminQuestStatus;
+use App\Models\QuestBoost;
+use App\Services\Quest\QuestCategoryReferenceCodeService;
 use App\Services\QuestFileStorageService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -109,7 +111,9 @@ class Quest extends Model
                 $quest->uuid = (string) Str::uuid();
             }
             if (empty($quest->reference_code)) {
-                $quest->reference_code = static::generateReferenceCode();
+                $quest->reference_code = static::generateReferenceCode(
+                    $quest->quest_category_id ? (int) $quest->quest_category_id : null
+                );
             }
         });
 
@@ -135,8 +139,9 @@ class Quest extends Model
         return asset(config('quests.default_cover_asset', 'images/quest-cover-default.svg'));
     }
 
-    public static function generateReferenceCode(): string
+    public static function generateReferenceCode(?int $questCategoryId = null): string
     {
+        $prefix = app(QuestCategoryReferenceCodeService::class)->prefixForCategoryId($questCategoryId);
         $chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
         do {
@@ -144,7 +149,7 @@ class Quest extends Model
             for ($i = 0; $i < 7; $i++) {
                 $suffix .= $chars[random_int(0, strlen($chars) - 1)];
             }
-            $code = 'HSQ-'.$suffix;
+            $code = $prefix.'-'.$suffix;
         } while (static::query()->where('reference_code', $code)->exists());
 
         return $code;
@@ -396,6 +401,19 @@ class Quest extends Model
             ->where('status', 'active')
             ->where('starts_at', '<=', now())
             ->where('expires_at', '>', now());
+    }
+
+    public function questBoosts(): HasMany
+    {
+        return $this->hasMany(QuestBoost::class);
+    }
+
+    public function activeQuestBoost(): HasMany
+    {
+        return $this->hasMany(QuestBoost::class)
+            ->where('status', 'active')
+            ->where('starts_at', '<=', now())
+            ->where('ends_at', '>', now());
     }
 
     public function adminQuestFlags(): HasMany

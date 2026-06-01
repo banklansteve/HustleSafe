@@ -79,6 +79,15 @@
             </section>
 
             <SupportTicketAnalyticsPanel :analytics="support_ticket_analytics" />
+
+            <section class="space-y-4">
+                <div>
+                    <p class="text-[10px] font-black uppercase tracking-[0.22em] text-primary-600 dark:text-primary-300">Marketplace activity</p>
+                    <h2 class="mt-1 font-display text-xl font-black text-slate-950 dark:text-white">User growth, quest mix, funnel, and geography</h2>
+                    <p class="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">Operational charts moved here from Reports &amp; analytics — they track marketplace behaviour, not ledger accounting.</p>
+                </div>
+                <DashboardCharts :charts="operational_charts" :leaderboards="operational_leaderboards" mode="operational" />
+            </section>
         </div>
     </AdminShell>
 </template>
@@ -86,10 +95,13 @@
 <script setup>
 import AdminShell from '@/Layouts/AdminShell.vue';
 import SupportTicketAnalyticsPanel from '@/Components/Admin/SupportTicketAnalyticsPanel.vue';
+import DashboardCharts from '@/Pages/Admin/DashboardCharts.vue';
 import { computed, defineComponent, h, ref } from 'vue';
 
 const props = defineProps({
     insights: { type: Object, required: true },
+    operational_charts: { type: Object, default: () => ({}) },
+    operational_leaderboards: { type: Object, default: () => ({ freelancers: [], clients: [] }) },
     support_ticket_analytics: { type: Object, default: () => ({}) },
 });
 

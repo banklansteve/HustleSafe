@@ -224,6 +224,7 @@ return [
         'legal' => 'Legal',
         'links_product' => [
             ['label' => 'How it works', 'href' => '#how-it-works'],
+            ['label' => 'Help centre', 'href' => '/help'],
             ['label' => 'Trust & escrow', 'href' => '#trust'],
             ['label' => 'Categories', 'href' => '#categories'],
             ['label' => 'Spotlight', 'href' => '#popular-jobs'],
@@ -237,9 +238,10 @@ return [
             ['label' => 'Contact', 'href' => '#'],
         ],
         'links_legal' => [
-            ['label' => 'Terms', 'href' => '#'],
-            ['label' => 'Privacy', 'href' => '#'],
-            ['label' => 'Cookies', 'href' => '#'],
+            ['label' => 'Terms of Service', 'href' => '/terms-of-service'],
+            ['label' => 'Privacy Policy', 'href' => '/privacy-policy'],
+            ['label' => 'Escrow Policy', 'href' => '/escrow-policy'],
+            ['label' => 'Dispute Policy', 'href' => '/dispute-policy'],
         ],
         'social_labels' => [
             'twitter' => 'Twitter',

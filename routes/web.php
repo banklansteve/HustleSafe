@@ -5,6 +5,7 @@ use App\Http\Controllers\AccountDeactivateController;
 use App\Http\Controllers\AccountDeleteUserController;
 use App\Http\Controllers\AccountHubController;
 use App\Http\Controllers\ContractAmendmentController;
+use App\Http\Controllers\ContractDeliveryExtensionController;
 use App\Http\Controllers\ContractController;
 use App\Http\Controllers\AccountPresenceController;
 use App\Http\Controllers\AccountQuestCategoriesController;
@@ -13,7 +14,7 @@ use App\Http\Controllers\AccountUpdateController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardListController;
 use App\Http\Controllers\DashboardTrustGuideController;
-use App\Http\Controllers\FreelancerCredentialController;
+use App\Http\Controllers\Freelancer\FreelancerProController;
 use App\Http\Controllers\FreelancerCredentialVisibilityController;
 use App\Http\Controllers\FreelancerPortfolioController;
 use App\Http\Controllers\FreelancerPortfoliosDirectoryController;
@@ -64,10 +65,31 @@ use App\Http\Controllers\Admin\AdminUsersController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/terms-of-service', [LegalPageController::class, 'terms'])->name('legal.terms');
+Route::get('/terms-of-service/pdf', [LegalPageController::class, 'termsPdf'])->name('legal.terms.pdf');
 Route::get('/privacy-policy', [LegalPageController::class, 'privacy'])->name('legal.privacy');
+Route::get('/privacy-policy/pdf', [LegalPageController::class, 'privacyPdf'])->name('legal.privacy.pdf');
+Route::get('/escrow-policy', [LegalPageController::class, 'escrow'])->name('legal.escrow');
+Route::get('/escrow-policy/pdf', [LegalPageController::class, 'escrowPdf'])->name('legal.escrow.pdf');
+Route::get('/dispute-policy', [LegalPageController::class, 'dispute'])->name('legal.dispute');
+Route::get('/dispute-policy/pdf', [LegalPageController::class, 'disputePdf'])->name('legal.dispute.pdf');
 
 Route::get('/', LandingController::class)->name('home');
-Route::get('/help', HelpContentController::class)->name('help.index');
+
+if ($helpDomain = config('help.domain')) {
+    Route::domain($helpDomain)->group(function (): void {
+        Route::get('/', [HelpContentController::class, 'index'])->name('help.index');
+        Route::get('/{slug}', [HelpContentController::class, 'show'])
+            ->name('help.show')
+            ->where('slug', '[a-z0-9-]+');
+    });
+} else {
+    Route::prefix('help')->group(function (): void {
+        Route::get('/', [HelpContentController::class, 'index'])->name('help.index');
+        Route::get('/{slug}', [HelpContentController::class, 'show'])
+            ->name('help.show')
+            ->where('slug', '[a-z0-9-]+');
+    });
+}
 
 Route::middleware('signed')->group(function (): void {
     Route::get('/support/rate/{ticket:uuid}', [CustomerSupportChatController::class, 'rateShow'])->name('support.rate.show');
@@ -134,6 +156,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/contracts/{contract:reference_code}/pdf', [ContractController::class, 'pdf'])->name('contracts.pdf');
     Route::post('/contracts/{contract:reference_code}/amendments', [ContractAmendmentController::class, 'store'])->middleware('throttle:12,1')->name('contracts.amendments.store');
     Route::post('/contracts/{contract:reference_code}/amendments/{amendment}/respond', [ContractAmendmentController::class, 'respond'])->middleware('throttle:20,1')->name('contracts.amendments.respond');
+    Route::post('/contracts/{contract:reference_code}/extensions', [ContractDeliveryExtensionController::class, 'store'])->middleware('throttle:8,1')->name('contracts.extensions.store');
+    Route::post('/contracts/{contract:reference_code}/extensions/{extension}/respond', [ContractDeliveryExtensionController::class, 'respond'])->middleware('throttle:12,1')->name('contracts.extensions.respond');
+    Route::post('/contracts/{contract:reference_code}/extensions/{extension}/counter-respond', [ContractDeliveryExtensionController::class, 'respondCounter'])->middleware('throttle:12,1')->name('contracts.extensions.counter-respond');
+    Route::get('/contracts/{contract:reference_code}/extension-messages', [ContractDeliveryExtensionController::class, 'conversationMessages'])->name('contracts.extensions.messages');
     Route::post('/account/policy-notices/{source}/{id}/acknowledge', [UserPolicyNoticesController::class, 'acknowledge'])
         ->whereIn('source', ['conversation', 'sanction'])
         ->middleware('throttle:60,1')
@@ -349,6 +375,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('account.quest-categories.update');
 
     Route::middleware('freelancer')->group(function () {
+        Route::get('/account/pro', [FreelancerProController::class, 'index'])->name('freelancer.pro.index');
+        Route::post('/account/pro/upgrade', [FreelancerProController::class, 'upgrade'])
+            ->middleware('throttle:10,1')
+            ->name('freelancer.pro.upgrade');
+        Route::post('/account/pro/cancel', [FreelancerProController::class, 'cancel'])
+            ->middleware('throttle:10,1')
+            ->name('freelancer.pro.cancel');
+        Route::get('/payments/pro/callback', [FreelancerProController::class, 'callback'])->name('freelancer.pro.callback');
+
         $credentialTypes = array_map(fn (CredentialType $t) => $t->value, CredentialType::cases());
 
         Route::get('/account/credentials/create', function () {

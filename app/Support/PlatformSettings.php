@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Enums\QuestBoostTier;
 use App\Models\AdminPlatformSetting;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
@@ -52,9 +53,28 @@ final class PlatformSettings
         return max(0.0, min(100.0, $percent));
     }
 
+    public static function vatPercent(): float
+    {
+        if (! self::bool('financial.vat_enabled', true)) {
+            return 0.0;
+        }
+
+        return max(0.0, min(100.0, self::float('financial.vat_percent', 7.5)));
+    }
+
+    public static function formatPlatformFeePercent(?float $percent = null): string
+    {
+        return PlatformFeeDisclosure::formatPercent($percent ?? self::platformFeePercent());
+    }
+
     public static function escrowReleaseCooldownHours(): int
     {
         return max(0, min(720, self::int('financial.escrow_release_cooldown_hours', 24)));
+    }
+
+    public static function escrowAutoReleaseHours(): int
+    {
+        return max(1, min(720, self::int('financial.auto_release_hours', EscrowAutoReleasePolicy::DEFAULT_RELEASE_HOURS)));
     }
 
     public static function highValueReleaseAuthorizationMinor(): int
@@ -122,9 +142,47 @@ final class PlatformSettings
         return max(1, min(168, self::int('contracts.escrow_funding_hours', 48)));
     }
 
+    /**
+     * @return array{monthly_minor: int, annual_minor: int}
+     */
+    public static function freelancerProPricing(): array
+    {
+        return [
+            'monthly_minor' => max(0, self::int('freelancer_pro.monthly_price_minor', 1_000_000)),
+            'annual_minor' => max(0, self::int('freelancer_pro.annual_price_minor', 10_000_000)),
+        ];
+    }
+
+    public static function freelancerFreeProposalQuota(): int
+    {
+        return max(5, min(50, self::int('freelancer_pro.free_proposals_per_month', 10)));
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public static function questBoostPricing(): array
+    {
+        return [
+            '3_day' => max(0, self::int('quest_boosts.price_3_day_minor', 800_000)),
+            '7_day' => max(0, self::int('quest_boosts.price_7_day_minor', 1_500_000)),
+            '14_day' => max(0, self::int('quest_boosts.price_14_day_minor', 2_800_000)),
+            '30_day' => max(0, self::int('quest_boosts.price_30_day_minor', 5_200_000)),
+        ];
+    }
+
+    public static function questBoostPriceMinor(QuestBoostTier|string $tier): int
+    {
+        $key = $tier instanceof QuestBoostTier ? $tier->value : (string) $tier;
+        $prices = self::questBoostPricing();
+
+        return (int) ($prices[$key] ?? 0);
+    }
+
+    /** @deprecated Use escrowAutoReleaseHours() */
     public static function contractAutoReleaseGraceDays(): int
     {
-        return max(1, min(30, self::int('contracts.auto_release_grace_days', 5)));
+        return (int) max(1, ceil(self::escrowAutoReleaseHours() / 24));
     }
 
     public static function forgetCache(?string $key = null): void

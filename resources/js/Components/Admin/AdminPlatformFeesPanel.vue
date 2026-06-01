@@ -156,6 +156,9 @@ import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import { computed, reactive, ref, watch } from 'vue';
+import { usePage } from '@inertiajs/vue3';
+
+const page = usePage();
 
 const props = defineProps({
     open: { type: Boolean, default: false },
@@ -223,7 +226,7 @@ async function fetchRows(url = null) {
         rows.value = data.rows?.data ?? [];
         paginationLinks.value = data.rows?.links ?? [];
         sortOptions.value = data.sort_options ?? [];
-        feePercent.value = data.fee_percent ?? 12;
+        feePercent.value = data.fee_percent ?? page.props.platform_fee_percent ?? 12;
         tiles.value = [
             { label: 'Earned today', value: data.tiles?.today ?? '—' },
             { label: 'This week', value: data.tiles?.week ?? '—' },

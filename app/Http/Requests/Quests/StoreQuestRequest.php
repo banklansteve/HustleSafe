@@ -26,11 +26,16 @@ class StoreQuestRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $profiles = app(QuestFormFieldProfileService::class);
+        $profile = $profiles->profileForLeafCategoryId((int) $this->input('quest_category_id', 0));
+
+        $data = $this->all();
+
         if ($this->has('description')) {
-            $this->merge([
-                'description' => app(QuestDescriptionSanitizer::class)->clean((string) $this->input('description')),
-            ]);
+            $data['description'] = app(QuestDescriptionSanitizer::class)->clean((string) $data['description']);
         }
+
+        $this->replace($profiles->normalizeSubmittedPayload($data, $profile));
     }
 
     /**
@@ -39,14 +44,15 @@ class StoreQuestRequest extends FormRequest
     public function rules(): array
     {
         $bounds = PlatformSettings::proposalDeadlineBounds();
+        $profiles = app(QuestFormFieldProfileService::class);
+        $profile = $profiles->profileForLeafCategoryId((int) $this->input('quest_category_id', 0));
 
-        return [
+        $rules = [
             'title' => ['required', 'string', 'max:200'],
             'description' => ['required', 'string', 'max:50000'],
             'quest_category_id' => ['required', 'integer', Rule::exists('quest_categories', 'id')->whereNotNull('parent_id')->where('is_active', true)->where('status', 'active')],
             'visibility' => ['required', Rule::enum(QuestVisibility::class)],
             'freelancer_location_pref' => ['required', Rule::enum(QuestFreelancerLocationPref::class)],
-            'availability_need' => ['nullable', Rule::enum(QuestAvailabilityNeed::class)],
             'state_id' => ['required', 'integer', 'exists:states,id'],
             'local_government_id' => [
                 'required',
@@ -54,18 +60,12 @@ class StoreQuestRequest extends FormRequest
                 Rule::exists('local_governments', 'id')->where('state_id', (int) $this->input('state_id', 0)),
             ],
             'city' => ['required', 'string', 'max:160'],
-            'budget_amount_minor' => ['required', 'integer', 'min:10000', 'max:100000000'],
+            'budget_amount_minor' => ['required', 'integer', 'min:10000', 'max:500000000'],
             'start_timing' => ['required', Rule::enum(QuestStartTiming::class)],
             'scheduled_start_date' => ['nullable', 'date'],
             'estimated_completion_days' => ['required', 'integer', 'min:1', 'max:365'],
             'estimated_delivery_date' => ['nullable', 'date', 'after_or_equal:today'],
-            'site_visits_allowed' => ['sometimes', 'boolean'],
-            'site_access_level' => ['nullable', 'string', Rule::in(['ground_level_easy', 'stairs_no_lift', 'stairs_with_lift', 'ladder_or_height_work', 'narrow_or_difficult_access', 'other'])],
-            'pets_on_site' => ['sometimes', 'boolean'],
-            'pets_detail' => ['nullable', 'string', 'max:255'],
             'project_type' => ['nullable', Rule::enum(QuestProjectType::class)],
-            'estimated_hours' => ['nullable', 'integer', 'min:1', 'max:2000'],
-            'team_size' => ['nullable', Rule::enum(QuestTeamSize::class)],
             'auto_listing_expiry_days' => [
                 Rule::requiredIf(fn () => $this->boolean('publish_now', true)),
                 'nullable',
@@ -86,6 +86,36 @@ class StoreQuestRequest extends FormRequest
             'files.*' => ['file', 'max:10240', 'mimes:jpg,jpeg,png,webp,gif,pdf'],
             'accepted_terms' => ['accepted'],
         ];
+
+        if (! empty($profile['show_availability'])) {
+            $rules['availability_need'] = ['required', Rule::enum(QuestAvailabilityNeed::class)];
+        } else {
+            $rules['availability_need'] = ['nullable', Rule::enum(QuestAvailabilityNeed::class)];
+        }
+
+        if (! empty($profile['show_site_visit'])) {
+            $rules['site_visits_allowed'] = ['required', 'boolean'];
+        }
+
+        if (! empty($profile['show_site_access'])) {
+            $rules['site_access_level'] = ['required', 'string', Rule::in(['ground_level_easy', 'stairs_no_lift', 'stairs_with_lift', 'ladder_or_height_work', 'narrow_or_difficult_access', 'other'])];
+            $rules['pets_on_site'] = ['required', 'boolean'];
+            $rules['pets_detail'] = ['nullable', 'string', 'max:255'];
+        }
+
+        if (! empty($profile['show_hourly_fields']) && $this->input('project_type') === QuestProjectType::Hourly->value) {
+            $rules['estimated_hours'] = ['required', 'integer', 'min:1', 'max:2000'];
+        } else {
+            $rules['estimated_hours'] = ['nullable', 'integer', 'min:1', 'max:2000'];
+        }
+
+        if (! empty($profile['show_team_size'])) {
+            $rules['team_size'] = ['required', Rule::enum(QuestTeamSize::class)];
+        } else {
+            $rules['team_size'] = ['nullable', Rule::enum(QuestTeamSize::class)];
+        }
+
+        return $rules;
     }
 
     public function withValidator($validator): void
@@ -145,16 +175,7 @@ class StoreQuestRequest extends FormRequest
                 $v->errors()->add('team_size', __('Choose whether you need one freelancer or a small squad.'));
             }
 
-            if (! empty($profile['show_site_access'])) {
-                if (! $this->filled('site_access_level')) {
-                    $v->errors()->add('site_access_level', __('Choose how accessible the location is for whoever will work on-site.'));
-                }
-                if (! $this->has('pets_on_site')) {
-                    $v->errors()->add('pets_on_site', __('Let freelancers know whether pets are usually present at the location.'));
-                }
-            }
-
-            if ($this->boolean('pets_on_site') && strlen(trim((string) $this->input('pets_detail', ''))) > 255) {
+            if (! empty($profile['show_site_access']) && $this->boolean('pets_on_site') && strlen(trim((string) $this->input('pets_detail', ''))) > 255) {
                 $v->errors()->add('pets_detail', __('Keep pet notes under 255 characters.'));
             }
 

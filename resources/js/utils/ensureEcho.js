@@ -190,6 +190,12 @@ export function safeEchoLeave(channelName) {
         return;
     }
 
+    const channels = window.Echo.connector?.channels;
+    const privateKey = channelName.startsWith('private-') ? channelName : `private-${channelName}`;
+    if (channels && !channels[channelName] && !channels[privateKey]) {
+        return;
+    }
+
     try {
         window.Echo.leave(channelName);
     } catch {
@@ -213,7 +219,11 @@ export function ensureEcho(inertiaConfig = null) {
     }
 
     if (window.Echo?.disconnect) {
-        window.Echo.disconnect();
+        try {
+            window.Echo.disconnect();
+        } catch {
+            /* socket may already be closed */
+        }
     }
 
     window.Echo = createEcho(normalized);

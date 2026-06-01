@@ -29,6 +29,10 @@ class QuestContract extends Model
         'revisions_included',
         'revisions_used',
         'amendment_count',
+        'delivery_extension_count',
+        'original_agreed_delivery_date',
+        'deadline_clock_paused_at',
+        'pending_extension_id',
         'parties_snapshot',
         'quest_snapshot',
         'financial_snapshot',
@@ -56,6 +60,8 @@ class QuestContract extends Model
             'escrow_funded_at' => 'datetime',
             'contract_start_date' => 'date',
             'agreed_delivery_date' => 'date',
+            'original_agreed_delivery_date' => 'date',
+            'deadline_clock_paused_at' => 'datetime',
             'parties_snapshot' => 'array',
             'quest_snapshot' => 'array',
             'financial_snapshot' => 'array',
@@ -117,6 +123,32 @@ class QuestContract extends Model
     public function events(): HasMany
     {
         return $this->hasMany(QuestContractEvent::class)->orderByDesc('created_at');
+    }
+
+    public function deliveryExtensions(): HasMany
+    {
+        return $this->hasMany(QuestContractDeliveryExtension::class)->orderBy('extension_number');
+    }
+
+    public function pendingExtension(): BelongsTo
+    {
+        return $this->belongsTo(QuestContractDeliveryExtension::class, 'pending_extension_id');
+    }
+
+    public function effectiveAgreedDeliveryDate(): ?\Carbon\Carbon
+    {
+        if ($this->agreed_delivery_date === null) {
+            return null;
+        }
+
+        return $this->agreed_delivery_date->copy();
+    }
+
+    public function originalDeliveryDateLabel(): ?string
+    {
+        $date = $this->original_agreed_delivery_date ?? $this->agreed_delivery_date;
+
+        return $date?->format('j M Y');
     }
 
     public function isParty(User $user): bool

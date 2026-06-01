@@ -3,6 +3,8 @@
 namespace App\Notifications;
 
 use App\Models\QuestOffer;
+use App\Support\PlatformFeeDisclosure;
+use App\Support\PlatformSettings;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -29,7 +31,8 @@ class ProposalAcceptedClientNotification extends Notification
         $quest = $this->offer->quest;
         $first = $notifiable->first_name ?: $notifiable->name;
         $grand = (int) ($this->offer->quoted_amount_minor ?? 0);
-        $feePct = (float) config('quests.platform_fee_percent_display', 5);
+        $feePct = PlatformSettings::platformFeePercent();
+        $disclosure = PlatformFeeDisclosure::toArray($feePct);
 
         return (new MailMessage)
             ->subject(__('Next step: fund escrow for :title', ['title' => $quest?->title ?? 'your quest']))
@@ -38,7 +41,9 @@ class ProposalAcceptedClientNotification extends Notification
                 'questTitle' => $quest?->title,
                 'freelancerName' => $this->offer->freelancer?->name ?? __('Freelancer'),
                 'grandNgn' => number_format($grand / 100, 0, '.', ','),
-                'feePercent' => rtrim(rtrim(number_format($feePct, 2, '.', ''), '0'), '.'),
+                'feePercent' => $disclosure['platform_fee_percent_label'],
+                'feeDisclosure' => $disclosure,
+                'feeSummaryLines' => PlatformFeeDisclosure::summaryLines($feePct),
                 'termsUrl' => route('legal.terms', absolute: true),
                 'questUrl' => $quest ? route('quests.show', $quest, absolute: true) : url('/'),
             ]);

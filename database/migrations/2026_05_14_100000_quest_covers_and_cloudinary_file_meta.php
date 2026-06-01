@@ -8,34 +8,69 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('quests', function (Blueprint $table) {
-            $table->string('cover_image_url', 1024)->nullable()->after('description');
-        });
+        if (Schema::hasTable('quests') && ! Schema::hasColumn('quests', 'cover_image_url')) {
+            Schema::table('quests', function (Blueprint $table) {
+                $table->string('cover_image_url', 1024)->nullable();
+            });
+        }
 
-        Schema::table('quest_files', function (Blueprint $table) {
-            $table->string('cloudinary_public_id', 512)->nullable()->after('path');
-            $table->string('cloudinary_resource_type', 32)->nullable()->after('cloudinary_public_id');
-        });
+        if (Schema::hasTable('quest_files')) {
+            Schema::table('quest_files', function (Blueprint $table) {
+                if (! Schema::hasColumn('quest_files', 'cloudinary_public_id')) {
+                    $table->string('cloudinary_public_id', 512)->nullable();
+                }
+                if (! Schema::hasColumn('quest_files', 'cloudinary_resource_type')) {
+                    $table->string('cloudinary_resource_type', 32)->nullable();
+                }
+            });
+        }
 
-        Schema::table('portfolio_files', function (Blueprint $table) {
-            $table->string('disk', 32)->default('public')->after('portfolio_id');
-            $table->string('cloudinary_public_id', 512)->nullable()->after('path');
-            $table->string('cloudinary_resource_type', 32)->nullable()->after('cloudinary_public_id');
-        });
+        if (Schema::hasTable('portfolio_files')) {
+            Schema::table('portfolio_files', function (Blueprint $table) {
+                if (! Schema::hasColumn('portfolio_files', 'disk')) {
+                    $table->string('disk', 32)->default('public');
+                }
+                if (! Schema::hasColumn('portfolio_files', 'cloudinary_public_id')) {
+                    $table->string('cloudinary_public_id', 512)->nullable();
+                }
+                if (! Schema::hasColumn('portfolio_files', 'cloudinary_resource_type')) {
+                    $table->string('cloudinary_resource_type', 32)->nullable();
+                }
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('portfolio_files', function (Blueprint $table) {
-            $table->dropColumn(['disk', 'cloudinary_public_id', 'cloudinary_resource_type']);
-        });
+        if (Schema::hasTable('portfolio_files')) {
+            Schema::table('portfolio_files', function (Blueprint $table) {
+                $columns = array_filter([
+                    Schema::hasColumn('portfolio_files', 'disk') ? 'disk' : null,
+                    Schema::hasColumn('portfolio_files', 'cloudinary_public_id') ? 'cloudinary_public_id' : null,
+                    Schema::hasColumn('portfolio_files', 'cloudinary_resource_type') ? 'cloudinary_resource_type' : null,
+                ]);
+                if ($columns !== []) {
+                    $table->dropColumn($columns);
+                }
+            });
+        }
 
-        Schema::table('quest_files', function (Blueprint $table) {
-            $table->dropColumn(['cloudinary_public_id', 'cloudinary_resource_type']);
-        });
+        if (Schema::hasTable('quest_files')) {
+            Schema::table('quest_files', function (Blueprint $table) {
+                $columns = array_filter([
+                    Schema::hasColumn('quest_files', 'cloudinary_public_id') ? 'cloudinary_public_id' : null,
+                    Schema::hasColumn('quest_files', 'cloudinary_resource_type') ? 'cloudinary_resource_type' : null,
+                ]);
+                if ($columns !== []) {
+                    $table->dropColumn($columns);
+                }
+            });
+        }
 
-        Schema::table('quests', function (Blueprint $table) {
-            $table->dropColumn('cover_image_url');
-        });
+        if (Schema::hasTable('quests') && Schema::hasColumn('quests', 'cover_image_url')) {
+            Schema::table('quests', function (Blueprint $table) {
+                $table->dropColumn('cover_image_url');
+            });
+        }
     }
 };

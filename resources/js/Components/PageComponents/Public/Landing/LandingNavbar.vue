@@ -216,6 +216,7 @@
 
 <script setup>
 import { pathMatches, usePathname } from '@/composables/usePathname';
+import { usePlatformRoleNav } from '@/composables/usePlatformRoleNav';
 import { Link, usePage } from '@inertiajs/vue3';
 import { Bars3Icon, XMarkIcon } from '@heroicons/vue/24/outline';
 import { useWindowScroll } from '@vueuse/core';
@@ -241,9 +242,7 @@ const pathname = usePathname(page);
 
 const user = computed(() => page.props.auth?.user ?? null);
 const isAuthenticated = computed(() => !!user.value);
-const roleSlug = computed(() => user.value?.role?.slug ?? '');
-const isFreelancer = computed(() => roleSlug.value === 'freelancer');
-const showClientTools = computed(() => ['client', 'super_admin'].includes(roleSlug.value));
+const { isFreelancer, showClientTools, showMarketplaceNav } = usePlatformRoleNav();
 
 const mobileOpen = ref(false);
 
@@ -286,12 +285,16 @@ const desktopAuthLinks = computed(() => {
             label: props.nav.dashboard,
             active: () => pathMatches(pathname, route('dashboard')),
         },
-        {
+    ];
+
+    if (showMarketplaceNav.value) {
+        items.push({
             href: exploreHref.value,
             label: props.nav.quests,
             active: () => pathMatches(pathname, exploreHref.value),
-        },
-    ];
+        });
+    }
+
     if (showClientTools.value) {
         items.push({
             href: route('quests.create'),

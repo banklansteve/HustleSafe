@@ -1,9 +1,9 @@
 <template>
     <OperationsShell title="Internal knowledge base" subtitle="Search policies, precedents, and step-by-step procedures while handling cases.">
         <div class="mb-4 rounded-2xl border border-primary-100 bg-gradient-to-br from-primary-50/90 to-white p-4 shadow-sm">
-            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-primary-800">Quick start</p>
+            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-primary-800">Staff admin bible</p>
             <p class="mt-1 text-sm font-semibold text-slate-700">
-                Filter <strong>Common tasks</strong> for disputes, live support, KYC, fraud flags, and escalations — or search any keyword below.
+                Start with the <strong>Admin Escalation Matrix</strong>, then filter by your role group (A–D) for step-by-step process guides.
             </p>
             <div class="mt-3 flex flex-wrap gap-2">
                 <button
@@ -80,7 +80,14 @@ import OperationsSlideOver from '@/Pages/Operations/Components/OperationsSlideOv
 import OperationsShell from '@/Layouts/OperationsShell.vue';
 import { useOperationsAction } from '@/composables/useOperationsAction';
 
-const quickCategories = ['Common tasks', 'Getting started', 'Escalations', 'Cases', 'Moderation', 'People', 'Chat'];
+const quickCategories = [
+    'Escalations',
+    'Group A — Chat & Communications',
+    'Group B — Moderation Operations',
+    'Group C — People & Trust',
+    'Group D — Financial & Disputes',
+    'Getting started',
+];
 
 const q = ref('');
 const category = ref('');

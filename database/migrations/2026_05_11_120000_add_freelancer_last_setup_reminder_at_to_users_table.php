@@ -9,7 +9,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->timestamp('freelancer_last_setup_reminder_at')->nullable()->after('last_active_at');
+            if (! Schema::hasColumn('users', 'freelancer_last_setup_reminder_at')) {
+                $table->timestamp('freelancer_last_setup_reminder_at')->nullable();
+            }
         });
     }
 

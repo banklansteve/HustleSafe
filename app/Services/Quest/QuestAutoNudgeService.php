@@ -8,14 +8,11 @@ use App\Models\QuestNudgeLog;
 use App\Models\User;
 use App\Notifications\QuestEngagementNudgeNotification;
 use App\Services\Proposals\ProposalShortlistService;
-use App\Services\QuestEngagementLifecycleService;
 use Illuminate\Support\Facades\DB;
 
 class QuestAutoNudgeService
 {
-    public function __construct(
-        private readonly QuestEngagementLifecycleService $lifecycle,
-    ) {}
+    public function __construct() {}
 
     /**
      * @return array<string, int>
@@ -25,13 +22,11 @@ class QuestAutoNudgeService
         $sent = [
             'proposals_no_client_login' => 0,
             'awarded_no_escrow' => 0,
-            'delivery_pending_client_action' => 0,
             'shortlist_ready_no_award' => 0,
         ];
 
         $this->processProposalsNoClientLogin($sent);
         $this->processAwardedNoEscrow($sent);
-        $this->processDeliveryPendingClientAction($sent);
         $this->processShortlistReadyNoAward($sent);
 
         return $sent;
@@ -124,55 +119,6 @@ class QuestAutoNudgeService
                         __('Open quest'),
                     )) {
                         $sent['awarded_no_escrow']++;
-                    }
-                }
-            });
-    }
-
-    /**
-     * @param  array<string, int>  $sent
-     */
-    private function processDeliveryPendingClientAction(array &$sent): void
-    {
-        Quest::query()
-            ->where('status', QuestStatus::InProgress)
-            ->where('escrow_status', 'funded')
-            ->whereNotNull('delivered_at')
-            ->whereNull('delivery_acknowledged_at')
-            ->with('client')
-            ->chunkById(50, function ($quests) use (&$sent): void {
-                foreach ($quests as $quest) {
-                    $due = $this->lifecycle->expectedCompletionAt($quest);
-                    if (! $due) {
-                        continue;
-                    }
-
-                    $autoReleaseAt = $due->copy()->addHours(72);
-                    $warnFrom = $autoReleaseAt->copy()->subHours(24);
-
-                    if (now()->lt($warnFrom)) {
-                        continue;
-                    }
-
-                    $client = $quest->client;
-                    if (! $client) {
-                        continue;
-                    }
-
-                    if ($this->sendNudge(
-                        $quest,
-                        $client,
-                        'delivery_pending_client_action',
-                        __('24-hour notice before auto-release — “:title”', ['title' => $quest->title]),
-                        [
-                            __('Delivery was submitted and we have not recorded your approval or a dispute.'),
-                            __('If the work meets the brief, mark the quest complete. If something is wrong, open a dispute within the next 24 hours.'),
-                            __('After that window, escrow may release automatically under our Terms.'),
-                        ],
-                        route('quests.show', [$quest->getRouteKey()], absolute: true),
-                        __('Review delivery'),
-                    )) {
-                        $sent['delivery_pending_client_action']++;
                     }
                 }
             });

@@ -13,6 +13,7 @@ use App\Notifications\ContractActivatedNotification;
 use App\Notifications\ContractCancelledNotification;
 use App\Notifications\ContractCompletedNotification;
 use App\Notifications\ContractDisputedNotification;
+use App\Services\Contracts\DeliveryReliabilityScoreService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -61,6 +62,10 @@ class ContractLifecycleService
         $this->events->log($contract, 'contract.completed', $actor, [], $request);
         $contract->client?->notify(new ContractCompletedNotification($contract));
         $contract->freelancer?->notify(new ContractCompletedNotification($contract));
+
+        if ($contract->freelancer_id) {
+            app(DeliveryReliabilityScoreService::class)->recalculate($contract->freelancer);
+        }
     }
 
     public function markDisputed(QuestContract $contract, QuestDispute $dispute, ?User $actor = null, ?Request $request = null): void

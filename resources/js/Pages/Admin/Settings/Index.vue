@@ -166,6 +166,24 @@
                         </div>
 
                         <div v-else class="mt-5 space-y-5">
+                            <div
+                                v-if="section.key === 'financial'"
+                                class="rounded-2xl border border-primary-200 bg-gradient-to-br from-primary-50/90 to-white p-4 dark:border-primary-400/25 dark:from-primary-500/10 dark:to-slate-950/80 sm:p-5"
+                            >
+                                <p class="text-xs font-black uppercase tracking-[0.18em] text-primary-800 dark:text-primary-200">Fee disclosure (shown to customers)</p>
+                                <p class="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                    Changing <strong>Platform fee (%)</strong> below updates proposals, contracts, emails, legal pages, and every customer-facing surface after you save.
+                                </p>
+                                <ul class="mt-4 space-y-2 text-sm font-semibold leading-relaxed text-slate-800 dark:text-slate-200">
+                                    <li>Paystack fee (client escrow funding): 1.5% of escrow fund + ₦100, capped at ₦2,000</li>
+                                    <li>Paystack payout fee (freelancer withdrawal): ₦10–₦50 depending on bank</li>
+                                    <li>VAT on platform fee: {{ liveVatPercent }}% (applies to platform fee only)</li>
+                                    <li>Platform fee: <strong>{{ livePlatformFeePercent }}%</strong> of the job amount</li>
+                                </ul>
+                                <p class="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-400">
+                                    This covers: all gateway fees, VAT, and platform operation.
+                                </p>
+                            </div>
                             <p
                                 v-if="section.key === 'maintenance'"
                                 class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950"
@@ -281,6 +299,26 @@ const resultSummary = computed(() => {
     }
 
     return `${count} matching settings across ${filteredSections.value.length} sections.`;
+});
+
+const livePlatformFeePercent = computed(() => {
+    const raw = values['financial.platform_fee_percent'];
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+        return props.meta?.platform_fee_disclosure?.platform_fee_percent_label ?? '12';
+    }
+
+    return String(n).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+});
+
+const liveVatPercent = computed(() => {
+    const raw = values['financial.vat_percent'];
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+        return props.meta?.platform_fee_disclosure?.vat_percent_label ?? '7.5';
+    }
+
+    return String(n).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
 });
 
 watch(filteredSections, (sections) => {

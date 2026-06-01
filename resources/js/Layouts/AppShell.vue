@@ -32,7 +32,7 @@
         <header
             class="sticky top-0 z-40 border-b border-slate-200/90 bg-white/90 backdrop-blur-lg supports-[backdrop-filter]:bg-white/80"
         >
-            <div class="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:gap-4 sm:px-6 lg:px-8">
+            <div class="mx-auto grid w-full max-w-[100rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6 lg:gap-4 lg:px-8 xl:px-10 2xl:px-12">
                 <Link
                     href="/"
                     prefetch="false"
@@ -40,44 +40,46 @@
                     class="flex shrink-0 items-center gap-3 rounded-xl outline-none ring-2 ring-transparent ring-offset-2 transition focus-visible:ring-primary-600"
                     :class="homeActive ? 'ring-primary-200' : ''"
                 >
-                    <div class="min-w-0 leading-tight">
-                        <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-9 w-auto max-w-[11rem] sm:h-10 sm:max-w-[12rem] drop-shadow-sm contrast-[1.08]" />
+                    <div class="leading-tight">
+                        <HustleSafeLogo variant="lockup" theme="light" lockup-class="h-9 w-auto max-w-[10rem] sm:h-10 sm:max-w-[11rem] drop-shadow-sm contrast-[1.08]" />
                     </div>
                 </Link>
 
                 <!-- Desktop shortcuts -->
                 <nav
-                    class="hidden min-w-0 flex-1 items-center justify-center gap-2 lg:flex"
+                    class="hidden min-w-0 flex-nowrap items-center justify-start gap-1.5 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] lg:flex xl:gap-2 xl:overflow-x-visible 2xl:gap-2.5 [&::-webkit-scrollbar]:hidden"
                     aria-label="Quick navigation"
                 >
                     <Link
                         :href="route('dashboard')"
                         prefetch="false"
                         preserve-scroll
-                        class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                        class="nav-header-link"
                         :class="pillClass(dashboardActive)"
                     >
-                        <HomeIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                        <HomeIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                         Dashboard
                     </Link>
                     <Link
+                        v-if="showMarketplaceNav"
                         :href="route('wallet.index')"
                         prefetch="false"
                         preserve-scroll
-                        class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                        class="nav-header-link"
                         :class="pillClass(walletActive)"
                     >
-                        <BanknotesIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                        <BanknotesIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                         Wallet
                     </Link>
                     <Link
+                        v-if="showMarketplaceNav"
                         :href="route('contracts.index')"
                         prefetch="false"
                         preserve-scroll
-                        class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                        class="nav-header-link"
                         :class="pillClass(contractsActive)"
                     >
-                        <DocumentTextIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                        <DocumentTextIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                         My contracts
                     </Link>
                     <Link
@@ -85,10 +87,10 @@
                         :href="adminEntryUrl"
                         prefetch="false"
                         preserve-scroll
-                        class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                        class="nav-header-link"
                         :class="pillClass(adminActive)"
                     >
-                        <ChartPieIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                        <ChartPieIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                         Admin
                     </Link>
                     <Link
@@ -96,10 +98,10 @@
                         :href="operationsEntryUrl"
                         prefetch="false"
                         preserve-scroll
-                        class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                        class="nav-header-link"
                         :class="pillClass(operationsConsoleActive)"
                     >
-                        <ChartBarIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                        <ChartBarIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                         Operations
                     </Link>
                     <template v-if="showClientTools">
@@ -107,30 +109,30 @@
                             :href="route('quests.index')"
                             prefetch="false"
                             preserve-scroll
-                            class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                            class="nav-header-link"
                             :class="pillClass(questsIndexActive)"
                         >
-                            <ClipboardDocumentListIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                            <ClipboardDocumentListIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                             My quests
                         </Link>
                         <Link
                             :href="route('quests.create')"
                             prefetch="false"
                             preserve-scroll
-                            class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                            class="nav-header-link"
                             :class="pillClass(createQuestActive)"
                         >
-                            <PlusCircleIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                            <PlusCircleIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                             Create quest
                         </Link>
                         <Link
                             :href="route('quests.explore')"
                             prefetch="false"
                             preserve-scroll
-                            class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                            class="nav-header-link"
                             :class="pillClass(exploreActive)"
                         >
-                            <MagnifyingGlassIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                            <MagnifyingGlassIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                             Browse quests
                         </Link>
                     </template>
@@ -139,26 +141,26 @@
                             :href="route('portfolio.manage')"
                             prefetch="false"
                             preserve-scroll
-                            class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                            class="nav-header-link"
                             :class="pillClass(portfolioManageActive)"
                         >
-                            <BriefcaseIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                            <BriefcaseIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                             Your portfolio
                         </Link>
                         <Link
                             :href="route('quests.explore')"
                             prefetch="false"
                             preserve-scroll
-                            class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold shadow-sm transition"
+                            class="nav-header-link"
                             :class="pillClass(exploreActive)"
                         >
-                            <MagnifyingGlassIcon class="h-5 w-5 opacity-80" aria-hidden="true" />
+                            <MagnifyingGlassIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                             Browse quests
                         </Link>
                     </template>
                 </nav>
 
-                <div class="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+                <div class="flex shrink-0 items-center justify-end gap-2 sm:gap-3">
                 <div ref="notifRoot" class="relative">
                     <button
                         type="button"
@@ -369,6 +371,7 @@ import CustomerSupportBubble from '@/Components/Support/CustomerSupportBubble.vu
 import NavUserMenu from '@/Components/Layout/NavUserMenu.vue';
 import AppToastHost from '@/Components/Ui/AppToastHost.vue';
 import { useNotificationVisit } from '@/composables/useNotificationVisit';
+import { usePlatformRoleNav } from '@/composables/usePlatformRoleNav';
 import { useUserNotificationEcho } from '@/composables/useUserNotificationEcho';
 import { pathMatches, usePathname } from '@/composables/usePathname';
 import { Link, router, usePage } from '@inertiajs/vue3';
@@ -397,7 +400,7 @@ let notifPollTimer = null;
 useUserNotificationEcho(
     computed(() => page.props.auth?.user?.id),
     computed(() => page.props.broadcast),
-    () => silentNotificationPoll(),
+    () => silentNotificationPoll(true),
 );
 
 async function openNotification(n) {
@@ -426,8 +429,8 @@ watch(
     },
 );
 
-async function silentNotificationPoll() {
-    if (document.visibilityState !== 'visible' || notifOpen.value) {
+async function silentNotificationPoll(force = false) {
+    if (!force && (document.visibilityState !== 'visible' || notifOpen.value)) {
         return;
     }
 
@@ -603,9 +606,7 @@ function dismissClientNudge(item) {
     dismissedClientNudgeKeys.value = [...dismissedClientNudgeKeys.value, key];
 }
 
-const roleSlug = computed(() => page.props.auth?.user?.role?.slug ?? '');
-const isFreelancer = computed(() => roleSlug.value === 'freelancer');
-const showClientTools = computed(() => ['client', 'super_admin'].includes(roleSlug.value));
+const { roleSlug, isFreelancer, showClientTools, showMarketplaceNav } = usePlatformRoleNav();
 const adminEntryUrl = computed(() => page.props.admin_entry_url ?? null);
 const operationsEntryUrl = computed(() => page.props.operations_entry_url ?? null);
 const impersonation = computed(() => page.props.impersonation ?? null);
@@ -670,3 +671,9 @@ function dismissAnnouncement() {
     window.localStorage?.setItem('dismissed-announcements', JSON.stringify(dismissedAnnouncementIds.value));
 }
 </script>
+
+<style scoped>
+.nav-header-link {
+    @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-2 px-3 py-2 text-sm font-bold shadow-sm transition lg:px-3.5 xl:gap-2 xl:px-4;
+}
+</style>

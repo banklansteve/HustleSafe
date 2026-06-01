@@ -16,6 +16,10 @@ class UpdateUserPresence
 
     public function terminate(Request $request, Response $response): void
     {
+        if ($request->routeIs('logout')) {
+            return;
+        }
+
         $user = $request->user();
         if ($user === null) {
             return;

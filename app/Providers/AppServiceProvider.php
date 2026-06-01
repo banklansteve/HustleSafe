@@ -159,6 +159,16 @@ class AppServiceProvider extends ServiceProvider
                     (int) $escrow->id,
                 );
             }
+
+            if (
+                $escrow->funded_at !== null
+                && ($escrow->wasChanged('funded_at') || $escrow->wasChanged('released_minor') || $escrow->wasChanged('refunded_minor'))
+            ) {
+                \Illuminate\Support\Facades\DB::afterCommit(function () use ($escrow): void {
+                    app(\App\Services\Finance\FinancialEscrowLedgerSyncService::class)
+                        ->syncIfMissing($escrow->fresh());
+                });
+            }
         });
     }
 }

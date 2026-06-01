@@ -9,6 +9,33 @@
             {{ decisionBanner.message }}
         </div>
 
+        <section
+            v-if="presentation?.duplicate_identity_alert"
+            class="rounded-2xl border-2 border-rose-500 bg-gradient-to-br from-rose-50 via-rose-100/80 to-amber-50 px-4 py-4 text-sm shadow-sm ring-2 ring-rose-200"
+            role="alert"
+        >
+            <p class="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-rose-800">
+                <span class="inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-white">Critical</span>
+                {{ presentation.duplicate_identity_alert.headline }}
+            </p>
+            <p class="mt-2 text-xs font-bold leading-relaxed text-rose-950">
+                {{ presentation.duplicate_identity_alert.body }}
+            </p>
+            <ul v-if="presentation.duplicate_accounts?.length" class="mt-3 space-y-2">
+                <li
+                    v-for="account in presentation.duplicate_accounts"
+                    :key="account.id"
+                    class="rounded-xl border border-rose-200 bg-white/90 px-3 py-2.5 text-xs font-semibold text-slate-800"
+                >
+                    <span class="font-black text-rose-900">{{ account.name }}</span>
+                    <span class="text-slate-500"> · {{ account.email }}</span>
+                    <span v-if="account.registered_at" class="mt-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                        Registered {{ formatWhen(account.registered_at) }}
+                    </span>
+                </li>
+            </ul>
+        </section>
+
         <section v-if="presentation?.requires_super_admin_review && !presentation?.staff_can_decide" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950">
             <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-800">Super Admin review</p>
             <p class="mt-2 text-xs leading-relaxed">This is a final-tier verification for this account type. It is routed to Super Admin only — you can view the submission but cannot approve or reject it here.</p>
@@ -349,6 +376,22 @@ function statusClass(status) {
         return 'bg-amber-100 text-amber-900';
     }
     return 'bg-slate-100 text-slate-700';
+}
+
+function formatWhen(iso) {
+    if (!iso) {
+        return '';
+    }
+    try {
+        return new Date(iso).toLocaleDateString('en-NG', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'Africa/Lagos',
+        });
+    } catch {
+        return '';
+    }
 }
 
 function openPreview(doc) {

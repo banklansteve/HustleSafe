@@ -31,6 +31,7 @@ class QuestOfferController extends Controller
         $payload = $request->normalizedPayload();
         $grand = (int) ($payload['pricing_snapshot']['grand_total_minor'] ?? 0);
         $readiness->assertCanSubmitOffer($user, $quest, $grand);
+        app(\App\Services\Freelancer\ProposalQuotaService::class)->assertCanSubmit($user, $quest);
 
         $validated = $request->validated();
 
@@ -77,6 +78,7 @@ class QuestOfferController extends Controller
         }
 
         $quest->increment('offers_count');
+        app(\App\Services\Freelancer\ProposalQuotaService::class)->recordSubmission($user);
 
         defer(function () use ($quest): void {
             try {

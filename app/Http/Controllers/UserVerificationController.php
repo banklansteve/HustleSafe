@@ -38,6 +38,10 @@ class UserVerificationController extends Controller
         $data = $request->validated();
         $category = UserVerificationCategory::from($data['category']);
 
+        $userId = $user->id;
+        $disk = 'local';
+        $dir = "user-verifications/{$userId}";
+
         $this->assertCanSubmit($user, $category, $catalog);
 
         $pendingExists = UserVerification::query()
@@ -52,13 +56,15 @@ class UserVerificationController extends Controller
             ]);
         }
 
-        $this->assertIdentityUnique($identityUniqueness, $user, $category, $data);
-
-        $userId = $user->id;
-        $disk = 'local';
-        $dir = "user-verifications/{$userId}";
-
         [$paths, $metadata] = $this->buildSubmissionPayload($request, $category, $data, $dir, $disk);
+        $duplicateContext = $this->resolveDuplicateContext($identityUniqueness, $user, $category, $data);
+        if ($duplicateContext !== null) {
+            $metadata = array_merge($metadata, $duplicateContext['metadata']);
+        }
+
+        $queueReason = $duplicateContext !== null
+            ? 'duplicate_identity'
+            : $this->queueReasonFor($category, $user);
 
         $verification = UserVerification::query()->create([
             'user_id' => $userId,
@@ -72,7 +78,7 @@ class UserVerificationController extends Controller
             'encrypted_identifier' => $category === UserVerificationCategory::Bvn
                 ? Crypt::encryptString((string) $data['identifier_number'])
                 : null,
-            'queue_reason' => $this->queueReasonFor($category, $user),
+            'queue_reason' => $queueReason,
             'attempt_count' => UserVerification::query()
                 ->where('user_id', $userId)
                 ->where('category', $category)
@@ -81,6 +87,14 @@ class UserVerificationController extends Controller
         ]);
 
         $kycIntake->createFromVerification($verification, $verification->queue_reason ?: 'manual_review');
+
+        try {
+            $assignment = app(\App\Services\Verification\VerificationQueueAssignmentService::class);
+            $assignment->assignNextAvailable($verification->fresh(['user', 'assignedStaff', 'user.role']));
+            $assignment->broadcastUpdate($verification->fresh(['user', 'assignedStaff', 'user.role']), 'created');
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         app(\App\Services\Platform\PlatformSlaService::class)->start(
             'kyc_verification',
@@ -237,26 +251,58 @@ class UserVerificationController extends Controller
 
     /**
      * @param  array<string, mixed>  $data
+     * @return array{metadata: array<string, mixed>}|null
      */
-    protected function assertIdentityUnique(
+    protected function resolveDuplicateContext(
         IdentityDocumentUniquenessService $identityUniqueness,
         $user,
         UserVerificationCategory $category,
         array $data,
-    ): void {
-        if (in_array($category, [UserVerificationCategory::Nin, UserVerificationCategory::Bvn], true)) {
-            $identityUniqueness->assertAvailableForUser($user, $category->value, (string) $data['identifier_number']);
+    ): ?array {
+        [$documentKind, $identifier] = $this->identityDocumentForDuplicateCheck($category, $data);
+        if ($documentKind === null || $identifier === '') {
+            return null;
+        }
 
-            return;
+        $accounts = $identityUniqueness->conflictingAccounts($user, $documentKind, $identifier);
+        if ($accounts === []) {
+            return null;
+        }
+
+        $documentLabel = match ($identityUniqueness->normalizeKind($documentKind)) {
+            'nin' => 'NIN',
+            'bvn' => 'BVN',
+            'passport' => 'passport number',
+            'national_id' => 'national ID card number',
+            'drivers_licence' => 'driver\'s licence number',
+            'voters_card' => 'voter\'s card number',
+            default => 'identity document',
+        };
+
+        return [
+            'metadata' => [
+                'duplicate_accounts' => $accounts,
+                'duplicate_document_kind' => $identityUniqueness->normalizeKind($documentKind),
+                'duplicate_document_label' => $documentLabel,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{0: ?string, 1: string}
+     */
+    protected function identityDocumentForDuplicateCheck(UserVerificationCategory $category, array $data): array
+    {
+        if (in_array($category, [UserVerificationCategory::Nin, UserVerificationCategory::Bvn], true)) {
+            return [$category->value, (string) ($data['identifier_number'] ?? '')];
         }
 
         if ($category === UserVerificationCategory::IdentityAddress) {
-            $identityUniqueness->assertAvailableForUser(
-                $user,
-                (string) $data['id_type'],
-                (string) $data['identifier_number'],
-            );
+            return [(string) ($data['id_type'] ?? ''), (string) ($data['identifier_number'] ?? '')];
         }
+
+        return [null, ''];
     }
 
     protected function assertCanSubmit($user, UserVerificationCategory $category, UserVerificationCatalogService $catalog): void

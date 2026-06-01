@@ -87,21 +87,41 @@ class StaffVerificationService
             return $verification;
         }
 
-        if ($verification->assigned_staff_id && (int) $verification->assigned_staff_id !== (int) $staff->id) {
+        if ((int) ($verification->assigned_staff_id ?? 0) === (int) $staff->id) {
+            return $verification->fresh(['user', 'reviewer', 'assignedStaff']);
+        }
+
+        if ($verification->assigned_staff_id) {
+            $canReclaim = $staff->role?->slug === 'admin'
+                && $this->reviewPolicy->staffCanReview($verification, $staff)
+                && $this->isAssignedToSuperAdmin($verification);
+
+            if (! $canReclaim) {
+                throw ValidationException::withMessages([
+                    'verification' => __('This verification is assigned to another team member.'),
+                ]);
+            }
+        } elseif (! $this->reviewPolicy->staffCanReview($verification, $staff)) {
             throw ValidationException::withMessages([
-                'verification' => __('This verification is assigned to another team member.'),
+                'verification' => __('This verification is reviewed by Super Admin only.'),
             ]);
         }
 
-        if (! $verification->assigned_staff_id) {
-            $verification->forceFill([
-                'assigned_staff_id' => $staff->id,
-                'staff_assigned_at' => now(),
-            ])->save();
-            $this->syncKycCaseAssignment($verification, $staff);
-        }
+        $verification->forceFill([
+            'assigned_staff_id' => $staff->id,
+            'staff_assigned_at' => now(),
+        ])->save();
+        $this->syncKycCaseAssignment($verification, $staff);
 
         return $verification->fresh(['user', 'reviewer', 'assignedStaff']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function queueRowForBroadcast(UserVerification $verification, User $staff): array
+    {
+        return $this->row($verification, $staff);
     }
 
     public function detail(UserVerification $verification, User $staff): array
@@ -149,7 +169,16 @@ class StaffVerificationService
             ]);
         }
 
-        return $this->decisions->decide($verification, $staff, $data, $request, 'operations.verification');
+        $result = $this->decisions->decide($verification, $staff, $data, $request, 'operations.verification');
+
+        try {
+            app(\App\Services\Verification\VerificationQueueAssignmentService::class)
+                ->broadcastUpdate($verification->fresh(['user', 'assignedStaff']), 'decided');
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $result;
     }
 
     /**
@@ -403,6 +432,17 @@ class StaffVerificationService
             && Schema::hasColumn('user_verifications', 'staff_assigned_at');
     }
 
+    private function isAssignedToSuperAdmin(UserVerification $verification): bool
+    {
+        if (! $verification->assigned_staff_id) {
+            return false;
+        }
+
+        $verification->loadMissing('assignedStaff.role:id,slug');
+
+        return $verification->assignedStaff?->role?->slug === 'super_admin';
+    }
+
     private function hasOpenEscalationTask(UserVerification $verification): bool
     {
         if (! Schema::hasTable('admin_tasks')) {
@@ -469,6 +509,11 @@ class StaffVerificationService
             ] : null,
             'reason' => $verification->rejection_reason,
             'concern' => $verification->admin_concern,
+            'queue_reason' => $verification->queue_reason,
+            'is_duplicate_identity' => $verification->queue_reason === 'duplicate_identity',
+            'duplicate_account_count' => is_array($review['duplicate_accounts'] ?? null)
+                ? count($review['duplicate_accounts'])
+                : 0,
             'user' => $verification->user ? [
                 'id' => $verification->user->id,
                 'name' => $verification->user->name,

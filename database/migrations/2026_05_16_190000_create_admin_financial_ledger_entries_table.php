@@ -8,33 +8,39 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('quests', function (Blueprint $table): void {
-            if (! Schema::hasColumn('quests', 'refunded_minor')) {
-                $table->unsignedBigInteger('refunded_minor')->default(0)->after('paid_out_minor');
-            }
-            if (! Schema::hasColumn('quests', 'escrow_held_at')) {
-                $table->timestamp('escrow_held_at')->nullable()->after('escrow_funded_at')->index();
-            }
-            if (! Schema::hasColumn('quests', 'escrow_hold_reason')) {
-                $table->text('escrow_hold_reason')->nullable()->after('escrow_held_at');
-            }
-            if (! Schema::hasColumn('quests', 'escrow_hold_expected_resolution_at')) {
-                $table->timestamp('escrow_hold_expected_resolution_at')->nullable()->after('escrow_hold_reason');
-            }
-            if (! Schema::hasColumn('quests', 'escrow_frozen_at')) {
-                $table->timestamp('escrow_frozen_at')->nullable()->after('escrow_hold_expected_resolution_at')->index();
-            }
-            if (! Schema::hasColumn('quests', 'escrow_freeze_reason')) {
-                $table->text('escrow_freeze_reason')->nullable()->after('escrow_frozen_at');
-            }
-        });
+        if (Schema::hasTable('quests')) {
+            Schema::table('quests', function (Blueprint $table): void {
+                if (! Schema::hasColumn('quests', 'refunded_minor')) {
+                    $table->unsignedBigInteger('refunded_minor')->default(0);
+                }
+                if (! Schema::hasColumn('quests', 'escrow_held_at')) {
+                    $table->timestamp('escrow_held_at')->nullable()->index();
+                }
+                if (! Schema::hasColumn('quests', 'escrow_hold_reason')) {
+                    $table->text('escrow_hold_reason')->nullable();
+                }
+                if (! Schema::hasColumn('quests', 'escrow_hold_expected_resolution_at')) {
+                    $table->timestamp('escrow_hold_expected_resolution_at')->nullable();
+                }
+                if (! Schema::hasColumn('quests', 'escrow_frozen_at')) {
+                    $table->timestamp('escrow_frozen_at')->nullable()->index();
+                }
+                if (! Schema::hasColumn('quests', 'escrow_freeze_reason')) {
+                    $table->text('escrow_freeze_reason')->nullable();
+                }
+            });
+        }
+
+        if (Schema::hasTable('admin_financial_ledger_entries')) {
+            return;
+        }
 
         Schema::create('admin_financial_ledger_entries', function (Blueprint $table): void {
             $table->id();
             $table->uuid('uuid')->unique();
             $table->string('reference', 40)->unique();
             $table->foreignId('quest_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignId('quest_offer_id')->nullable()->constrained('quest_offers')->nullOnDelete();
+            $table->unsignedBigInteger('quest_offer_id')->nullable()->index();
             $table->foreignId('client_id')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('freelancer_id')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('admin_user_id')->nullable()->constrained('users')->nullOnDelete();
@@ -55,11 +61,21 @@ return new class extends Migration
 
             $table->index(['quest_id', 'occurred_at']);
         });
+
+        if (Schema::hasTable('quest_offers')) {
+            Schema::table('admin_financial_ledger_entries', function (Blueprint $table): void {
+                $table->foreign('quest_offer_id')->references('id')->on('quest_offers')->nullOnDelete();
+            });
+        }
     }
 
     public function down(): void
     {
         Schema::dropIfExists('admin_financial_ledger_entries');
+
+        if (! Schema::hasTable('quests')) {
+            return;
+        }
 
         Schema::table('quests', function (Blueprint $table): void {
             foreach ([

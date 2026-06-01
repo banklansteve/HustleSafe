@@ -16,7 +16,7 @@ use App\Http\Requests\Quests\StoreQuestRequest;
 use App\Http\Requests\Quests\UpdateQuestRequest;
 use App\Jobs\ScanContentForModerationJob;
 use App\Models\Quest;
-use App\Models\FeaturedQuestListing;
+use App\Models\QuestBoost;
 use App\Models\QuestBookmark;
 use App\Models\QuestCategory;
 use App\Models\QuestConversationThread;
@@ -101,7 +101,7 @@ class QuestController extends Controller
             'locations' => $this->locationsPayload(),
             'categoryTree' => $this->categoryTreePayload(),
             'startTimingOptions' => $this->startTimingOptions(),
-            'maxBudgetMinor' => max(10_000, min(100_000_000, $clientLimit > 0 ? $clientLimit : 100_000_000)),
+            'maxBudgetMinor' => max(10_000, min(500_000_000, $clientLimit > 0 ? $clientLimit : 500_000_000)),
             'minBudgetMinor' => 10_000,
             'verificationLimit' => $clientLimit,
             'fieldProfileUrl' => route('quests.field-profile'),
@@ -729,13 +729,17 @@ class QuestController extends Controller
             'city' => $q->city,
             'budget_minor' => (int) ($q->budget_amount_minor ?? 0),
             'cover_url' => $q->displayCoverUrl(),
-            'featured' => FeaturedQuestListing::query()
+            'featured' => QuestBoost::query()
                 ->where('quest_id', $q->id)
                 ->where('status', 'active')
                 ->where('starts_at', '<=', now())
-                ->where('expires_at', '>', now())
+                ->where('ends_at', '>', now())
                 ->latest('id')
                 ->value('tier'),
+            'is_boosted' => QuestBoost::query()
+                ->where('quest_id', $q->id)
+                ->activeNow()
+                ->exists(),
         ];
     }
 
@@ -856,11 +860,11 @@ class QuestController extends Controller
         $isStaff = $viewer && in_array($viewer->role?->slug, ['admin', 'super_admin'], true);
         $isOwner = $viewer && (int) $viewer->id === (int) $quest->client_id;
         $showInternalCodes = $isOwner || $isStaff;
-        $activeBoost = FeaturedQuestListing::query()
+        $activeBoost = QuestBoost::query()
             ->where('quest_id', $quest->id)
             ->where('status', 'active')
             ->where('starts_at', '<=', now())
-            ->where('expires_at', '>', now())
+            ->where('ends_at', '>', now())
             ->latest('id')
             ->first();
 
@@ -877,11 +881,8 @@ class QuestController extends Controller
             'team_size' => $quest->team_size?->value,
             'featured_boost' => $activeBoost ? [
                 'tier' => $activeBoost->tier,
-                'label' => Str::headline($activeBoost->tier).' Boost',
-                'expires_at' => $activeBoost->expires_at?->timezone('Africa/Lagos')->toIso8601String(),
-                'homepage_carousel' => (bool) $activeBoost->homepage_carousel,
-                'weekly_digest' => (bool) $activeBoost->weekly_digest,
-                'social_post_required' => (bool) $activeBoost->social_post_required,
+                'label' => __('Boosted'),
+                'expires_at' => $activeBoost->ends_at?->timezone('Africa/Lagos')->toIso8601String(),
             ] : null,
             'auto_listing_expiry_days' => $quest->auto_listing_expiry_days,
             'listing_expires_at' => $quest->listing_expires_at?->timezone('Africa/Lagos')->toIso8601String(),

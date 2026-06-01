@@ -1,5 +1,5 @@
 <template>
-    <OperationsShell title="Verification queue" subtitle="Pick up pending identity and KYC submissions from the queue, or review cases already assigned to you. Final-tier checks (client BVN, freelancer selfie + ID) are Super Admin only.">
+    <OperationsShell title="Verification queue" subtitle="Pick up pending identity and KYC submissions from the queue, or review cases already assigned to you. Client BVN and freelancer selfie + ID checks are Super Admin only.">
         <div class="mb-4 flex gap-2 overflow-x-auto pb-1">
             <button
                 v-for="tab in queueTabs"
@@ -104,7 +104,7 @@
             :loading="loading"
             :show-search="false"
             :show-per-page="false"
-            :page="page"
+            :page="currentPage"
             :total="total"
             :total-pages="totalPages"
             :sort-key="sortKey"
@@ -132,6 +132,12 @@
             </template>
             <template #cell-status="{ row }">
                 <span class="inline-flex flex-wrap items-center gap-1">
+                    <span
+                        v-if="row.is_duplicate_identity"
+                        class="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-black uppercase text-white ring-2 ring-rose-200"
+                    >
+                        Duplicate ID
+                    </span>
                     <span class="rounded-full px-2 py-0.5 text-[10px] font-black uppercase" :class="statusPill(row.status)">{{ row.status_label || row.status }}</span>
                     <span v-if="row.is_escalated_to_super_admin" class="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-black uppercase text-violet-800">Super Admin</span>
                 </span>
@@ -185,12 +191,14 @@
 <script setup>
 import VerificationReviewPanel from '@/Components/Verification/VerificationReviewPanel.vue';
 import UiTextarea from '@/Components/Ui/UiTextarea.vue';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
 import OperationsExpandableAction from '@/Pages/Operations/Components/OperationsExpandableAction.vue';
 import OperationsQueueTable from '@/Pages/Operations/Components/OperationsQueueTable.vue';
 import OperationsSlideOver from '@/Pages/Operations/Components/OperationsSlideOver.vue';
 import OperationsShell from '@/Layouts/OperationsShell.vue';
 import { useOperationsAction } from '@/composables/useOperationsAction';
+import { useVerificationQueueEcho } from '@/composables/useVerificationQueueEcho';
+import { usePage } from '@inertiajs/vue3';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
     decision_reasons: { type: Array, default: () => [] },
@@ -199,6 +207,8 @@ const props = defineProps({
         default: () => ({ tab: 'pending_queue', range: '30d', per_page: 25 }),
     },
 });
+
+const inertiaPage = usePage();
 
 const decisionReasons = ref([...props.decision_reasons]);
 
@@ -273,7 +283,7 @@ const searchQuery = ref('');
 
 const rows = ref([]);
 const loading = ref(false);
-const page = ref(1);
+const currentPage = ref(1);
 const perPage = ref(props.queue_defaults.per_page || 25);
 const total = ref(0);
 const totalPages = ref(1);
@@ -313,20 +323,27 @@ watch(searchQuery, () => {
         clearTimeout(searchDebounce);
     }
     searchDebounce = setTimeout(() => {
-        page.value = 1;
+        currentPage.value = 1;
         reload();
     }, 400);
 });
 
 watch([sortKey, sortDir, perPage, typeFilter], () => {
-    page.value = 1;
+    currentPage.value = 1;
     reload();
 });
 
 onMounted(reload);
 
+useVerificationQueueEcho(
+    computed(() => inertiaPage.props.broadcast),
+    () => {
+        reload();
+    },
+);
+
 function applyFilters() {
-    page.value = 1;
+    currentPage.value = 1;
     reload();
 }
 
@@ -336,7 +353,7 @@ function resetFilters() {
     statusFilter.value = activeTab.value === 'pending_queue' ? 'pending' : '';
     sortKey.value = activeTab.value === 'pending_queue' ? 'submitted_at' : 'staff_assigned_at';
     sortDir.value = activeTab.value === 'pending_queue' ? 'asc' : 'desc';
-    page.value = 1;
+    currentPage.value = 1;
     reload();
 }
 
@@ -348,14 +365,14 @@ function switchTab(key) {
     statusFilter.value = key === 'pending_queue' ? 'pending' : '';
     sortKey.value = key === 'pending_queue' || statusFilter.value === 'pending' ? 'submitted_at' : 'staff_assigned_at';
     sortDir.value = key === 'pending_queue' || statusFilter.value === 'pending' ? 'asc' : 'desc';
-    page.value = 1;
+    currentPage.value = 1;
     reload();
 }
 
 function setDateRange(value) {
     dateRange.value = value;
     if (value !== 'custom') {
-        page.value = 1;
+        currentPage.value = 1;
         reload();
     }
 }
@@ -366,7 +383,7 @@ function setStatusFilter(value) {
         sortKey.value = 'submitted_at';
         sortDir.value = 'asc';
     }
-    page.value = 1;
+    currentPage.value = 1;
     reload();
 }
 
@@ -377,12 +394,12 @@ function onSort(key) {
         sortKey.value = key;
         sortDir.value = key === 'submitted_at' && statusFilter.value === 'pending' ? 'asc' : 'desc';
     }
-    page.value = 1;
+    currentPage.value = 1;
     reload();
 }
 
 function onPage(nextPage) {
-    page.value = nextPage;
+    currentPage.value = nextPage;
     reload();
 }
 
@@ -400,14 +417,14 @@ async function reload() {
                 date_to: dateRange.value === 'custom' ? dateTo.value : undefined,
                 sort: mapSortKey(sortKey.value),
                 direction: sortDir.value,
-                page: page.value,
+                page: currentPage.value,
                 per_page: perPage.value,
             },
         });
         rows.value = data.items ?? [];
         total.value = data.meta?.total ?? 0;
         totalPages.value = data.meta?.last_page ?? 1;
-        page.value = data.meta?.current_page ?? page.value;
+        currentPage.value = data.meta?.current_page ?? currentPage.value;
     } finally {
         loading.value = false;
     }

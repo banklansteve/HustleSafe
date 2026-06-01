@@ -6,6 +6,7 @@ return [
     'verification_queue' => [
         'default_assignment_range_days' => (int) env('OPERATIONS_VERIFICATION_ASSIGNMENT_RANGE_DAYS', 30),
         'max_assignment_range_days' => 365,
+        'online_window_minutes' => (int) env('OPERATIONS_VERIFICATION_ONLINE_WINDOW_MINUTES', 5),
         'per_page' => 25,
     ],
 

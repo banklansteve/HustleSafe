@@ -34,6 +34,8 @@ class PaystackWebhookController extends Controller
 
         try {
             $this->escrowPayments->handleWebhook($eventId, $eventType, $payload);
+            app(\App\Services\Freelancer\FreelancerProPaymentService::class)
+                ->handleWebhookReference((string) data_get($payload, 'data.reference', ''), data_get($payload, 'data', []));
         } catch (\Throwable $e) {
             report($e);
 

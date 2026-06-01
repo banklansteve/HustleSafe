@@ -78,7 +78,7 @@ export function useQuestCreateDraft(storageKeyRef, getSnapshotSource, applySnaps
 function buildSerializableSnapshot(src) {
     const { form, ...rest } = src;
     const fd = typeof form?.data === 'function' ? form.data() : form;
-    const { files: _files, ...formRest } = fd;
+    const { files: _files, accepted_terms: _acceptedTerms, ...formRest } = fd;
 
     return { ...rest, form: formRest };
 }

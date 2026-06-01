@@ -252,6 +252,19 @@
                                 </div>
                             </div>
                         </div>
+                        <div v-if="profile.overview.delivery_reliability" class="rounded-3xl border p-4" :class="shell.card">
+                            <h4 class="font-black">Delivery reliability</h4>
+                            <p class="mt-2 text-sm font-semibold text-slate-600">
+                                <span v-if="profile.overview.delivery_reliability.total > 0">
+                                    {{ profile.overview.delivery_reliability.score }}% on-time
+                                    ({{ profile.overview.delivery_reliability.on_time }}/{{ profile.overview.delivery_reliability.total }} completed contracts)
+                                </span>
+                                <span v-else>Not enough completed contracts yet.</span>
+                            </p>
+                            <p v-if="profile.overview.delivery_reliability.low_reliability_flagged" class="mt-2 text-xs font-black uppercase text-rose-600">
+                                Low Delivery Reliability signal active
+                            </p>
+                        </div>
                         <div class="rounded-3xl border p-4" :class="shell.card">
                             <h4 class="font-black">Trust breakdown</h4>
                             <div class="mt-3 space-y-3">

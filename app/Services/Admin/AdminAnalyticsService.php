@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin;
 
+use App\Enums\LedgerAccount;
 use App\Enums\QuestDisputeStatus;
 use App\Enums\QuestStatus;
 use App\Enums\UserVerificationStatus;
@@ -13,8 +14,10 @@ use App\Models\QuestOffer;
 use App\Models\State;
 use App\Models\User;
 use App\Models\UserVerification;
+use App\Models\LedgerEntry;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 final class AdminAnalyticsService
 {
@@ -263,6 +266,98 @@ final class AdminAnalyticsService
     }
 
     /**
+     * Revenue & accounting charts for Reports & analytics (financial audit scope only).
+     *
+     * @return array<string, mixed>
+     */
+    public function financialReportsCharts(): array
+    {
+        $tz = config('app.timezone');
+
+        return [
+            'escrow_daily' => $this->escrowHeldDailySeries($tz, 30),
+            'platform_fee_daily' => $this->ledgerAccountDailySeries(LedgerAccount::PlatformFeeRevenue->value, $tz, 30),
+            'vat_daily' => $this->ledgerAccountDailySeries(LedgerAccount::VatPayable->value, $tz, 30),
+            'escrow_inflow_daily' => $this->ledgerEventDailyInflowSeries($tz, 30),
+        ];
+    }
+
+    /**
+     * Marketplace activity charts for the Insights page.
+     *
+     * @return array<string, mixed>
+     */
+    public function operationalInsightsCharts(): array
+    {
+        $tz = config('app.timezone');
+
+        return [
+            'signups' => $this->signupsSeries($tz),
+            'quest_mix' => $this->questMix(),
+            'category_heatmap' => $this->categoryHeatmap(),
+            'funnel' => $this->proposalFunnel(),
+            'geo' => $this->geographicDistribution(),
+            'cohort' => $this->cohortRetention(),
+        ];
+    }
+
+    /**
+     * @return list<array{date: string, minor: int}>
+     */
+    public function ledgerAccountDailySeries(string $account, string $tz, int $days = 30): array
+    {
+        if (! Schema::hasTable('ledger_entries')) {
+            return [];
+        }
+
+        $out = [];
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $day = now($tz)->startOfDay()->subDays($i);
+            $dayEnd = $day->copy()->endOfDay();
+            $minor = (int) LedgerEntry::query()
+                ->where('ledger_account', $account)
+                ->where('side', 'credit')
+                ->whereBetween('occurred_at', [$day, $dayEnd])
+                ->sum('amount_minor');
+
+            $out[] = [
+                'date' => $day->toDateString(),
+                'minor' => $minor,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{date: string, minor: int}>
+     */
+    public function ledgerEventDailyInflowSeries(string $tz, int $days = 30): array
+    {
+        if (! Schema::hasTable('ledger_entries')) {
+            return $this->escrowHeldDailySeries($tz, $days);
+        }
+
+        $out = [];
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $day = now($tz)->startOfDay()->subDays($i);
+            $dayEnd = $day->copy()->endOfDay();
+            $minor = (int) LedgerEntry::query()
+                ->where('ledger_account', LedgerAccount::ClientEscrowLiability->value)
+                ->where('side', 'credit')
+                ->whereBetween('occurred_at', [$day, $dayEnd])
+                ->sum('amount_minor');
+
+            $out[] = [
+                'date' => $day->toDateString(),
+                'minor' => $minor,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function dashboardPayload(): array
@@ -272,13 +367,8 @@ final class AdminAnalyticsService
         return [
             'kpi' => $this->kpiSnapshot(),
             'charts' => [
-                'signups' => $this->signupsSeries($tz),
-                'escrow_daily' => $this->escrowHeldDailySeries($tz),
-                'quest_mix' => $this->questMix(),
-                'category_heatmap' => $this->categoryHeatmap(),
-                'funnel' => $this->proposalFunnel(),
-                'geo' => $this->geographicDistribution(),
-                'cohort' => $this->cohortRetention(),
+                ...$this->operationalInsightsCharts(),
+                ...$this->financialReportsCharts(),
             ],
             'leaderboards' => [
                 'freelancers' => $this->topFreelancers(),

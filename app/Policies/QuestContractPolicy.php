@@ -26,6 +26,16 @@ class QuestContractPolicy
         return $contract->isParty($user);
     }
 
+    public function requestDeliveryExtension(User $user, QuestContract $contract): bool
+    {
+        return (int) $contract->freelancer_id === (int) $user->id;
+    }
+
+    public function respondDeliveryExtension(User $user, QuestContract $contract): bool
+    {
+        return (int) $contract->client_id === (int) $user->id;
+    }
+
     public function flagForReview(User $user, QuestContract $contract): bool
     {
         return $user->role?->slug === 'super_admin';

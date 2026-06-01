@@ -30,10 +30,11 @@ class AdminReportsController extends Controller
 
     public function index(): Response
     {
-        $payload = $this->analytics->dashboardPayload();
-
         return Inertia::render('Admin/Reports/Index', [
-            ...$payload,
+            'kpi' => $this->analytics->kpiSnapshot(),
+            'charts' => $this->analytics->financialReportsCharts(),
+            'leaderboards' => ['freelancers' => [], 'clients' => []],
+            'generated_at' => now()->toIso8601String(),
             'catalog' => $this->reports->catalog(),
             'quick_stats' => $this->reports->landingStats(),
             'saved_reports' => $this->reports->savedReportsForUi(),

@@ -1,7 +1,7 @@
 <template>
     <AdminShell
         title="Reports & analytics"
-        subtitle="Platform health, user behaviour, and financial performance intelligence for super admins."
+        subtitle="Revenue accounting, escrow treasury, and financial audit intelligence for super admins."
     >
         <template v-if="mode === 'overview'">
             <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -16,8 +16,11 @@
                 />
             </div>
 
-            <AdminPanel eyebrow="Business intelligence" title="Analytics command centre">
+            <AdminPanel eyebrow="Business intelligence" title="Financial analytics command centre">
                 <template #actions>
+                    <Link :href="route('admin.financial-audit.index')" class="rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnGhost">
+                        Financial audit
+                    </Link>
                     <button type="button" class="rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" @click="openBuilder()">
                         Create new report
                     </button>
@@ -26,7 +29,7 @@
                 <div class="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
                     <div>
                         <p class="text-sm font-semibold leading-6" :class="shell.cardMuted">
-                            The original platform charts remain available here for quick monitoring. Use Create new report for aggregate-backed summaries, filtered drill-downs, scheduled delivery, and exports.
+                            Charts here cover escrow position, platform fee revenue, and VAT accrual from the double-entry ledger. Marketplace activity charts live under Home → Insights.
                         </p>
                         <div class="mt-4 flex flex-wrap gap-2">
                             <a :href="route('admin.reports.export')" class="rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnGhost">Export summary CSV</a>
@@ -50,7 +53,7 @@
             </AdminPanel>
 
             <div class="grid gap-2 xl:grid-cols-[1fr_20rem]">
-                <DashboardCharts :charts="charts" :leaderboards="leaderboards" />
+                <DashboardCharts :charts="charts" :leaderboards="leaderboards" mode="financial" />
 
                 <aside class="space-y-2">
                     <AdminPanel eyebrow="Saved reports" title="Run again">
@@ -227,7 +230,7 @@ import AdminPanel from '@/Components/Admin/AdminPanel.vue';
 import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
-import { router } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 import { computed, defineComponent, h, reactive, ref } from 'vue';
 import VueApexCharts from 'vue3-apexcharts';
 import DashboardCharts from '../DashboardCharts.vue';

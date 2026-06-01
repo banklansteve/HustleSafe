@@ -16,6 +16,7 @@ use App\Notifications\ContractCompletedNotification;
 use App\Notifications\ContractDisputedNotification;
 use App\Notifications\ContractPendingEscrowFreelancerNotification;
 use App\Notifications\ContractPendingEscrowClientNotification;
+use App\Support\EscrowAutoReleasePolicy;
 use App\Support\PlatformSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,8 +49,7 @@ class ContractGenerationService
 
         $deliverables = $this->parseDeliverables($offer, $terms);
         $deliveryDate = $terms['deadline_date'] ?? ($offer->planned_finish_date?->toDateString() ?? $offer->proposed_completion_date?->toDateString());
-        $graceDays = PlatformSettings::contractAutoReleaseGraceDays();
-        $graceHours = PlatformSettings::escrowReleaseCooldownHours();
+        $autoRelease = EscrowAutoReleasePolicy::timelineSnapshot();
 
         $parties = [
             'client' => $this->partySnapshot($quest->client, $terms['client_confirmation'] ?? null),
@@ -83,17 +83,11 @@ class ContractGenerationService
             'pricing_breakdown' => $pricing,
         ];
 
-        $timeline = [
+        $timeline = array_merge([
             'agreed_delivery_date' => $deliveryDate,
             'agreed_delivery_label' => $deliveryDate ? \Carbon\Carbon::parse($deliveryDate)->format('j M Y') : null,
-            'grace_period_days' => $graceDays,
-            'grace_period_hours' => $graceHours,
-            'auto_release_plain_english' => __('If you do not mark this job complete or raise a dispute within :days days of the freelancer submitting delivery, funds may release automatically after the :hours-hour review window.', [
-                'days' => $graceDays,
-                'hours' => $graceHours,
-            ]),
             'escrow_funding_deadline_hours' => PlatformSettings::contractEscrowFundingHours(),
-        ];
+        ], $autoRelease);
 
         $revisionPolicy = [
             'revisions_included' => (int) ($terms['revisions_included'] ?? ($offer->corrections_included ? ($offer->corrections_rounds ?: 1) : 0)),
@@ -103,9 +97,12 @@ class ContractGenerationService
 
         $platformTerms = [
             'terms_url' => route('legal.terms', absolute: true),
+            'escrow_url' => route('legal.escrow', absolute: true),
+            'dispute_url' => route('legal.dispute', absolute: true),
+            'privacy_url' => route('legal.privacy', absolute: true),
             'clauses' => [
-                __('Escrow release requires client confirmation of delivery or expiry of the agreed review window, subject to platform dispute rules.'),
-                __('Disputes must be opened within the review window shown on this contract.'),
+                EscrowAutoReleasePolicy::plainEnglishWithReminders(),
+                __('Disputes must be opened before the auto-release window closes to pause escrow release.'),
                 __('Off-platform payment is prohibited and may result in account sanctions.'),
                 __('Both parties agree to keep quest communications and materials confidential as described in the Terms of Service.'),
                 __('Intellectual property transfers to the client upon full escrow release unless otherwise stated in writing within this contract.'),

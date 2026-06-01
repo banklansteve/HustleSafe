@@ -9,6 +9,7 @@ use App\Models\AdminQuestFlag;
 use App\Models\AdminQuestNote;
 use App\Models\AdminQuestNotice;
 use App\Models\FeaturedQuestListing;
+use App\Models\QuestBoost;
 use App\Models\QuestCategory;
 use App\Models\Quest;
 use App\Models\QuestFile;
@@ -314,42 +315,47 @@ class QuestManagementEngineService
         return $flag->load(['creator:id,name,email', 'assignee:id,name,email', 'resolver:id,name,email']);
     }
 
-    public function boost(Quest $quest, User $admin, array $data, Request $request): FeaturedQuestListing
+    public function boost(Quest $quest, User $admin, array $data, Request $request): QuestBoost
     {
-        $hasActiveBoost = FeaturedQuestListing::query()
+        $hasActiveBoost = QuestBoost::query()
             ->where('quest_id', $quest->id)
             ->where('status', 'active')
-            ->where('expires_at', '>', now())
+            ->where('ends_at', '>', now())
             ->exists();
 
         if ($hasActiveBoost) {
-            throw ValidationException::withMessages(['tier' => 'This quest already has an active boost package. Extend, upgrade, or remove the existing boost first.']);
+            throw ValidationException::withMessages(['tier' => 'This quest already has an active boost. Manage it from the Quest Boosts panel.']);
         }
 
-        $listing = app(PromotionsGrowthService::class)->grantFeatured([
+        $tierMap = [
+            'standard' => '7_day',
+            'premium' => '14_day',
+            'elite' => '30_day',
+            '3_day' => '3_day',
+            '7_day' => '7_day',
+            '14_day' => '14_day',
+            '30_day' => '30_day',
+        ];
+        $tier = $tierMap[$data['tier'] ?? '7_day'] ?? '7_day';
+
+        $boost = app(QuestBoostService::class)->grant([
             'quest_id' => $quest->id,
-            'tier' => $data['tier'],
-            'duration_days' => (int) $data['duration_days'],
+            'tier' => $tier,
+            'grant_reason' => trim(($data['grant_reason'] ?? 'Admin boost from quest console').': '.($data['internal_note'] ?? '')),
             'starts_at' => $data['starts_at'] ?? null,
-            'amount_paid_minor' => (int) ($data['amount_paid_minor'] ?? 0),
-            'manual_grant_reason' => trim(($data['grant_reason'] ?? 'Admin boost package').': '.($data['internal_note'] ?? '')),
         ], $admin);
         Cache::forget('admin.quest-engine.summary');
 
         $this->activity->log($admin, 'admin.quest.boost_granted', Quest::class, $quest->id, [
-            'listing_id' => $listing->id,
-            'tier' => $listing->tier,
-            'duration_days' => (int) $data['duration_days'],
-            'starts_at' => $listing->starts_at?->toIso8601String(),
-            'expires_at' => $listing->expires_at?->toIso8601String(),
-            'grant_type' => $data['grant_type'] ?? null,
-            'paid_upgrade' => (bool) ($data['paid_upgrade'] ?? false),
-            'payment_method' => $data['payment_method'] ?? null,
+            'boost_id' => $boost->id,
+            'reference' => $boost->reference,
+            'tier' => $boost->tier,
+            'starts_at' => $boost->starts_at?->toIso8601String(),
+            'ends_at' => $boost->ends_at?->toIso8601String(),
             'grant_reason' => $data['grant_reason'] ?? null,
-            'internal_note' => $data['internal_note'] ?? null,
         ], $request);
 
-        return $listing;
+        return $boost;
     }
 
     public function updateQuest(Quest $quest, User $admin, array $data, Request $request): Quest

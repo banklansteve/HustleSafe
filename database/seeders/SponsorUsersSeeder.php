@@ -3,8 +3,10 @@
 namespace Database\Seeders;
 
 use App\Models\LocalGovernment;
+use App\Models\Role;
 use App\Models\State;
 use App\Models\User;
+use App\Support\SeededUserIdentity;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -16,6 +18,7 @@ class SponsorUsersSeeder extends Seeder
      */
     public function run(): void
     {
+        $clientRole = Role::query()->where('slug', 'client')->firstOrFail();
         $states = State::query()->with('localGovernments')->get()->filter(
             fn (State $state) => $state->localGovernments->isNotEmpty(),
         )->values();
@@ -27,21 +30,23 @@ class SponsorUsersSeeder extends Seeder
         }
 
         $password = Hash::make('password');
-        $roleId = 4;
 
         for ($i = 1; $i <= 10; $i++) {
             $state = $states[($i - 1) % $states->count()];
             $lga = $state->localGovernments->random();
             $first = fake()->firstName();
             $last = fake()->lastName();
-            $legacyEmail = sprintf('sponsor.extra%02d@hustlesafe.test', $i);
+            $uid = sprintf('SE%06d', $i);
 
-            $user = User::query()->firstOrCreate(
-                ['email' => $legacyEmail],
+            $existing = User::query()->where('uid', $uid)->first();
+            $identity = SeededUserIdentity::forNames($first, $last, $existing?->id);
+
+            User::query()->updateOrCreate(
+                ['uid' => $uid],
                 [
-                    'username' => sprintf('sponsor_extra_%02d', $i),
-                    'slug' => sprintf('sponsor-extra-%02d', $i),
-                    'uid' => sprintf('SE%06d', $i),
+                    'email' => $identity['email'],
+                    'username' => $identity['username'],
+                    'slug' => $identity['slug'],
                     'first_name' => $first,
                     'last_name' => $last,
                     'name' => $first.' '.$last,
@@ -54,7 +59,7 @@ class SponsorUsersSeeder extends Seeder
                     'state_id' => $state->id,
                     'local_government_id' => $lga->id,
                     'account_type' => 'sponsor',
-                    'role_id' => $roleId,
+                    'role_id' => $clientRole->id,
                     'job_title' => fake()->randomElement([
                         'Project Sponsor',
                         'Facilities Manager',
@@ -71,11 +76,9 @@ class SponsorUsersSeeder extends Seeder
                     'remember_token' => Str::random(10),
                 ],
             );
-
-            NormalizeSponsorExtraUsersSeeder::normalizeUser($user);
         }
 
-        $this->command?->info('Seeded 10 additional sponsor users (role_id 4, email verified). Password: password');
-        $this->command?->info('Emails use firstname.lastname@mail.com after normalization.');
+        $this->command?->info('Seeded 10 additional sponsor users (email verified). Password: password');
+        $this->command?->info('Identity: username=firstname(+number), slug=firstname-lastname, email=firstname.lastname@mail.com');
     }
 }

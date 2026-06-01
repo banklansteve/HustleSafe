@@ -7,7 +7,11 @@
 
 **{{ __('Quoted total (₦)') }}:** ₦{{ $grandNgn }}
 
-**{{ __('Indicative platform fee (%)') }}:** {{ $feePercent }}% — {{ __('exact charges appear at checkout when payments go live.') }}
+**{{ __('Indicative platform fee (%)') }}:** {{ $feePercent }}% of the job amount
+
+@foreach($feeSummaryLines ?? [] as $line)
+- {{ $line }}
+@endforeach
 
 <x-mail::panel>
 {{ __('Funds stay in escrow until you confirm delivery. If something goes wrong and the engagement cannot proceed fairly, eligible amounts are refunded according to our dispute and refund policies.') }}

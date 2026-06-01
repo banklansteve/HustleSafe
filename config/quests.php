@@ -61,7 +61,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Display-only platform fee % (copy / emails — billing integration separate)
+    | @deprecated Use PlatformSettings::platformFeePercent() — legacy env fallback only.
     |--------------------------------------------------------------------------
     */
     'platform_fee_percent_display' => (float) env('QUEST_PLATFORM_FEE_PERCENT_DISPLAY', 12),

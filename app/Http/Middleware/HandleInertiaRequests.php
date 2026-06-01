@@ -131,6 +131,9 @@ class HandleInertiaRequests extends Middleware
             'platform_fee_percent' => static function () {
                 return \App\Support\PlatformSettings::platformFeePercent();
             },
+            'platform_fee_disclosure' => static function () {
+                return \App\Support\PlatformFeeDisclosure::toArray();
+            },
             'announcement_banner' => static function () use ($request) {
                 if ($request->user()?->role?->slug === 'admin') {
                     return null;

@@ -56,7 +56,13 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100 dark:divide-white/10">
-                                <tr v-for="item in queue.data" :key="item.id" class="cursor-pointer hover:bg-primary-50/60 dark:hover:bg-white/[0.03]" @click="openCase(item)">
+                                <tr
+                                    v-for="item in queue.data"
+                                    :key="item.id"
+                                    class="cursor-pointer hover:bg-primary-50/60 dark:hover:bg-white/[0.03]"
+                                    :class="item.queue_reason === 'duplicate_identity' ? 'bg-rose-50/80 ring-1 ring-inset ring-rose-200 dark:bg-rose-950/20' : ''"
+                                    @click="openCase(item)"
+                                >
                                     <td class="px-3 py-4">
                                         <div class="flex items-center gap-3">
                                             <img :src="item.user.avatar_url || '/images/default-avatar.png'" class="h-10 w-10 rounded-2xl object-cover" alt="" />
@@ -68,7 +74,20 @@
                                     </td>
                                     <td class="px-3 py-4 capitalize">{{ item.user.role }}</td>
                                     <td class="px-3 py-4 font-black">Tier {{ item.target_tier }}</td>
-                                    <td class="px-3 py-4 capitalize">{{ item.queue_reason.replace(/_/g, ' ') }}</td>
+                                    <td class="px-3 py-4">
+                                        <span
+                                            class="inline-flex items-center gap-2 capitalize"
+                                            :class="item.queue_reason === 'duplicate_identity' ? 'font-black text-rose-700 dark:text-rose-300' : ''"
+                                        >
+                                            <span
+                                                v-if="item.queue_reason === 'duplicate_identity'"
+                                                class="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-black uppercase text-white"
+                                            >
+                                                Duplicate
+                                            </span>
+                                            {{ item.queue_reason.replace(/_/g, ' ') }}
+                                        </span>
+                                    </td>
                                     <td class="px-3 py-4"><span class="rounded-full px-3 py-1 text-xs font-black" :class="priorityClass(item.priority)">{{ item.priority }}</span></td>
                                     <td class="px-3 py-4 text-xs font-bold">{{ item.waiting_for }}</td>
                                     <td class="px-3 py-4"><button type="button" class="text-xs font-black text-primary-700 underline dark:text-primary-300">Review</button></td>
@@ -215,7 +234,9 @@
                     </div>
                 </div>
 
-                <div v-if="selectedCase.duplicate_context?.length" class="rounded-3xl border p-4" :class="shell.card">
+                <div v-if="selectedCase.duplicate_context?.length" class="rounded-3xl border-2 border-rose-500 bg-gradient-to-br from-rose-50 via-rose-100/70 to-amber-50 p-4 ring-2 ring-rose-200 dark:from-rose-950/40 dark:via-rose-950/20 dark:to-amber-950/10">
+                    <p class="text-[10px] font-black uppercase tracking-[0.25em] text-rose-800 dark:text-rose-200">Duplicate identity alert</p>
+                    <p class="mt-2 text-xs font-bold text-rose-950 dark:text-rose-100">These accounts share the same government ID. Review every profile before approving.</p>
                     <h3 class="font-black">Duplicate identity context</h3>
                     <div class="mt-3 grid gap-3 lg:grid-cols-2">
                         <div v-for="dupe in selectedCase.duplicate_context" :key="dupe.case_id" class="rounded-2xl border p-3" :class="shell.card">
@@ -276,8 +297,9 @@ import AdminTabbedPage from '@/Components/Admin/AdminTabbedPage.vue';
 import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
-import { router, useForm } from '@inertiajs/vue3';
+import { router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, defineComponent, h, reactive, ref } from 'vue';
+import { useVerificationQueueEcho } from '@/composables/useVerificationQueueEcho';
 
 const props = defineProps({
     section: { type: String, required: true },
@@ -305,6 +327,7 @@ const FieldRow = defineComponent({
 });
 
 const { shell } = useInjectedAdminTheme();
+const page = usePage();
 const tabs = [
     { key: 'queue', label: 'Verification Queue' },
     { key: 'analytics', label: 'Analytics' },
@@ -369,6 +392,15 @@ function debouncedApply() {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(applyFilters, 250);
 }
+
+useVerificationQueueEcho(
+    computed(() => page.props.broadcast),
+    () => {
+        if (activeTab.value === 'queue') {
+            router.reload({ only: ['summary', 'queue'], preserveScroll: true, preserveState: true });
+        }
+    },
+);
 
 async function openCase(item) {
     const { data } = await window.axios.get(route('admin.kyc.cases.show', item.id));

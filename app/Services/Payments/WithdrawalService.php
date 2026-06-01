@@ -165,6 +165,9 @@ class WithdrawalService
                 );
             }
 
+            app(\App\Services\Finance\FinancialLedgerBridgeService::class)
+                ->onWithdrawalInitiated($withdrawal->fresh());
+
             if ($this->paystack->enabled()) {
                 if (blank($bank->paystack_recipient_code)) {
                     $this->saveBankAccount($user, $bank->bank_code, $bank->bank_name, $bank->account_number, $bank->account_name, $bank->is_default);
@@ -189,6 +192,9 @@ class WithdrawalService
                     'processed_at' => now(),
                     'meta' => ['stub' => true],
                 ]);
+
+                app(\App\Services\Finance\FinancialLedgerBridgeService::class)
+                    ->onWithdrawalConfirmed($withdrawal->fresh());
             }
 
             return $withdrawal->fresh(['bankAccount']);

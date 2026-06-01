@@ -14,122 +14,150 @@
                     <span class="mt-0.5 hidden text-[10px] font-black uppercase tracking-[0.2em] text-primary-700 sm:block">Staff Admin</span>
                 </Link>
 
-                <div class="hidden items-center gap-2 sm:flex">
-                    <button
-                        type="button"
-                        class="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-sm hover:bg-primary-50"
-                        title="Direct messages"
-                        @click="messengerOpen = true"
-                    >
-                        <span class="sr-only">Messages</span>
-                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                        <span v-if="unreadMessenger > 0" class="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-black text-white">{{ unreadMessenger > 99 ? '99+' : unreadMessenger }}</span>
-                    </button>
-                    <Link
-                        :href="route('operations.notifications.index')"
-                        prefetch="false"
-                        class="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-primary-200 bg-primary-50 text-primary-900 shadow-sm hover:bg-primary-100"
-                        title="Notifications"
-                        @click.prevent="visitNav(route('operations.notifications.index'))"
-                    >
-                        <span class="sr-only">Notifications</span>
-                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.454 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" /></svg>
-                        <span v-if="unreadAlerts > 0" class="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">{{ unreadAlerts > 99 ? '99+' : unreadAlerts }}</span>
-                    </Link>
-                </div>
+                <div class="flex min-w-0 flex-1 items-center justify-end gap-2">
+                    <nav class="hidden items-center gap-2 lg:flex" aria-label="Staff navigation">
+                        <div v-for="group in navGroups" :key="group.label" class="relative">
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition"
+                                :class="isGroupActive(group) ? 'bg-primary-700 text-white shadow-md shadow-primary-900/15' : 'text-slate-700 hover:bg-primary-50 hover:text-primary-900'"
+                                @click="desktopOpen = desktopOpen === group.label ? '' : group.label"
+                            >
+                                {{ group.label }}
+                                <span class="text-xs opacity-70">⌄</span>
+                            </button>
+                            <Transition enter-active-class="transition duration-150 ease-out" enter-from-class="-translate-y-1 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-100 ease-in" leave-to-class="-translate-y-1 opacity-0">
+                                <div v-if="desktopOpen === group.label" class="absolute right-0 mt-2 w-72 rounded-3xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-900/15">
+                                    <template v-for="item in group.items" :key="item.label">
+                                        <button
+                                            v-if="item.action === 'messenger'"
+                                            type="button"
+                                            class="block w-full rounded-2xl px-4 py-3 text-left transition text-slate-700 hover:bg-primary-50 hover:text-primary-900"
+                                            @click="messengerOpen = true; desktopOpen = ''"
+                                        >
+                                            <span class="block text-sm font-black">{{ item.label }}</span>
+                                            <span class="mt-1 block text-xs font-semibold opacity-75">{{ item.hint }}</span>
+                                        </button>
+                                        <Link
+                                            v-else
+                                            :href="item.href"
+                                            prefetch="false"
+                                            class="block rounded-2xl px-4 py-3 transition"
+                                            :class="isActive(item) ? 'bg-primary-700 text-white shadow-md' : 'text-slate-700 hover:bg-primary-50 hover:text-primary-900'"
+                                            @click.prevent="visitNav(item.href); desktopOpen = ''"
+                                        >
+                                            <span class="flex items-center gap-2">
+                                                <span class="block text-sm font-black">{{ item.label }}</span>
+                                                <span v-if="item.badge?.() > 0" class="rounded-full bg-rose-600 px-1.5 py-0.5 text-[9px] font-black text-white">{{ item.badge() > 99 ? '99+' : item.badge() }}</span>
+                                            </span>
+                                            <span class="mt-1 block text-xs font-semibold opacity-75">{{ item.hint }}</span>
+                                        </Link>
+                                    </template>
+                                </div>
+                            </Transition>
+                        </div>
+                    </nav>
 
-                <nav class="hidden items-center gap-2 lg:flex" aria-label="Staff navigation">
-                    <div v-for="group in navGroups" :key="group.label" class="relative">
+                    <div class="hidden items-center gap-2 sm:flex">
                         <button
                             type="button"
-                            class="inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition"
-                            :class="isGroupActive(group) ? 'bg-primary-700 text-white shadow-md shadow-primary-900/15' : 'text-slate-700 hover:bg-primary-50 hover:text-primary-900'"
-                            @click="desktopOpen = desktopOpen === group.label ? '' : group.label"
+                            class="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-sm hover:bg-primary-50"
+                            title="Direct messages"
+                            @click="messengerOpen = true"
                         >
-                            {{ group.label }}
-                            <span class="text-xs opacity-70">⌄</span>
+                            <span class="sr-only">Messages</span>
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                            <span v-if="unreadMessenger > 0" class="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-black text-white">{{ unreadMessenger > 99 ? '99+' : unreadMessenger }}</span>
                         </button>
-                        <Transition enter-active-class="transition duration-150 ease-out" enter-from-class="-translate-y-1 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-100 ease-in" leave-to-class="-translate-y-1 opacity-0">
-                            <div v-if="desktopOpen === group.label" class="absolute left-0 mt-2 w-72 rounded-3xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-900/15">
-                                <template v-for="item in group.items" :key="item.label">
-                                    <button
-                                        v-if="item.action === 'messenger'"
-                                        type="button"
-                                        class="block w-full rounded-2xl px-4 py-3 text-left transition text-slate-700 hover:bg-primary-50 hover:text-primary-900"
-                                        @click="messengerOpen = true; desktopOpen = ''"
-                                    >
-                                        <span class="block text-sm font-black">{{ item.label }}</span>
-                                        <span class="mt-1 block text-xs font-semibold opacity-75">{{ item.hint }}</span>
-                                    </button>
-                                    <Link
-                                        v-else
-                                        :href="item.href"
-                                        prefetch="false"
-                                        class="block rounded-2xl px-4 py-3 transition"
-                                        :class="isActive(item) ? 'bg-primary-700 text-white shadow-md' : 'text-slate-700 hover:bg-primary-50 hover:text-primary-900'"
-                                        @click.prevent="visitNav(item.href); desktopOpen = ''"
-                                    >
-                                        <span class="flex items-center gap-2">
-                                            <span class="block text-sm font-black">{{ item.label }}</span>
-                                            <span v-if="item.badge?.() > 0" class="rounded-full bg-rose-600 px-1.5 py-0.5 text-[9px] font-black text-white">{{ item.badge() > 99 ? '99+' : item.badge() }}</span>
-                                        </span>
-                                        <span class="mt-1 block text-xs font-semibold opacity-75">{{ item.hint }}</span>
-                                    </Link>
-                                </template>
+                        <Link
+                            :href="route('operations.notifications.index')"
+                            prefetch="false"
+                            class="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-primary-200 bg-primary-50 text-primary-900 shadow-sm hover:bg-primary-100"
+                            title="Notifications"
+                            @click.prevent="visitNav(route('operations.notifications.index'))"
+                        >
+                            <span class="sr-only">Notifications</span>
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.454 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" /></svg>
+                            <span v-if="unreadAlerts > 0" class="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">{{ unreadAlerts > 99 ? '99+' : unreadAlerts }}</span>
+                        </Link>
+                    </div>
+
+                    <div class="relative lg:hidden">
+                        <button
+                            type="button"
+                            class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-sm hover:bg-primary-50"
+                            :aria-expanded="menuOpen"
+                            aria-label="Open staff navigation"
+                            @click="menuOpen = !menuOpen"
+                        >
+                            <span class="text-xl leading-none">☰</span>
+                        </button>
+                        <Transition enter-active-class="transition duration-150 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-100 ease-in" leave-to-class="-translate-y-2 opacity-0">
+                            <div v-if="menuOpen" class="fixed inset-x-3 top-20 z-50 max-h-[calc(100vh-6rem)] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-900/15">
+                                <nav class="space-y-4" aria-label="Staff mobile navigation">
+                                    <section v-for="group in navGroups" :key="group.label">
+                                        <p class="px-3 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{{ group.label }}</p>
+                                        <div class="grid gap-1">
+                                            <template v-for="item in group.items" :key="item.label">
+                                                <button
+                                                    v-if="item.action === 'messenger'"
+                                                    type="button"
+                                                    class="w-full rounded-2xl px-4 py-3 text-left transition text-slate-700 hover:bg-primary-50 hover:text-primary-900"
+                                                    @click="messengerOpen = true; menuOpen = false"
+                                                >
+                                                    <span class="block text-sm font-black">{{ item.label }}</span>
+                                                    <span class="mt-1 block text-xs font-semibold opacity-75">{{ item.hint }}</span>
+                                                </button>
+                                                <Link
+                                                    v-else
+                                                    :href="item.href"
+                                                    prefetch="false"
+                                                    class="rounded-2xl px-4 py-3 transition"
+                                                    :class="isActive(item) ? 'bg-primary-700 text-white shadow-md' : 'text-slate-700 hover:bg-primary-50 hover:text-primary-900'"
+                                                    @click.prevent="visitNav(item.href); menuOpen = false"
+                                                >
+                                                    <span class="flex items-center gap-2">
+                                                        <span class="block text-sm font-black">{{ item.label }}</span>
+                                                        <span v-if="item.badge?.() > 0" class="rounded-full bg-rose-600 px-1.5 py-0.5 text-[9px] font-black text-white">{{ item.badge() > 99 ? '99+' : item.badge() }}</span>
+                                                    </span>
+                                                    <span class="mt-1 block text-xs font-semibold opacity-75">{{ item.hint }}</span>
+                                                </Link>
+                                            </template>
+                                        </div>
+                                    </section>
+                                </nav>
+                                <Link href="/dashboard" prefetch="false" class="mt-3 block rounded-2xl border border-slate-200 px-4 py-3 text-center text-sm font-black text-slate-700 hover:bg-slate-50" @click="menuOpen = false">
+                                    Back to main app
+                                </Link>
                             </div>
                         </Transition>
                     </div>
-                </nav>
 
-                <div class="relative lg:hidden">
+                    <div
+                        class="flex min-w-0 max-w-[7.5rem] items-center gap-2 rounded-2xl border border-primary-200 bg-primary-50 px-2 py-1.5 shadow-sm sm:max-w-none sm:px-3 sm:py-2"
+                        :title="`Signed in as @${staffUsername}`"
+                    >
+                        <span
+                            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-700 text-xs font-black text-white"
+                            aria-hidden="true"
+                        >
+                            {{ staffInitial }}
+                        </span>
+                        <span class="min-w-0 truncate text-xs font-black leading-tight text-primary-900 sm:text-sm">
+                            @{{ staffUsername }}
+                        </span>
+                    </div>
+
                     <button
                         type="button"
-                        class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-sm hover:bg-primary-50"
-                        :aria-expanded="menuOpen"
-                        aria-label="Open staff navigation"
-                        @click="menuOpen = !menuOpen"
+                        class="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-white px-3 py-2.5 text-xs font-black uppercase tracking-wide text-rose-700 shadow-sm hover:bg-rose-50 sm:px-4"
+                        title="Log out"
+                        :disabled="logoutForm.processing"
+                        @click="logout"
                     >
-                        <span class="text-xl leading-none">☰</span>
+                        <ArrowRightOnRectangleIcon class="h-4 w-4 shrink-0" aria-hidden="true" />
+                        <span class="hidden sm:inline">Log out</span>
                     </button>
-                    <Transition enter-active-class="transition duration-150 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-100 ease-in" leave-to-class="-translate-y-2 opacity-0">
-                        <div v-if="menuOpen" class="fixed inset-x-3 top-20 z-50 max-h-[calc(100vh-6rem)] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-900/15">
-                            <nav class="space-y-4" aria-label="Staff mobile navigation">
-                                <section v-for="group in navGroups" :key="group.label">
-                                    <p class="px-3 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{{ group.label }}</p>
-                                    <div class="grid gap-1">
-                                        <template v-for="item in group.items" :key="item.label">
-                                            <button
-                                                v-if="item.action === 'messenger'"
-                                                type="button"
-                                                class="w-full rounded-2xl px-4 py-3 text-left transition text-slate-700 hover:bg-primary-50 hover:text-primary-900"
-                                                @click="messengerOpen = true; menuOpen = false"
-                                            >
-                                                <span class="block text-sm font-black">{{ item.label }}</span>
-                                                <span class="mt-1 block text-xs font-semibold opacity-75">{{ item.hint }}</span>
-                                            </button>
-                                            <Link
-                                                v-else
-                                                :href="item.href"
-                                                prefetch="false"
-                                                class="rounded-2xl px-4 py-3 transition"
-                                                :class="isActive(item) ? 'bg-primary-700 text-white shadow-md' : 'text-slate-700 hover:bg-primary-50 hover:text-primary-900'"
-                                                @click.prevent="visitNav(item.href); menuOpen = false"
-                                            >
-                                                <span class="flex items-center gap-2">
-                                                    <span class="block text-sm font-black">{{ item.label }}</span>
-                                                    <span v-if="item.badge?.() > 0" class="rounded-full bg-rose-600 px-1.5 py-0.5 text-[9px] font-black text-white">{{ item.badge() > 99 ? '99+' : item.badge() }}</span>
-                                                </span>
-                                                <span class="mt-1 block text-xs font-semibold opacity-75">{{ item.hint }}</span>
-                                            </Link>
-                                        </template>
-                                    </div>
-                                </section>
-                            </nav>
-                            <Link href="/dashboard" prefetch="false" class="mt-3 block rounded-2xl border border-slate-200 px-4 py-3 text-center text-sm font-black text-slate-700 hover:bg-slate-50" @click="menuOpen = false">
-                                Back to main app
-                            </Link>
-                        </div>
-                    </Transition>
                 </div>
             </div>
         </header>
@@ -200,7 +228,8 @@ import AdminMessengerDrawer from '@/Components/Admin/AdminMessengerDrawer.vue';
 import HustleSafeLogo from '@/Components/Brand/HustleSafeLogo.vue';
 import OperationsToastHost from '@/Pages/Operations/Components/OperationsToastHost.vue';
 import { useInertiaNav } from '@/composables/useInertiaNav';
-import { Link, usePage } from '@inertiajs/vue3';
+import { Link, useForm, usePage } from '@inertiajs/vue3';
+import { ArrowRightOnRectangleIcon } from '@heroicons/vue/24/outline';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const { navPending, visit: visitNav } = useInertiaNav();
@@ -211,6 +240,26 @@ defineProps({
 });
 
 const page = usePage();
+const logoutForm = useForm({});
+
+const authUser = computed(() => page.props.auth?.user ?? null);
+const staffUsername = computed(() => {
+    const user = authUser.value;
+    if (user?.username?.trim()) {
+        return user.username.trim();
+    }
+
+    const emailLocal = user?.email?.split('@')[0]?.trim();
+
+    return emailLocal || 'staff';
+});
+const staffInitial = computed(() => staffUsername.value.charAt(0).toUpperCase() || 'S');
+
+function logout() {
+    menuOpen.value = false;
+    logoutForm.post(route('logout'));
+}
+
 const menuOpen = ref(false);
 const desktopOpen = ref('');
 const unreadAlerts = ref(0);

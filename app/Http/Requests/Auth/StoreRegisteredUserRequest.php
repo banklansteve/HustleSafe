@@ -55,6 +55,7 @@ class StoreRegisteredUserRequest extends FormRequest
                 'distinct',
                 Rule::exists('quest_categories', 'id')->whereNotNull('parent_id')->where('is_active', true),
             ],
+            'accepted_terms' => ['accepted'],
             'password' => ['required', 'confirmed', Password::defaults()],
             'referral_code' => ['nullable', 'string', 'max:24'],
         ];
@@ -107,6 +108,7 @@ class StoreRegisteredUserRequest extends FormRequest
             'quest_category_ids.min' => __('Pick at least one work category so we can match you to quests.'),
             'password.required' => __('The password field is required.'),
             'password.confirmed' => __('The password confirmation does not match.'),
+            'accepted_terms.accepted' => __('You must agree to the Terms of Service and Privacy Policy to create an account.'),
         ];
     }
 }

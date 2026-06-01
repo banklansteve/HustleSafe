@@ -132,14 +132,6 @@ export function validateQuestCreateStep(step, deps) {
         if (fieldProfile.show_team_size && !form.team_size) {
             errors.team_size = 'Choose solo or small team.';
         }
-        if (fieldProfile.show_site_access) {
-            if (!String(form.site_access_level || '').trim()) {
-                errors.site_access_level = 'Choose how accessible the location is.';
-            }
-            if (form.pets_on_site !== true && form.pets_on_site !== false) {
-                errors.pets_on_site = 'Say whether pets are usually on site.';
-            }
-        }
     }
 
     if (step === 6) {
@@ -160,6 +152,87 @@ export function validateQuestCreateStep(step, deps) {
     }
 
     return { ok: Object.keys(errors).length === 0, errors };
+}
+
+/** @type {Record<string, number>} */
+export const QUEST_CREATE_FIELD_STEP = {
+    quest_category_id: 1,
+    title: 1,
+    description: 1,
+    visibility: 2,
+    freelancer_location_pref: 2,
+    availability_need: 2,
+    traffic_source: 2,
+    state_id: 3,
+    local_government_id: 3,
+    city: 3,
+    start_timing: 4,
+    scheduled_start_date: 4,
+    estimated_completion_days: 4,
+    estimated_delivery_date: 4,
+    budget_amount_minor: 4,
+    project_type: 5,
+    estimated_hours: 5,
+    team_size: 5,
+    site_visits_allowed: 5,
+    site_access_level: 5,
+    pets_on_site: 5,
+    pets_detail: 5,
+    auto_listing_expiry_days: 6,
+    max_offers: 6,
+    tagged_freelancer_ids: 6,
+    files: 6,
+    accepted_terms: 7,
+    publish_now: 7,
+};
+
+/**
+ * @param {Record<string, string|string[]>} errors
+ */
+export function firstQuestCreateErrorMessage(errors) {
+    for (const value of Object.values(errors || {})) {
+        if (typeof value === 'string' && value.trim()) {
+            return value;
+        }
+        if (Array.isArray(value) && typeof value[0] === 'string' && value[0].trim()) {
+            return value[0];
+        }
+    }
+
+    return 'Your quest could not be saved. Review the highlighted fields and try again.';
+}
+
+/**
+ * @param {string} field
+ * @returns {number}
+ */
+export function questCreateStepForField(field) {
+    const base = String(field || '').split('.')[0];
+
+    return QUEST_CREATE_FIELD_STEP[field] ?? QUEST_CREATE_FIELD_STEP[base] ?? 7;
+}
+
+/**
+ * Pick the earliest wizard step that contains a server validation error.
+ *
+ * @param {Record<string, string|string[]>} errors
+ * @returns {{ message: string, step: number }}
+ */
+export function resolveQuestCreateSubmitErrors(errors) {
+    const entries = Object.entries(errors || {});
+    if (!entries.length) {
+        return { message: '', step: 7 };
+    }
+
+    let step = 7;
+    for (const [field] of entries) {
+        step = Math.min(step, questCreateStepForField(field));
+    }
+
+    return {
+        message: firstQuestCreateErrorMessage(errors),
+        step,
+    };
 }
 
 /**

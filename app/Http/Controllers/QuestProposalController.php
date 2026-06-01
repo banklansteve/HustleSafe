@@ -368,7 +368,7 @@ class QuestProposalController extends Controller
                 'avatar_url' => $offer->freelancer->avatar_url,
                 'headline' => $offer->freelancer->headline,
             ] : null,
-            'platform_fee_percent_display' => (float) config('quests.platform_fee_percent_display', 5),
+            'platform_fee_percent_display' => PlatformSettings::platformFeePercent(),
         ];
     }
 }

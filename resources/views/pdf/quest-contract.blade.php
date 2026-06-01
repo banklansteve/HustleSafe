@@ -130,6 +130,8 @@
 
 <h2>Platform terms</h2>
 <p>Full Terms of Service: {{ $platform['terms_url'] ?? route('legal.terms', absolute: true) }}</p>
+<p>Escrow Policy: {{ $platform['escrow_url'] ?? route('legal.escrow', absolute: true) }}</p>
+<p>Dispute Policy: {{ $platform['dispute_url'] ?? route('legal.dispute', absolute: true) }}</p>
 <ul>
     @foreach(($platform['clauses'] ?? []) as $clause)
         <li>{{ $clause }}</li>

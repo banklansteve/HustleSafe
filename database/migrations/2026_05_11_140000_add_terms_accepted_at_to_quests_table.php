@@ -8,9 +8,13 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (! Schema::hasTable('quests')) {
+            return;
+        }
+
         Schema::table('quests', function (Blueprint $table): void {
             if (! Schema::hasColumn('quests', 'terms_accepted_at')) {
-                $table->timestamp('terms_accepted_at')->nullable()->after('traffic_utm');
+                $table->timestamp('terms_accepted_at')->nullable();
             }
         });
     }

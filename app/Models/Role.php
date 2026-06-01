@@ -29,9 +29,9 @@ class Role extends Model
     public static function standardLabels(): array
     {
         return [
-            self::STAFF_ADMIN_ID => 'Staff Admin',
-            self::CLIENT_ID => 'Client',
-            self::FREELANCER_ID => 'Freelancer',
+            self::STAFF_ADMIN_ID => 'Operations Staff Admin',
+            self::CLIENT_ID => 'Client (Sponsor)',
+            self::FREELANCER_ID => 'Freelancer (Pro)',
             self::SUPER_ADMIN_ID => 'Super Admin',
         ];
     }

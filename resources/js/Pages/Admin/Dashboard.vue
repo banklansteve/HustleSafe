@@ -100,7 +100,7 @@
         <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)] xl:items-start">
             <Suspense>
                 <template #default>
-                    <AsyncDashboardCharts :charts="charts" :leaderboards="leaderboards" />
+                    <AsyncDashboardCharts :charts="charts" :leaderboards="leaderboards" mode="operational" />
                 </template>
                 <template #fallback>
                     <div class="grid gap-2 xl:grid-cols-2">

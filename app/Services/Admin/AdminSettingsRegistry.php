@@ -49,6 +49,7 @@ class AdminSettingsRegistry
             'meta' => [
                 'categories' => QuestCategory::query()->orderBy('name')->get(['id', 'name', 'parent_id']),
                 'generated_at' => now()->toIso8601String(),
+                'platform_fee_disclosure' => \App\Support\PlatformFeeDisclosure::toArray(),
             ],
         ];
     }
@@ -161,14 +162,13 @@ class AdminSettingsRegistry
             ]),
             $this->section('verification', 'Verification Tiers & Limits', 'Control what users can do at each trust tier.', $tierFields, 'matrix'),
             $this->section('financial', 'Financial & Escrow', 'Fees, escrow requirements, payout cadence, VAT and currency display.', [
-                $this->setting('financial.platform_fee_percent', 'Platform fee on quest quotes (%)', 'number', 12, 'Applied to proposal subtotals (professional fee + materials + travel) and escrow release calculations.'),
+                $this->setting('financial.platform_fee_percent', 'Platform fee (%) — single source of truth', 'number', 12, 'The only platform service fee rate. Shown on proposals, contracts, checkout, emails, legal pages, and all customer-facing copy. Applied to proposal subtotals (professional fee + materials + travel) and escrow release calculations.'),
                 $this->setting('financial.high_value_quest_threshold_minor', 'High-value quest threshold (kobo)', 'money', 100_000_000, 'Quests at or above this budget may require extra verification or category approval rules.'),
-                $this->setting('financial.client_fee_percent', 'Legacy client-side fee % (display)', 'number', 12, 'Deprecated alias — prefer platform fee % above.'),
-                $this->setting('financial.freelancer_fee_percent', 'Freelancer-side service fee %', 'number', 10, 'Deducted from freelancer payout.'),
+                $this->setting('financial.freelancer_fee_percent', 'Freelancer-side service fee % (legacy display)', 'number', 10, 'Deprecated for global billing — use Platform fee above. Category overrides may still reference this field.'),
                 $this->setting('financial.minimum_escrow_minor', 'Minimum contract value requiring escrow', 'money', 0, 'Zero makes escrow mandatory for all contracts.'),
                 $this->setting('financial.escrow_release_cooldown_hours', 'Minimum hours after escrow funding before release', 'number', 24, 'Clients cannot mark complete or release funds until this period passes after escrow is funded. Super admins may override from Financial Control.'),
                 $this->setting('financial.high_value_release_authorization_minor', 'High-value release authorisation threshold (kobo)', 'money', 100_000_000, 'Contracts at or above this amount (₦1,000,000.00) require super-admin authorisation before escrow can be released, even after the cooldown.'),
-                $this->setting('financial.auto_release_hours', 'Escrow auto-release period', 'number', 72, 'Shorter favours freelancers, longer favours clients.'),
+                $this->setting('financial.auto_release_hours', 'Escrow auto-release period', 'number', 72, 'Hours after agreed delivery date before escrow auto-releases if no dispute. Client emails at due day, +24h, and +36h.'),
                 $this->setting('financial.minimum_payout_minor', 'Minimum payout threshold', 'money', 500000, 'Minimum pending earnings before payout.'),
                 $this->setting('financial.payout_schedule', 'Payout processing schedule', 'select', 'daily', 'Instant, daily batch or twice-weekly processing.', ['options' => ['instant' => 'Instant', 'daily' => 'Daily batch', 'twice_weekly' => 'Twice weekly']]),
                 $this->setting('financial.payout_batch_time', 'Payout batch time', 'time', '16:00', 'WAT batch payout processing time.'),
@@ -285,6 +285,17 @@ class AdminSettingsRegistry
                 $this->setting('moderation.image_provider', 'Image moderation provider', 'select', 'cloudinary', 'Image moderation provider.', ['options' => ['cloudinary' => 'Cloudinary', 'rekognition' => 'Amazon Rekognition', 'azure' => 'Azure Content Moderator']]),
                 $this->setting('moderation.image_flag_threshold', 'Image flag threshold', 'number', 70, 'Confidence score to flag.'),
                 $this->setting('moderation.image_reject_threshold', 'Image reject threshold', 'number', 95, 'Confidence score to block pending review.'),
+            ]),
+            $this->section('freelancer_pro', 'Freelancer Pro Membership', 'Self-service Pro subscription pricing and free-tier proposal quota.', [
+                $this->setting('freelancer_pro.monthly_price_minor', 'Pro monthly price (NGN)', 'money', 1_000_000, 'Monthly Pro subscription price.'),
+                $this->setting('freelancer_pro.annual_price_minor', 'Pro annual price (NGN)', 'money', 10_000_000, 'Annual Pro subscription price (discounted vs 12× monthly).'),
+                $this->setting('freelancer_pro.free_proposals_per_month', 'Free tier proposals per month', 'number', 10, 'Monthly proposal limit for non-Pro freelancers (5–50).'),
+            ]),
+            $this->section('quest_boosts', 'Quest Boost Pricing', 'Admin-granted quest boost tier prices. Applies to new boosts only.', [
+                $this->setting('quest_boosts.price_3_day_minor', '3-day boost price (NGN)', 'money', 800_000, '72-hour boost reference price.'),
+                $this->setting('quest_boosts.price_7_day_minor', '7-day boost price (NGN)', 'money', 1_500_000, '7-day boost reference price.'),
+                $this->setting('quest_boosts.price_14_day_minor', '14-day boost price (NGN)', 'money', 2_800_000, '14-day boost reference price.'),
+                $this->setting('quest_boosts.price_30_day_minor', '30-day boost price (NGN)', 'money', 5_200_000, '30-day boost reference price.'),
             ]),
             $this->section('promotions', 'Featured Listings & Promotions', 'Boost tiers, coupons, referral programme and reward controls.', [
                 $this->setting('promotions.max_featured_per_client', 'Maximum concurrent featured Quests per client', 'number', 3, 'Prevents one client dominating placement.'),

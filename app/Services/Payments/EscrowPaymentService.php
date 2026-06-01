@@ -289,6 +289,9 @@ class EscrowPaymentService
                 'occurred_at' => now(),
             ]);
 
+            app(\App\Services\Finance\FinancialLedgerBridgeService::class)
+                ->onEscrowFunded($escrow->fresh(), $reference);
+
             QuestFundingIntent::query()
                 ->where('paystack_reference', $reference)
                 ->update(['status' => 'completed']);
@@ -302,8 +305,13 @@ class EscrowPaymentService
         });
     }
 
-    public function releaseEscrowToWallet(Quest $quest, ?User $actor = null, ?string $reason = null, bool $ignorePolicy = false): PaymentEscrow
-    {
+    public function releaseEscrowToWallet(
+        Quest $quest,
+        ?User $actor = null,
+        ?string $reason = null,
+        bool $ignorePolicy = false,
+        ?string $releaseTrigger = null,
+    ): PaymentEscrow {
         if (! $ignorePolicy && ! \App\Support\EscrowReleasePolicy::canReleaseFunds($quest, $actor)) {
             throw ValidationException::withMessages([
                 'escrow' => [\App\Support\EscrowReleasePolicy::blockedReleaseReason($quest, $actor)],
@@ -327,10 +335,10 @@ class EscrowPaymentService
             throw ValidationException::withMessages(['freelancer' => [__('Freelancer not found.')]]);
         }
 
-        return DB::transaction(function () use ($quest, $escrow, $releasable, $feeMinor, $netMinor, $freelancer, $actor, $reason): PaymentEscrow {
+        return DB::transaction(function () use ($quest, $escrow, $releasable, $feeMinor, $netMinor, $freelancer, $actor, $reason, $releaseTrigger): PaymentEscrow {
             $idempotencyKey = 'escrow:release:'.$escrow->id.':'.$releasable;
 
-            $this->wallets->credit(
+            $walletTx = $this->wallets->credit(
                 $freelancer,
                 $netMinor,
                 'escrow_release',
@@ -369,6 +377,14 @@ class EscrowPaymentService
                 'paid_out_minor' => (int) $quest->paid_out_minor + $releasable,
                 'escrow_status' => 'released',
             ]);
+
+            $trigger = $releaseTrigger ?? $this->inferReleaseTrigger($actor, $reason);
+            app(\App\Services\Finance\FinancialLedgerBridgeService::class)->onEscrowReleased(
+                $escrow->fresh(),
+                $releasable,
+                $trigger,
+                $walletTx->reference ?? null,
+            );
 
             return $escrow->fresh();
         });
@@ -418,8 +434,28 @@ class EscrowPaymentService
                 'occurred_at' => now(),
             ]);
 
+            app(\App\Services\Finance\FinancialLedgerBridgeService::class)
+                ->onEscrowRefunded($escrow->fresh(), $amount, $reason);
+
             return $escrow->fresh();
         });
+    }
+
+    protected function inferReleaseTrigger(?User $actor, ?string $reason): string
+    {
+        if ($actor === null && $reason !== null && str_contains(strtolower($reason), 'auto-release')) {
+            return 'auto_release';
+        }
+
+        if ($actor?->role?->slug === 'super_admin' || $actor?->role?->slug === 'admin') {
+            return 'manual_admin';
+        }
+
+        if ($actor !== null) {
+            return 'client_marked_complete';
+        }
+
+        return 'escrow_release';
     }
 
     /**
@@ -461,6 +497,9 @@ class EscrowPaymentService
             'paystack_transfer_code' => $data['transfer_code'] ?? $withdrawal->paystack_transfer_code,
             'processed_at' => now(),
         ]);
+
+        app(\App\Services\Finance\FinancialLedgerBridgeService::class)
+            ->onWithdrawalConfirmed($withdrawal->fresh());
     }
 
     /**
@@ -508,6 +547,9 @@ class EscrowPaymentService
                 'failure_reason' => (string) ($data['reason'] ?? __('Transfer failed.')),
                 'processed_at' => now(),
             ]);
+
+            app(\App\Services\Finance\FinancialLedgerBridgeService::class)
+                ->onWithdrawalReversed($withdrawal->fresh());
         });
     }
 

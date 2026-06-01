@@ -12,6 +12,7 @@ use App\Models\KycSetting;
 use App\Models\User;
 use App\Notifications\KycDecisionNotification;
 use App\Services\Verification\VerificationEngineService;
+use App\Services\Verification\VerificationStaffReviewPolicy;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -21,9 +22,16 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class KycCentreService
 {
-    public function summary(): array
+    public function __construct(
+        private readonly VerificationStaffReviewPolicy $reviewPolicy,
+    ) {}
+
+    public function summary(?User $viewer = null): array
     {
         $pending = KycReviewCase::query()->whereIn('status', ['pending', 'in_review']);
+        if ($viewer?->role?->slug === 'admin') {
+            $this->reviewPolicy->applyKycCaseStaffReviewableOnly($pending);
+        }
         $total = (clone $pending)->count();
         $avgSeconds = (clone $pending)->get()->avg(fn (KycReviewCase $case) => $case->entered_queue_at?->diffInSeconds(now()) ?? 0);
 
@@ -58,6 +66,10 @@ class KycCentreService
             $query->whereHas('user', fn (Builder $q) => $q->where('name', 'like', '%'.$term.'%')->orWhere('email', 'like', '%'.$term.'%'));
         }
 
+        if ($request->user()?->role?->slug === 'admin') {
+            $this->reviewPolicy->applyKycCaseStaffReviewableOnly($query);
+        }
+
         $sort = (string) $request->input('sort', 'priority');
         if ($sort === 'wait_time') {
             $query->oldest('entered_queue_at');
@@ -79,6 +91,10 @@ class KycCentreService
     public function casePayload(KycReviewCase $case, ?User $admin = null, bool $includeDocuments = false): array
     {
         $case->loadMissing(['user.role', 'documents', 'verification', 'decisions.admin']);
+
+        if ($admin !== null) {
+            $this->reviewPolicy->assertStaffCanReviewKycCase($case, $admin);
+        }
 
         if ($includeDocuments && $admin) {
             $this->audit($case, $admin, 'documents_opened');
@@ -109,6 +125,8 @@ class KycCentreService
 
     public function reveal(KycReviewCase $case, User $admin, string $field): array
     {
+        $this->reviewPolicy->assertStaffCanReviewKycCase($case, $admin);
+
         $allowed = ['identifier_number', 'nin', 'bvn', 'phone'];
         abort_unless(in_array($field, $allowed, true), 404);
         $this->audit($case, $admin, 'sensitive_field_revealed', ['field' => $field]);
@@ -122,6 +140,7 @@ class KycCentreService
     public function streamDocument(KycDocument $document, User $admin): StreamedResponse
     {
         $case = $document->case;
+        $this->reviewPolicy->assertStaffCanReviewKycCase($case, $admin);
         $this->audit($case, $admin, 'document_opened', ['document_id' => $document->id, 'label' => $document->label]);
 
         return Storage::disk($document->disk ?: 'local')->download($document->path, $document->original_name ?: basename($document->path));
@@ -129,6 +148,8 @@ class KycCentreService
 
     public function decide(KycReviewCase $case, User $admin, array $data): KycDecision
     {
+        $this->reviewPolicy->assertStaffCanReviewKycCase($case, $admin);
+
         return DB::transaction(function () use ($case, $admin, $data): KycDecision {
             $case->loadMissing(['user', 'verification']);
             $action = $data['action'];
@@ -349,24 +370,48 @@ class KycCentreService
 
     private function duplicateContext(KycReviewCase $case): array
     {
+        $case->loadMissing(['user', 'verification']);
+        $verification = $case->verification;
+        $meta = is_array($verification?->metadata) ? $verification->metadata : [];
+        $stored = $meta['duplicate_accounts'] ?? null;
+
+        if (is_array($stored) && $stored !== []) {
+            return collect($stored)
+                ->filter(fn ($row) => is_array($row) && isset($row['id']))
+                ->map(fn (array $account) => [
+                    'case_id' => $case->id,
+                    'user' => [
+                        'id' => $account['id'],
+                        'name' => $account['name'] ?? '',
+                        'email' => $account['email'] ?? '',
+                    ],
+                    'registered_at' => $account['registered_at'] ?? null,
+                    'last_active_at' => $account['last_active_at'] ?? null,
+                    'status' => 'linked_account',
+                ])
+                ->values()
+                ->all();
+        }
+
         $identifier = data_get($case->submitted_snapshot, 'identifier_number');
-        if (! $identifier) {
+        if (! $identifier || $case->user === null) {
             return [];
         }
 
-        return KycReviewCase::query()
-            ->with('user:id,name,email,created_at,last_active_at')
-            ->where('id', '!=', $case->id)
-            ->where('submitted_snapshot->identifier_number', $identifier)
-            ->limit(4)
-            ->get()
-            ->map(fn (KycReviewCase $row) => [
-                'case_id' => $row->id,
-                'user' => $row->user?->only(['id', 'name', 'email']),
-                'registered_at' => $row->user?->created_at?->toIso8601String(),
-                'last_active_at' => $row->user?->last_active_at?->toIso8601String(),
-                'status' => $row->status,
+        $kind = (string) (data_get($case->submitted_snapshot, 'id_type')
+            ?: data_get($meta, 'duplicate_document_kind')
+            ?: $case->verification_type);
+
+        return collect(app(\App\Services\Verification\IdentityDocumentUniquenessService::class)
+            ->conflictingAccounts($case->user, $kind, (string) $identifier))
+            ->map(fn (array $account) => [
+                'case_id' => $case->id,
+                'user' => $account,
+                'registered_at' => $account['registered_at'] ?? null,
+                'last_active_at' => $account['last_active_at'] ?? null,
+                'status' => 'linked_account',
             ])
+            ->values()
             ->all();
     }
 

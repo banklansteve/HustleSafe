@@ -43,9 +43,11 @@ return new class extends Migration
             });
         }
 
-        Schema::table('staff_onboarding_assistance_records', function (Blueprint $table): void {
-            $table->dropUnique('staff_onboarding_user_scenario_unique');
-        });
+        if (Schema::hasIndex('staff_onboarding_assistance_records', 'staff_onboarding_user_scenario_unique')) {
+            Schema::table('staff_onboarding_assistance_records', function (Blueprint $table): void {
+                $table->dropUnique('staff_onboarding_user_scenario_unique');
+            });
+        }
     }
 
     public function down(): void

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\QuestBoost;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\QuestMatchingService;
 use Illuminate\Http\RedirectResponse;
@@ -43,6 +44,7 @@ class QuestExploreController extends Controller
                 'state' => $q->stateModel?->name,
                 'city' => $q->city,
                 'posted_at' => $q->created_at?->timezone('Africa/Lagos')->toIso8601String(),
+                'is_boosted' => QuestBoost::query()->where('quest_id', $q->id)->activeNow()->exists(),
                 'category_match' => $user->role?->slug === 'freelancer' && $workspace->matchesQuestCategory($user, $q),
             ];
         })->values()->all();

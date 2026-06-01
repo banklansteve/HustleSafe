@@ -38,6 +38,9 @@ final class UserVerificationPresentationService
             'rejection_reason' => $verification->rejection_reason,
             'queue_reason' => $verification->queue_reason,
             'queue_reason_label' => $this->queueReasonLabel($verification->queue_reason),
+            'is_duplicate_identity' => $verification->queue_reason === 'duplicate_identity',
+            'duplicate_identity_alert' => $this->duplicateIdentityAlert($verification, $meta),
+            'duplicate_accounts' => $this->duplicateAccounts($verification, $meta),
             'is_escalated' => $this->isEscalated($verification),
             'escalation' => $this->escalationPayload($verification),
             'user' => $verification->user ? [
@@ -374,6 +377,50 @@ final class UserVerificationPresentationService
             'manual_review' => __('Standard manual review'),
             default => $reason ? Str::headline(str_replace('_', ' ', $reason)) : null,
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @return array{headline: string, body: string, severity: string}|null
+     */
+    private function duplicateIdentityAlert(UserVerification $verification, array $meta): ?array
+    {
+        if ($verification->queue_reason !== 'duplicate_identity') {
+            return null;
+        }
+
+        $accounts = $this->duplicateAccounts($verification, $meta);
+        $document = (string) ($meta['duplicate_document_label'] ?? __('government ID'));
+
+        return [
+            'headline' => __('Duplicate identity detected'),
+            'body' => __('This submission uses a :document that matches :count other account(s). Do not approve until you have reviewed every linked profile.', [
+                'document' => $document,
+                'count' => count($accounts),
+            ]),
+            'severity' => 'critical',
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @return list<array{id: int, name: string, email: string, registered_at: ?string, last_active_at: ?string}>
+     */
+    private function duplicateAccounts(UserVerification $verification, array $meta): array
+    {
+        $stored = $meta['duplicate_accounts'] ?? null;
+        if (is_array($stored) && $stored !== []) {
+            return array_values(array_filter($stored, fn ($row) => is_array($row) && isset($row['id'])));
+        }
+
+        $kind = (string) ($meta['duplicate_document_kind'] ?? '');
+        $identifier = (string) ($meta['identifier_number'] ?? '');
+        if ($kind === '' || $identifier === '' || $verification->user === null) {
+            return [];
+        }
+
+        return app(IdentityDocumentUniquenessService::class)
+            ->conflictingAccounts($verification->user, $kind, $identifier);
     }
 
     private function idTypeLabel(string $idType): string

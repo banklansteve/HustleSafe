@@ -3,6 +3,7 @@
 namespace App\Services\Verification;
 
 use App\Enums\UserVerificationCategory;
+use App\Models\KycReviewCase;
 use App\Models\User;
 use App\Models\UserVerification;
 use Illuminate\Database\Eloquent\Builder;
@@ -101,6 +102,92 @@ final class VerificationStaffReviewPolicy
         return ! $this->requiresSuperAdminReview($verification);
     }
 
+    public function staffCanReviewKycCase(KycReviewCase $case, User $staff): bool
+    {
+        if ($staff->role?->slug === 'super_admin') {
+            return true;
+        }
+
+        $case->loadMissing(['user.role', 'verification']);
+
+        if ($case->verification !== null) {
+            return $this->staffCanReview($case->verification, $staff);
+        }
+
+        if ($staff->role?->slug !== 'admin') {
+            return false;
+        }
+
+        $typeKey = $this->normalizeTypeKey((string) $case->verification_type);
+        $user = $case->user;
+
+        if ($user !== null && $this->isClientAccount($user)) {
+            return ! in_array($typeKey, $this->clientSuperAdminOnlyTypes(), true);
+        }
+
+        if ($user !== null && $this->isFreelancerAccount($user)) {
+            return ! in_array($typeKey, $this->freelancerSuperAdminOnlyTypes(), true);
+        }
+
+        return ! in_array($typeKey, array_merge(
+            $this->clientSuperAdminOnlyTypes(),
+            $this->freelancerSuperAdminOnlyTypes(),
+        ), true);
+    }
+
+    /**
+     * @param  Builder<KycReviewCase>  $query
+     * @return Builder<KycReviewCase>
+     */
+    public function applyKycCaseStaffReviewableOnly(Builder $query): Builder
+    {
+        $clientOnly = $this->clientSuperAdminOnlyTypes();
+        $freelancerOnly = $this->freelancerSuperAdminOnlyTypes();
+
+        return $query->where(function (Builder $eligible) use ($clientOnly, $freelancerOnly): void {
+            $eligible->where(function (Builder $client) use ($clientOnly): void {
+                $client->whereHas('user', function (Builder $user): void {
+                    $user->where(function (Builder $bucket): void {
+                        $bucket->whereHas('role', fn (Builder $role) => $role->where('slug', 'client'))
+                            ->orWhere('account_type', 'client');
+                    });
+                });
+
+                if ($clientOnly !== []) {
+                    $client->whereNotIn('verification_type', $clientOnly);
+                }
+            })->orWhere(function (Builder $freelancer) use ($freelancerOnly): void {
+                $freelancer->whereHas('user', function (Builder $user): void {
+                    $user->where(function (Builder $bucket): void {
+                        $bucket->whereHas('role', fn (Builder $role) => $role->whereIn('slug', ['freelancer', 'seller', 'provider']))
+                            ->orWhereIn('account_type', ['freelancer', 'seller', 'provider']);
+                    });
+                });
+
+                if ($freelancerOnly !== []) {
+                    $freelancer->whereNotIn('verification_type', $freelancerOnly);
+                }
+            })->orWhereHas('user', function (Builder $user): void {
+                $user->where(function (Builder $bucket): void {
+                    $bucket->whereDoesntHave('role', fn (Builder $role) => $role->whereIn('slug', ['client', 'freelancer', 'seller', 'provider']))
+                        ->where(function (Builder $accountType): void {
+                            $accountType->whereNull('account_type')
+                                ->orWhereNotIn('account_type', ['client', 'freelancer', 'seller', 'provider']);
+                        });
+                });
+            });
+        });
+    }
+
+    public function assertStaffCanReviewKycCase(KycReviewCase $case, User $staff): void
+    {
+        abort_unless(
+            $this->staffCanReviewKycCase($case, $staff),
+            403,
+            __('This verification is reviewed by Super Admin only.'),
+        );
+    }
+
     /**
      * Pending submissions staff admins should see in their operations queue.
      *
@@ -114,13 +201,30 @@ final class VerificationStaffReviewPolicy
         $this->applyStaffReviewableOnly($query);
 
         if ($staff !== null) {
-            $query->where(function (Builder $scope) use ($staff): void {
-                $scope->whereNull('assigned_staff_id')
-                    ->orWhere('assigned_staff_id', $staff->id);
-            });
+            $this->applyStaffAssignmentVisibility($query, $staff);
         }
 
         return $query;
+    }
+
+    /**
+     * Staff admins see unassigned work, their own assignments, and staff-reviewable
+     * cases that were incorrectly auto-assigned to Super Admin.
+     *
+     * @param  Builder<UserVerification>  $query
+     */
+    private function applyStaffAssignmentVisibility(Builder $query, User $staff): void
+    {
+        $staff->loadMissing('role:id,slug');
+
+        $query->where(function (Builder $scope) use ($staff): void {
+            $scope->whereNull('assigned_staff_id')
+                ->orWhere('assigned_staff_id', $staff->id);
+
+            if ($staff->role?->slug === 'admin') {
+                $scope->orWhereHas('assignedStaff.role', fn (Builder $role) => $role->where('slug', 'super_admin'));
+            }
+        });
     }
 
     /**
@@ -129,18 +233,54 @@ final class VerificationStaffReviewPolicy
      */
     public function applyStaffReviewableOnly(Builder $query): Builder
     {
-        $clientOnly = $this->clientSuperAdminOnlyTypes();
-        $freelancerOnly = $this->freelancerSuperAdminOnlyTypes();
+        $clientOnly = $this->categoryValues($this->clientSuperAdminOnlyTypes());
+        $freelancerOnly = $this->categoryValues($this->freelancerSuperAdminOnlyTypes());
 
         return $query->where(function (Builder $eligible) use ($clientOnly, $freelancerOnly): void {
             $eligible->where(function (Builder $client) use ($clientOnly): void {
-                $client->whereHas('user.role', fn (Builder $role) => $role->where('slug', 'client'))
-                    ->whereNotIn('category', $clientOnly);
+                $client->whereHas('user', function (Builder $user): void {
+                    $user->where(function (Builder $bucket): void {
+                        $bucket->whereHas('role', fn (Builder $role) => $role->where('slug', 'client'))
+                            ->orWhere('account_type', 'client');
+                    });
+                });
+
+                if ($clientOnly !== []) {
+                    $client->whereNotIn('category', $clientOnly);
+                }
             })->orWhere(function (Builder $freelancer) use ($freelancerOnly): void {
-                $freelancer->whereHas('user.role', fn (Builder $role) => $role->whereIn('slug', ['freelancer', 'seller', 'provider']))
-                    ->whereNotIn('category', $freelancerOnly);
-            })->orWhereDoesntHave('user.role', fn (Builder $role) => $role->whereIn('slug', ['client', 'freelancer', 'seller', 'provider']));
+                $freelancer->whereHas('user', function (Builder $user): void {
+                    $user->where(function (Builder $bucket): void {
+                        $bucket->whereHas('role', fn (Builder $role) => $role->whereIn('slug', ['freelancer', 'seller', 'provider']))
+                            ->orWhereIn('account_type', ['freelancer', 'seller', 'provider']);
+                    });
+                });
+
+                if ($freelancerOnly !== []) {
+                    $freelancer->whereNotIn('category', $freelancerOnly);
+                }
+            })->orWhereHas('user', function (Builder $user): void {
+                $user->where(function (Builder $bucket): void {
+                    $bucket->whereDoesntHave('role', fn (Builder $role) => $role->whereIn('slug', ['client', 'freelancer', 'seller', 'provider']))
+                        ->where(function (Builder $accountType): void {
+                            $accountType->whereNull('account_type')
+                                ->orWhereNotIn('account_type', ['client', 'freelancer', 'seller', 'provider']);
+                        });
+                });
+            });
         });
+    }
+
+    /**
+     * @param  list<string>  $types
+     * @return list<string>
+     */
+    private function categoryValues(array $types): array
+    {
+        return array_values(array_filter(array_map(function (string $type): string {
+            return UserVerificationCategory::tryFrom($type)?->value
+                ?? $this->normalizeTypeKey($type);
+        }, $types)));
     }
 
     private function normalizeTypeKey(string $key): string

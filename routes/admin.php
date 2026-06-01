@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\AdminDisputesController;
 use App\Http\Controllers\Admin\AdminEngagementPolicyController;
 use App\Http\Controllers\Admin\AdminEmailBroadcastController;
 use App\Http\Controllers\Admin\AdminFinancialControlController;
+use App\Http\Controllers\Admin\AdminFinancialAuditController;
 use App\Http\Controllers\Admin\AdminFinancialReviewController;
 use App\Http\Controllers\Admin\AdminPlatformFeeLedgerController;
 use App\Http\Controllers\Admin\AdminQuestCompletionEventsController;
@@ -42,7 +43,7 @@ use App\Http\Controllers\Admin\AdminNotificationCentreController;
 use App\Http\Controllers\Admin\AdminOnboardingQualityController;
 use App\Http\Controllers\Admin\AdminProactiveOutreachController;
 use App\Http\Controllers\Admin\AdminResponseTemplatesController;
-use App\Http\Controllers\Admin\AdminPromotionsGrowthController;
+use App\Http\Controllers\Admin\AdminQuestBoostController;
 use App\Http\Controllers\Admin\AdminPortfolioReviewController;
 use App\Http\Controllers\Admin\AdminProposalsController;
 use App\Http\Controllers\Admin\AdminUserActivityController;
@@ -232,6 +233,27 @@ Route::get('/api/platform-fees', [AdminPlatformFeeLedgerController::class, 'inde
 Route::get('/api/platform-fees/export', [AdminPlatformFeeLedgerController::class, 'export'])
     ->middleware('throttle:20,1')
     ->name('api.platform-fees.export');
+
+Route::prefix('financial-audit')->name('financial-audit.')->group(function (): void {
+    Route::get('/', [AdminFinancialAuditController::class, 'index'])->name('index');
+    Route::get('/api/dashboard', [AdminFinancialAuditController::class, 'dashboardApi'])->name('api.dashboard');
+    Route::get('/reconciliation', [AdminFinancialAuditController::class, 'reconciliationIndex'])->name('reconciliation.index');
+    Route::get('/reconciliation/export', [AdminFinancialAuditController::class, 'reconciliationExport'])->name('reconciliation.export');
+    Route::get('/escrow-ledger', [AdminFinancialAuditController::class, 'escrowLedger'])->name('escrow-ledger');
+    Route::get('/escrow-ledger/export', [AdminFinancialAuditController::class, 'escrowLedgerExport'])->name('escrow-ledger.export');
+    Route::get('/escrow-records/{record}', [AdminFinancialAuditController::class, 'escrowRecordShow'])->name('escrow-records.show');
+    Route::get('/exceptions', [AdminFinancialAuditController::class, 'exceptionsIndex'])->name('exceptions.index');
+    Route::post('/exceptions/{exception}/assign', [AdminFinancialAuditController::class, 'assignException'])->middleware('throttle:30,1')->name('exceptions.assign');
+    Route::post('/exceptions/{exception}/notes', [AdminFinancialAuditController::class, 'noteException'])->middleware('throttle:30,1')->name('exceptions.notes');
+    Route::post('/exceptions/{exception}/resolve', [AdminFinancialAuditController::class, 'resolveException'])->middleware('throttle:30,1')->name('exceptions.resolve');
+    Route::get('/reports', [AdminFinancialAuditController::class, 'reportsIndex'])->name('reports.index');
+    Route::get('/reports/vat', [AdminFinancialAuditController::class, 'vatReport'])->name('reports.vat');
+    Route::get('/reports/vat/export', [AdminFinancialAuditController::class, 'vatReportExport'])->name('reports.vat.export');
+    Route::get('/reports/platform-fees', [AdminFinancialAuditController::class, 'platformFeeReport'])->name('reports.platform-fees');
+    Route::get('/reports/platform-fees/export', [AdminFinancialAuditController::class, 'platformFeeReportExport'])->name('reports.platform-fees.export');
+    Route::post('/vat/remit', [AdminFinancialAuditController::class, 'recordVatRemittance'])->middleware('throttle:30,1')->name('vat.remit');
+});
+
 Route::get('/quest-completion-events', [AdminQuestCompletionEventsController::class, 'index'])
     ->name('quest-completion-events.index');
 Route::get('/user-verifications/{verification}/document', [UserVerificationDocumentController::class, '__invoke'])
@@ -337,6 +359,26 @@ Route::post('/promotions/referrals/rewards/{reward}/void', [AdminPromotionsGrowt
 Route::post('/promotions/referrals/referrers/{user}/block', [AdminPromotionsGrowthController::class, 'blockReferrer'])
     ->middleware('throttle:30,1')
     ->name('promotions.referrals.referrers.block');
+
+Route::get('/quest-boosts', [AdminQuestBoostController::class, 'index'])->name('quest-boosts.index');
+Route::get('/quest-boosts/report', [AdminQuestBoostController::class, 'report'])->name('quest-boosts.report');
+Route::get('/quest-boosts/report/export', [AdminQuestBoostController::class, 'exportReport'])->name('quest-boosts.report.export');
+Route::get('/quest-boosts/quests/search', [AdminQuestBoostController::class, 'searchQuests'])
+    ->middleware('throttle:60,1')
+    ->name('quest-boosts.quests.search');
+Route::post('/quest-boosts', [AdminQuestBoostController::class, 'store'])
+    ->middleware('throttle:30,1')
+    ->name('quest-boosts.store');
+Route::get('/quest-boosts/{questBoost}', [AdminQuestBoostController::class, 'show'])->name('quest-boosts.show');
+Route::patch('/quest-boosts/{questBoost}/dates', [AdminQuestBoostController::class, 'updateDates'])
+    ->middleware('throttle:30,1')
+    ->name('quest-boosts.dates.update');
+Route::post('/quest-boosts/{questBoost}/end-early', [AdminQuestBoostController::class, 'endEarly'])
+    ->middleware('throttle:30,1')
+    ->name('quest-boosts.end-early');
+Route::post('/quest-boosts/{questBoost}/cancel', [AdminQuestBoostController::class, 'cancel'])
+    ->middleware('throttle:30,1')
+    ->name('quest-boosts.cancel');
 
 Route::get('/categories', [AdminCategoryManagementController::class, 'index'])->name('categories.index');
 Route::post('/categories', [AdminCategoryManagementController::class, 'store'])

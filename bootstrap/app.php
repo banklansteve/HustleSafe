@@ -89,6 +89,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('quests:process-lifecycle')->hourly();
         $schedule->command('quests:process-engagement')->hourly();
         $schedule->command('contracts:expire-pending-escrow')->hourly();
+        $schedule->command('contracts:process-extension-deadlines')->hourly();
+        $schedule->command('contracts:scan-extension-patterns')->dailyAt('03:30');
         $schedule->command('proposals:scan-client-ghosting')->dailyAt('07:00');
         $schedule->command('admin-reports:process-scheduled')->hourly();
         $schedule->command('admin-reports:refresh-aggregates')->hourly();
@@ -105,5 +107,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('review-manipulation:refresh')->dailyAt('02:15');
         $schedule->command('review-amendments:expire')->hourly();
         $schedule->command('hr:generate-alerts')->hourly();
+        $schedule->command('financial:reconcile')->hourly();
+        $schedule->command('quest-boosts:expire')->everyFiveMinutes();
+        $schedule->command('financial:generate-monthly-reports')->monthlyOn(1, '02:00');
     })
     ->create();

@@ -214,7 +214,8 @@
                     Fund escrow for
                     <span class="font-black">{{ formatBudget(offer.quoted_amount_minor) }}</span>
                     (including fees in the breakdown) before the freelancer is expected to start. Nothing is released to them until you mark the job
-                    completed.
+                    completed. See our
+                    <a :href="route('legal.escrow')" target="_blank" rel="noopener noreferrer" class="font-black text-amber-950 underline underline-offset-2">Escrow Policy</a>.
                 </p>
                 <form
                     v-if="commerce?.show_fund_button && commerce?.funding_post_url"
@@ -465,9 +466,8 @@
                         </span>
                     </div>
                 </div>
+                <PlatformFeeDisclosureNote class="mt-4" :platform-fee-percent="offer.platform_fee_percent_display" compact />
             </section>
-
-            <ReportConcernSheet
                 v-if="canReportProposal"
                 :action-url="route('quests.proposals.reports.store', [quest.route_key, offer.id])"
                 subtitle="Misleading quotes, harassment, or attempts to move payment off-platform should be reported. Our team triages by severity."
@@ -527,18 +527,22 @@
                                     (including platform and statutory lines shown in the breakdown) before the freelancer is obligated to start.
                                 </li>
                                 <li>
-                                    After the agreed end date, if you do not mark the job completed or open a dispute, escrow may automatically release to the freelancer after
+                                    After the agreed delivery date, we email you a review reminder that day, again 24 hours later, and a final reminder 36 hours later.
+                                    If you do not mark the job completed or open a dispute, escrow may automatically release to the freelancer
                                     <span class="font-black text-slate-900">72 hours</span>
-                                    — this protects freelancers from indefinite holds while you still have a short window to review delivery.
+                                    after the agreed delivery date.
                                 </li>
                                 <li>
-                                    Platform fee is shown in the quote (reference rate ~{{ offer.platform_fee_percent_display }}% where applicable — see
-                                    <a :href="route('legal.terms')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Terms</a>).
-                                </li>
-                                <li>
-                                    If delivery fails or disputes arise, eligible cases receive a full refund under our
+                                    Platform fee is {{ offer.platform_fee_percent_display }}% of the job subtotal (see
                                     <a :href="route('legal.terms')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Terms</a>
-                                    and dispute process.
+                                    and
+                                    <a :href="route('legal.escrow')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Escrow Policy</a>).
+                                </li>
+                                <li>
+                                    If delivery fails or disputes arise, eligible cases follow our
+                                    <a :href="route('legal.dispute')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Dispute Policy</a>
+                                    and
+                                    <a :href="route('legal.terms')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Terms of Service</a>.
                                 </li>
                             </ul>
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
@@ -563,7 +567,7 @@
                             <InputError :message="acceptForm.errors.confirm_deadline" />
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="acceptForm.accept_escrow_rules" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I understand I must fund escrow after the freelancer confirms, before work should begin, and funds release when I mark complete or under the 72-hour rule.</span>
+                                <span>I understand I must fund escrow after the freelancer confirms, before work should begin, and funds release when I mark complete or under the 72-hour rule after the agreed delivery date.</span>
                             </label>
                             <InputError :message="acceptForm.errors.accept_escrow_rules" />
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
@@ -573,7 +577,7 @@
                             <InputError :message="acceptForm.errors.accept_fees_and_terms" />
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="acceptForm.accept_auto_release_ack" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I understand the 72-hour auto-release rule after the planned job end if I do not mark complete or dispute in time.</span>
+                                <span>I understand the email reminders on the agreed delivery date, at 24 and 36 hours after, and the 72-hour auto-release rule if I do not mark complete or open a dispute in time.</span>
                             </label>
                             <InputError :message="acceptForm.errors.accept_auto_release_ack" />
                             <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -712,6 +716,7 @@
 </template>
 
 <script setup>
+import PlatformFeeDisclosureNote from '@/Components/Billing/PlatformFeeDisclosureNote.vue';
 import ReportConcernSheet from '@/Components/Quests/ReportConcernSheet.vue';
 import EscrowTransparencyTimeline from '@/Components/Quests/EscrowTransparencyTimeline.vue';
 import DisputePreventionPrompts from '@/Components/Quests/DisputePreventionPrompts.vue';
@@ -1155,7 +1160,7 @@ const pricingRows = computed(() => {
         { k: 'vat', label: vatLabel, v: p.vat_minor },
         { k: 'wht', label: 'Withholding tax', v: p.withholding_tax_minor },
         { k: 'stamp', label: 'Stamp duty', v: p.stamp_duty_minor },
-        { k: 'plat', label: 'Platform / processing', v: p.platform_fee_minor },
+        { k: 'plat', label: `Platform fee (${props.offer.platform_fee_percent_display ?? page.props.platform_fee_percent ?? 12}%)`, v: p.platform_fee_minor },
         { k: 'disc', label: 'Discount', v: p.discount_minor },
         { k: 'grand', label: 'Grand total', v: p.grand_total_minor },
     ];

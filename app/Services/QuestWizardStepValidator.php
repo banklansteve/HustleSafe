@@ -112,7 +112,7 @@ class QuestWizardStepValidator
             ],
             'estimated_completion_days' => ['required', 'integer', 'min:1', 'max:365'],
             'estimated_delivery_date' => ['nullable', 'date', 'after_or_equal:today'],
-            'budget_amount_minor' => ['required', 'integer', 'min:10000', 'max:100000000'],
+            'budget_amount_minor' => ['required', 'integer', 'min:10000', 'max:500000000'],
         ];
     }
 
@@ -148,10 +148,6 @@ class QuestWizardStepValidator
         if (! empty($profile['show_site_access'])) {
             $rules['site_access_level'] = ['required', 'string', Rule::in(['ground_level_easy', 'stairs_no_lift', 'stairs_with_lift', 'ladder_or_height_work', 'narrow_or_difficult_access', 'other'])];
             $rules['pets_on_site'] = ['required', 'boolean'];
-            $rules['pets_detail'] = ['nullable', 'string', 'max:255'];
-        } else {
-            $rules['site_access_level'] = ['nullable', 'string', 'max:40'];
-            $rules['pets_on_site'] = ['sometimes', 'boolean'];
             $rules['pets_detail'] = ['nullable', 'string', 'max:255'];
         }
 

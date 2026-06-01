@@ -77,7 +77,16 @@ class NigeriaGeoSeeder extends Seeder
         }
 
         $lgaCount = LocalGovernment::query()->count();
-        $this->command?->info("Nigeria geo seeded: {$lgaCount} LGAs across ".State::query()->count().' states.');
+        $stateCount = State::query()->count();
+        $this->command?->info("Nigeria geo seeded: {$lgaCount} LGAs across {$stateCount} states.");
+
+        if ($stateCount !== 37) {
+            $this->command?->warn("Expected 36 states plus FCT (37 records); found {$stateCount}. Check database/data/nigeria_states_lgas.json.");
+        }
+
+        if ($lgaCount < 774) {
+            $this->command?->warn("Expected ~776 LGAs; found {$lgaCount}. Some LGAs may be missing from the dataset.");
+        }
     }
 
     protected function normalizeStateName(string $name): string

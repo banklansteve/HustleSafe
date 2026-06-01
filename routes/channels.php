@@ -81,6 +81,16 @@ Broadcast::channel('customer-support.staff', function ($user) {
     return in_array($user->role?->slug, ['admin', 'super_admin'], true);
 });
 
+Broadcast::channel('verification.staff', function ($user) {
+    if ($user === null) {
+        return false;
+    }
+
+    $user->loadMissing('role');
+
+    return in_array($user->role?->slug, ['admin', 'super_admin'], true);
+});
+
 Broadcast::channel('customer-support.{ticketId}', function ($user, string $ticketId) {
     if ($user === null) {
         return false;

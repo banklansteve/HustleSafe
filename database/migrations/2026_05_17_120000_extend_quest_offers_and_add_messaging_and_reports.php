@@ -63,6 +63,9 @@ return new class extends Migration
         if (! Schema::hasTable('content_reports')) {
             Schema::create('content_reports', function (Blueprint $table) {
                 $table->id();
+                if (Schema::hasTable('moderation_cases')) {
+                    $table->foreignId('moderation_case_id')->nullable()->constrained('moderation_cases')->nullOnDelete();
+                }
                 $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
                 $table->string('reportable_type');
                 $table->unsignedBigInteger('reportable_id');

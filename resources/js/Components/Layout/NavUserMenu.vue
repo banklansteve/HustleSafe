@@ -146,6 +146,7 @@ import {
     WrenchScrewdriverIcon,
 } from '@heroicons/vue/24/outline';
 import { usePathname } from '@/composables/usePathname';
+import { usePlatformRoleNav } from '@/composables/usePlatformRoleNav';
 import { Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
@@ -165,9 +166,7 @@ const initials = computed(() => {
     return ((parts[0]?.[0] || 'H') + (parts[1]?.[0] || '')).toUpperCase();
 });
 
-const roleSlug = computed(() => user.value?.role?.slug ?? '');
-const isFreelancer = computed(() => roleSlug.value === 'freelancer');
-const showClientTools = computed(() => ['client', 'super_admin'].includes(roleSlug.value));
+const { roleSlug, isFreelancer, showClientTools } = usePlatformRoleNav();
 
 const mobileQuickLinks = computed(() => {
     const items = [

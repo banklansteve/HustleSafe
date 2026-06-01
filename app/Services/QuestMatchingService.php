@@ -6,8 +6,10 @@ use App\Enums\QuestStatus;
 use App\Enums\QuestVisibility;
 use App\Enums\AdminQuestStatus;
 use App\Models\Quest;
+use App\Models\QuestBoost;
 use App\Models\User;
 use App\Models\UserFollow;
+use App\Services\Admin\QuestBoostService;
 use Illuminate\Support\Collection;
 
 /**
@@ -68,7 +70,36 @@ class QuestMatchingService
         return $scored
             ->sortByDesc(fn (array $row) => [$row['match_score'], $row['quest']->created_at?->timestamp ?? 0])
             ->values()
+            ->pipe(fn (Collection $sorted) => $this->prioritizeBoostedQuests($sorted))
             ->take($limit);
+    }
+
+    /**
+     * @param  Collection<int, array{quest: Quest, match_score: int, reasons: list<string>}>  $sorted
+     * @return Collection<int, array{quest: Quest, match_score: int, reasons: list<string>}>
+     */
+    protected function prioritizeBoostedQuests(Collection $sorted): Collection
+    {
+        $boostedIds = collect(app(QuestBoostService::class)->activeBoostedQuestIds())
+            ->flip();
+
+        if ($boostedIds->isEmpty()) {
+            return $sorted;
+        }
+
+        $boosted = $sorted->filter(fn (array $row) => $boostedIds->has($row['quest']->id));
+        $regular = $sorted->reject(fn (array $row) => $boostedIds->has($row['quest']->id));
+
+        $boostedOrdered = $boosted->sortBy(function (array $row) {
+            $endsAt = QuestBoost::query()
+                ->activeNow()
+                ->where('quest_id', $row['quest']->id)
+                ->value('ends_at');
+
+            return $endsAt?->timestamp ?? PHP_INT_MAX;
+        })->values();
+
+        return $boostedOrdered->concat($regular->values());
     }
 
     /**

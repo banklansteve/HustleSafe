@@ -128,6 +128,8 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'created_at' => 'datetime',
+            'updated_at' => 'datetime',
             'phone_verified_at' => 'datetime',
             'referral_program_blocked_at' => 'datetime',
             'password' => 'hashed',

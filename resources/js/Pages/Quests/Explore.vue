@@ -80,6 +80,12 @@
                         <p class="font-display text-lg font-bold text-slate-900 sm:text-xl">
                             {{ q.title }}
                         </p>
+                        <span
+                            v-if="q.is_boosted"
+                            class="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-amber-900 ring-1 ring-amber-200"
+                        >
+                            Boosted
+                        </span>
                         <div class="mt-3 flex flex-wrap gap-2 text-sm font-semibold text-slate-600">
                             <span
                                 v-if="q.parent_category || q.category"

@@ -68,50 +68,85 @@ class IdentityDocumentUniquenessService
 
     public function conflictingUserId(string $documentKind, string $identifier, ?int $exceptUserId = null): ?int
     {
+        return $this->conflictingUserIds($documentKind, $identifier, $exceptUserId)[0] ?? null;
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function conflictingUserIds(string $documentKind, string $identifier, ?int $exceptUserId = null, int $limit = 8): array
+    {
         $kind = $this->normalizeKind($documentKind);
         $normalized = $this->normalizeValue($kind, $identifier);
 
         if ($normalized === '') {
-            return null;
+            return [];
         }
 
         $hash = $this->hashValue($normalized);
+        $ids = [];
 
-        $registryConflict = UserIdentityDocument::query()
+        foreach (UserIdentityDocument::query()
             ->where('document_kind', $kind)
             ->where('number_hash', $hash)
             ->when($exceptUserId !== null, fn ($q) => $q->where('user_id', '<>', $exceptUserId))
-            ->value('user_id');
-
-        if ($registryConflict !== null) {
-            return (int) $registryConflict;
+            ->limit($limit)
+            ->pluck('user_id') as $userId) {
+            $ids[(int) $userId] = (int) $userId;
         }
 
         if ($kind === 'nin') {
-            $columnConflict = User::query()
+            foreach (User::query()
                 ->whereNotNull('nin')
                 ->where('nin', $normalized)
                 ->when($exceptUserId !== null, fn ($q) => $q->where('id', '<>', $exceptUserId))
-                ->value('id');
-
-            if ($columnConflict !== null) {
-                return (int) $columnConflict;
+                ->limit($limit)
+                ->pluck('id') as $userId) {
+                $ids[(int) $userId] = (int) $userId;
             }
         }
 
         if ($kind === 'bvn') {
-            $columnConflict = User::query()
+            foreach (User::query()
                 ->whereNotNull('bvn')
                 ->where('bvn', $normalized)
                 ->when($exceptUserId !== null, fn ($q) => $q->where('id', '<>', $exceptUserId))
-                ->value('id');
-
-            if ($columnConflict !== null) {
-                return (int) $columnConflict;
+                ->limit($limit)
+                ->pluck('id') as $userId) {
+                $ids[(int) $userId] = (int) $userId;
             }
         }
 
-        return $this->conflictFromVerificationRecords($kind, $normalized, $exceptUserId);
+        foreach ($this->conflictingUserIdsFromVerificationRecords($kind, $normalized, $exceptUserId, $limit) as $userId) {
+            $ids[$userId] = $userId;
+        }
+
+        return array_values(array_slice($ids, 0, $limit));
+    }
+
+    /**
+     * @return list<array{id: int, name: string, email: string, registered_at: ?string, last_active_at: ?string}>
+     */
+    public function conflictingAccounts(User $user, string $documentKind, string $identifier, int $limit = 5): array
+    {
+        $ids = $this->conflictingUserIds($documentKind, $identifier, (int) $user->id, $limit);
+        if ($ids === []) {
+            return [];
+        }
+
+        return User::query()
+            ->whereIn('id', $ids)
+            ->orderBy('id')
+            ->get(['id', 'name', 'email', 'created_at', 'last_active_at'])
+            ->map(fn (User $account) => [
+                'id' => (int) $account->id,
+                'name' => (string) $account->name,
+                'email' => (string) $account->email,
+                'registered_at' => $account->created_at?->toIso8601String(),
+                'last_active_at' => $account->last_active_at?->toIso8601String(),
+            ])
+            ->values()
+            ->all();
     }
 
     public function normalizeKind(string $kind): string
@@ -160,8 +195,13 @@ class IdentityDocumentUniquenessService
         };
     }
 
-    private function conflictFromVerificationRecords(string $kind, string $normalized, ?int $exceptUserId): ?int
+    /**
+     * @return list<int>
+     */
+    private function conflictingUserIdsFromVerificationRecords(string $kind, string $normalized, ?int $exceptUserId, int $limit = 8): array
     {
+        $ids = [];
+
         $verifications = UserVerification::query()
             ->when($exceptUserId !== null, fn ($q) => $q->where('user_id', '<>', $exceptUserId))
             ->whereIn('status', [
@@ -193,11 +233,15 @@ class IdentityDocumentUniquenessService
             $recordValue = $this->identifierFromVerification($verification);
 
             if ($recordValue !== '' && $this->normalizeValue($kind, $recordValue) === $normalized) {
-                return (int) $verification->user_id;
+                $ids[(int) $verification->user_id] = (int) $verification->user_id;
+            }
+
+            if (count($ids) >= $limit) {
+                break;
             }
         }
 
-        return null;
+        return array_values($ids);
     }
 
     private function identifierFromVerification(UserVerification $verification): string

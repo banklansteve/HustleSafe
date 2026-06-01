@@ -189,4 +189,20 @@ return [
 
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Destructive command protection
+    |--------------------------------------------------------------------------
+    |
+    | When true, db:wipe / migrate:fresh / migrate:refresh / migrate:reset
+    | always require interactive confirmation. --force alone cannot bypass it.
+    | Non-interactive runs must pass --confirmed-deletion (use only when you
+    | explicitly intend to delete all data).
+    |
+    */
+
+    'destructive_commands' => [
+        'require_confirmation' => env('DB_REQUIRE_DESTRUCTIVE_CONFIRMATION', true),
+    ],
+
 ];

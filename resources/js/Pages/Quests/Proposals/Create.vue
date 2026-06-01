@@ -82,11 +82,11 @@
             >
                 <p class="text-[10px] font-black uppercase tracking-[0.2em] text-teal-800">Payouts, escrow & disputes</p>
                 <p class="mt-2 leading-relaxed text-slate-700">
-                    Client funds stay in escrow until they mark the job completed. Start billable work only after escrow is funded and confirmed — never accept off-platform prepayment. If something goes wrong after funding, both sides use the same dispute tools:
-                    <Link :href="route('disputes.index')" class="font-black text-teal-900 underline decoration-teal-400 underline-offset-2">Disputes centre</Link>,
-                    <a href="/docs/dispute-workflow.md" target="_blank" rel="noopener noreferrer" class="font-black text-teal-900 underline decoration-teal-400 underline-offset-2">workflow doc</a>,
+                    Client funds stay in escrow until they mark the job completed. Start billable work only after escrow is funded and confirmed — never accept off-platform prepayment. If something goes wrong after funding, both sides follow the same rules:
+                    <Link :href="route('legal.escrow')" target="_blank" class="font-black text-teal-900 underline decoration-teal-400 underline-offset-2">Escrow Policy</Link>,
+                    <Link :href="route('legal.dispute')" target="_blank" class="font-black text-teal-900 underline decoration-teal-400 underline-offset-2">Dispute Policy</Link>,
                     and our
-                    <a :href="route('legal.terms')" target="_blank" rel="noopener noreferrer" class="font-black text-teal-900 underline decoration-teal-400 underline-offset-2">Terms</a>.
+                    <Link :href="route('legal.terms')" target="_blank" class="font-black text-teal-900 underline decoration-teal-400 underline-offset-2">Terms of Service</Link>.
                 </p>
             </section>
 
@@ -323,10 +323,8 @@
                         <div class="space-y-2">
                             <InputLabel :value="`Platform fee (${platformFeePercent}% of subtotal)`" />
                             <TextInput v-model.number="form.pricing.platform_fee_ngn" type="number" min="0" step="1" class="w-full bg-slate-50" readonly />
-                            <p class="text-xs font-semibold text-slate-600">
-                                Auto-calculated from professional fee + materials + travel. Rate is set in Super Admin → Platform settings → Financial & Escrow.
-                            </p>
                         </div>
+                        <PlatformFeeDisclosureNote class="sm:col-span-2" :platform-fee-percent="platformFeePercent" />
                         <div class="space-y-2">
                             <InputLabel value="Discount" />
                             <TextInput v-model.number="form.pricing.discount_ngn" type="number" min="0" step="1" class="w-full" />
@@ -427,6 +425,7 @@
 
 <script setup>
 import BackChevronLink from '@/Components/Ui/BackChevronLink.vue';
+import PlatformFeeDisclosureNote from '@/Components/Billing/PlatformFeeDisclosureNote.vue';
 import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';

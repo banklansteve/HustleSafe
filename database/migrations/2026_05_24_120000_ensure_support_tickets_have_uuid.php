@@ -2,12 +2,17 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 return new class extends Migration
 {
     public function up(): void
     {
+        if (! Schema::hasTable('support_tickets')) {
+            return;
+        }
+
         DB::table('support_tickets')
             ->whereNull('uuid')
             ->orWhere('uuid', '')
