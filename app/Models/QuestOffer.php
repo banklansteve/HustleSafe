@@ -164,4 +164,48 @@ class QuestOffer extends Model
             ->excludingAdminSuspended()
             ->whereIn('status', ['submitted', 'shortlisted', 'pending_award', 'accepted']);
     }
+
+    /**
+     * @param  list<int>  $questIds
+     * @return array<int, self>
+     */
+    public static function mapForFreelancerOnQuests(int $freelancerId, array $questIds): array
+    {
+        if ($questIds === []) {
+            return [];
+        }
+
+        $offers = self::query()
+            ->where('freelancer_id', $freelancerId)
+            ->whereIn('quest_id', $questIds)
+            ->excludingAdminSuspended()
+            ->orderByDesc('id')
+            ->get();
+
+        $map = [];
+        foreach ($offers->groupBy(fn (self $offer) => (int) $offer->quest_id) as $questId => $group) {
+            $picked = self::pickFreelancerOffer($group);
+            if ($picked !== null) {
+                $map[(int) $questId] = $picked;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, self>|null  $offers
+     */
+    public static function pickFreelancerOffer(?\Illuminate\Support\Collection $offers): ?self
+    {
+        if ($offers === null || $offers->isEmpty()) {
+            return null;
+        }
+
+        $active = $offers->first(
+            fn (self $offer) => in_array($offer->status, ['submitted', 'shortlisted', 'accepted', 'pending_award'], true),
+        );
+
+        return $active ?? $offers->first();
+    }
 }

@@ -130,6 +130,78 @@ class QuestExploreAndOffersTest extends TestCase
             ->assertOk();
     }
 
+    public function test_explore_hides_send_proposal_for_quests_with_existing_offer(): void
+    {
+        $lga = LocalGovernment::query()->with('state')->first();
+        $this->assertNotNull($lga);
+        $leaf = QuestCategory::query()->whereNotNull('parent_id')->first();
+        $this->assertNotNull($leaf);
+
+        $client = User::factory()->create([
+            'account_type' => 'sponsor',
+            'state_id' => $lga->state_id,
+            'local_government_id' => $lga->id,
+        ]);
+
+        $freelancer = User::factory()->create([
+            'account_type' => 'hustler',
+            'state_id' => $lga->state_id,
+            'local_government_id' => $lga->id,
+            'address_line' => '15 Admiralty Way, Lekki Phase 1',
+            'city' => 'Lagos',
+            'headline' => 'Product designer focused on conversion',
+            'bio' => str_repeat('I build trustworthy interfaces with measurable lift. ', 5),
+        ]);
+        $freelancer->questCategoryPreferences()->sync([$leaf->id]);
+        UserTrustMetric::query()->updateOrCreate(
+            ['user_id' => $freelancer->id],
+            [
+                'freelancer_trust_score' => 50,
+                'client_trust_score' => 50,
+                'profile_completion_percent' => 72,
+                'avg_rating_as_freelancer' => 0,
+                'avg_rating_as_client' => 0,
+                'ratings_count_as_freelancer' => 0,
+                'ratings_count_as_client' => 0,
+            ]
+        );
+
+        $quest = Quest::query()->create([
+            'client_id' => $client->id,
+            'slug' => 'explore-proposal-sent-test',
+            'title' => 'Explore proposal sent test',
+            'description' => 'Need a responsive landing page.',
+            'quest_category_id' => $leaf->id,
+            'state_id' => $lga->state_id,
+            'local_government_id' => $lga->id,
+            'city' => 'Lagos',
+            'status' => QuestStatus::Open,
+            'freelancer_location_pref' => QuestFreelancerLocationPref::RemoteFriendly,
+            'budget_amount_minor' => 500_000,
+        ]);
+
+        $offer = QuestOffer::query()->create([
+            'quest_id' => $quest->id,
+            'freelancer_id' => $freelancer->id,
+            'status' => 'submitted',
+            'pitch' => 'I can deliver this with clear milestones and weekly updates.',
+            'scope_detail' => str_repeat('Scope covers responsive layout, QA, and handover documentation. ', 3),
+            'quoted_amount_minor' => 450_000,
+        ]);
+
+        $response = $this->actingAs($freelancer)->get(route('quests.explore'));
+        $response->assertOk();
+
+        $quests = collect($response->viewData('page')['props']['quests'] ?? []);
+        $row = $quests->firstWhere('id', $quest->id);
+        $this->assertNotNull($row);
+        $this->assertSame('submitted', $row['my_proposal']['status'] ?? null);
+        $this->assertSame(
+            route('quests.proposals.show', [$quest, $offer]),
+            $row['my_proposal']['show_url'] ?? null,
+        );
+    }
+
     public function test_freelancer_without_categories_cannot_submit_offer(): void
     {
         $lga = LocalGovernment::query()->with('state')->first();

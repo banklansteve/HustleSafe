@@ -32,7 +32,7 @@ return [
     |
     */
 
-    // Default idle timeout for regular users (7 days). Staff admin (5h) and super admin (12h)
+    // Default idle timeout for regular users (7 days). Staff admin (5h) and super admin (14d)
     // lifetimes are applied per authenticated request via ApplyRoleSessionLifetime.
     'lifetime' => (int) env('SESSION_LIFETIME', 10080),
 

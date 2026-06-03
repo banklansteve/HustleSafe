@@ -260,7 +260,7 @@ const anchorLinks = computed(() => [
 ]);
 
 const exploreHref = computed(() => route('quests.explore'));
-const myOffersHref = computed(() => route('dashboard.lists.show', { list: 'freelancer-proposals-sent' }));
+const myOffersHref = computed(() => route('freelancer.proposals.index'));
 
 function portfolioManageActive() {
     const p = pathname.value;

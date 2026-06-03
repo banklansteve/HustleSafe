@@ -2,76 +2,163 @@
 
 namespace App\Services;
 
+use App\Enums\AdminQuestStatus;
 use App\Enums\QuestStatus;
 use App\Enums\QuestVisibility;
-use App\Enums\AdminQuestStatus;
 use App\Models\Quest;
 use App\Models\QuestBoost;
 use App\Models\User;
 use App\Models\UserFollow;
 use App\Services\Admin\QuestBoostService;
+use App\Services\Matching\FreelancerMetricsService;
+use App\Services\Matching\QuestMatchScoreCalculator;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Support\Collection;
 
 /**
- * Ranks open quests for a freelancer using category fit, geography, and freshness.
- * Designed to be extended (weights in config, ML layer, client trust signals, etc.).
+ * Ranks open quests for freelancers: exact category gate, tier/budget/active-job gates,
+ * then weighted location → skills → budget → tier quality → activity scoring.
  */
 class QuestMatchingService
 {
+    public function __construct(
+        protected QuestMatchScoreCalculator $scoreCalculator,
+        protected FreelancerMetricsService $metricsService,
+        protected VerificationEngineService $verificationEngine,
+    ) {}
+
     /**
-     * @return Collection<int, array{quest: Quest, match_score: int, reasons: list<string>}>
+     * @return Collection<int, array{
+     *   quest: Quest,
+     *   match_score: int,
+     *   match_quality: array{label: string, stars: int},
+     *   match_breakdown: list<string>,
+     *   location_tier: string,
+     *   reasons: list<string>,
+     * }>
      */
     public function rankedOpenQuestsForFreelancer(User $freelancer, int $limit = 12): Collection
     {
-        $prefs = $freelancer->questCategoryPreferences()->get(['quest_categories.id', 'quest_categories.parent_id']);
-        if ($prefs->isEmpty()) {
+        $prefIds = $freelancer->questCategoryPreferences()->pluck('quest_categories.id')->all();
+        if ($prefIds === []) {
             return $this->fallbackOpenQuests($limit);
         }
 
-        $prefIds = $prefs->pluck('id')->all();
-        $parentIds = $prefs->pluck('parent_id')->filter()->unique()->all();
+        if ($this->activeJobCount($freelancer) >= $this->activeJobLimit($freelancer)) {
+            return collect();
+        }
+
+        $proposalLimit = $this->verificationEngine->freelancerProposalLimitMinor($freelancer);
+        $metrics = $this->metricsService->forUser($freelancer);
+        $candidateLimit = (int) config('quest_matching.freelancer_feed_candidate_limit', 300);
 
         $quests = Quest::query()
             ->where('status', QuestStatus::Open)
             ->where(fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminQuestStatus::Suspended->value))
             ->where('visibility', QuestVisibility::Public)
             ->whereNull('freelancer_id')
-            ->with(['questCategory:id,parent_id,name', 'questCategory.parent:id,name', 'stateModel:id,name', 'client:id,first_name,name'])
+            ->whereIn('quest_category_id', $prefIds)
+            ->when($proposalLimit > 0, function ($query) use ($proposalLimit): void {
+                $query->where(function ($inner) use ($proposalLimit): void {
+                    $inner->whereNull('budget_amount_minor')
+                        ->orWhere('budget_amount_minor', '<=', $proposalLimit);
+                });
+            })
+            ->with([
+                'questCategory:id,parent_id,name',
+                'questCategory.parent:id,name',
+                'stateModel:id,name',
+                'localGovernment:id,name',
+                'client:id,first_name,name',
+            ])
             ->latest('created_at')
-            ->limit(200)
+            ->limit($candidateLimit)
             ->get();
 
-        $scored = $quests->map(function (Quest $quest) use ($freelancer, $prefIds, $parentIds): array {
-            $reasons = [];
-            $raw = 0.0;
+        $scored = $quests->map(function (Quest $quest) use ($freelancer, $metrics): ?array {
+            $breakdown = $this->scoreCalculator->score($freelancer, $quest, $metrics);
 
-            $catScore = $this->categoryScore($quest, $prefIds, $parentIds, $reasons);
-            $raw += $catScore;
+            if (! $breakdown['passes_skills_gate'] || ! $breakdown['passes_language_gate']) {
+                return null;
+            }
 
-            $geoScore = $this->geoScore($quest, $freelancer, $reasons);
-            $raw += $geoScore;
-
-            $raw += $this->freshnessScore($quest, $reasons);
-
-            $budgetScore = $this->budgetFitScore($quest, $freelancer, $reasons);
-            $raw += $budgetScore;
-
-            $raw += $this->clientFollowBoost($quest, $freelancer, $reasons);
-
-            $match = (int) round(min(100, max(0, $raw)));
+            $reasons = $breakdown['reasons'];
+            $followBoost = $this->clientFollowBoost($quest, $freelancer, $reasons);
+            $total = min(100, $breakdown['total'] + $followBoost);
 
             return [
                 'quest' => $quest,
-                'match_score' => $match,
+                'match_score' => (int) round($total),
+                'match_quality' => $this->scoreCalculator->qualityForScore($total),
+                'match_breakdown' => $breakdown['breakdown_lines'],
+                'location_tier' => $breakdown['location_tier'],
                 'reasons' => $reasons,
             ];
-        });
+        })->filter();
 
         return $scored
-            ->sortByDesc(fn (array $row) => [$row['match_score'], $row['quest']->created_at?->timestamp ?? 0])
+            ->sortByDesc(fn (array $row) => [
+                $this->locationTierRank($row['location_tier']),
+                $row['match_score'],
+                $row['quest']->created_at?->timestamp ?? 0,
+            ])
             ->values()
             ->pipe(fn (Collection $sorted) => $this->prioritizeBoostedQuests($sorted))
             ->take($limit);
+    }
+
+    /**
+     * @return Collection<int, array{quest: Quest, match_score: int, reasons: list<string>, match_quality?: array, match_breakdown?: list<string>}>
+     */
+    public function discoveryFeedForExplore(User $user, int $limit = 48): Collection
+    {
+        if ($user->role?->slug === 'freelancer') {
+            return $this->rankedOpenQuestsForFreelancer($user, $limit);
+        }
+
+        return $this->fallbackOpenQuests($limit)->map(function (array $row) use ($user): array {
+            if ($user->role?->slug === 'client') {
+                return [
+                    'quest' => $row['quest'],
+                    'match_score' => 0,
+                    'match_quality' => ['label' => '', 'stars' => 0],
+                    'match_breakdown' => [],
+                    'location_tier' => 'unknown',
+                    'reasons' => [__('Public marketplace listings — useful for benchmarking scope and budgets.')],
+                ];
+            }
+
+            return $row;
+        });
+    }
+
+    /**
+     * Location-first ordering within the scored set (LGA → state → national).
+     */
+    protected function locationTierRank(string $tier): int
+    {
+        return match ($tier) {
+            'same_lga' => 3,
+            'same_state' => 2,
+            'different_state' => 1,
+            default => 0,
+        };
+    }
+
+    protected function activeJobCount(User $freelancer): int
+    {
+        return Quest::query()
+            ->where('freelancer_id', $freelancer->id)
+            ->whereIn('status', config('quest_matching.active_job_statuses', []))
+            ->count();
+    }
+
+    protected function activeJobLimit(User $freelancer): int
+    {
+        $level = $this->verificationEngine->effectiveLevel($freelancer);
+        $map = config('quest_matching.active_job_limits_by_level', []);
+
+        return (int) ($map[$level] ?? 2);
     }
 
     /**
@@ -105,126 +192,6 @@ class QuestMatchingService
     /**
      * @param  list<string>  $reasons
      */
-    protected function categoryScore(Quest $quest, array $prefIds, array $parentIds, array &$reasons): float
-    {
-        $cid = $quest->quest_category_id;
-        if ($cid === null) {
-            $reasons[] = __('Broad listing — add categories to quests for sharper matches.');
-
-            return 12;
-        }
-
-        if (in_array($cid, $prefIds, true)) {
-            $reasons[] = __('Matches your selected specialty.');
-
-            return 48;
-        }
-
-        $questCat = $quest->questCategory;
-        if ($questCat && $questCat->parent_id !== null && in_array($questCat->parent_id, $parentIds, true)) {
-            $reasons[] = __('Same field as your skills — related specialty.');
-
-            return 28;
-        }
-
-        $reasons[] = __('Outside your saved skills — still visible.');
-
-        return 6;
-    }
-
-    /**
-     * @param  list<string>  $reasons
-     */
-    protected function geoScore(Quest $quest, User $freelancer, array &$reasons): float
-    {
-        $uLat = $freelancer->latitude;
-        $uLng = $freelancer->longitude;
-        $qLat = $quest->latitude;
-        $qLng = $quest->longitude;
-
-        if ($uLat !== null && $uLng !== null && $qLat !== null && $qLng !== null) {
-            $km = $this->haversineKm((float) $uLat, (float) $uLng, (float) $qLat, (float) $qLng);
-            if ($km <= 25) {
-                $reasons[] = __('Very close to your location.');
-
-                return 34;
-            }
-            if ($km <= 80) {
-                $reasons[] = __('Within your region.');
-
-                return 26;
-            }
-            if ($km <= 250) {
-                $reasons[] = __('Within Nigeria-wide radius.');
-
-                return 16;
-            }
-            $reasons[] = __('Farther away — remote-friendly?');
-
-            return 8;
-        }
-
-        if ($quest->state_id !== null && $freelancer->state_id !== null && (int) $quest->state_id === (int) $freelancer->state_id) {
-            $reasons[] = __('Same state as your profile.');
-
-            return 28;
-        }
-
-        if ($quest->city && $freelancer->city && strcasecmp(trim((string) $quest->city), trim((string) $freelancer->city)) === 0) {
-            $reasons[] = __('Same city hint in listing.');
-
-            return 24;
-        }
-
-        $reasons[] = __('Location not specified — nationwide.');
-
-        return 14;
-    }
-
-    /**
-     * @param  list<string>  $reasons
-     */
-    protected function freshnessScore(Quest $quest, array &$reasons): float
-    {
-        $ageHours = $quest->created_at?->diffInHours(now()) ?? 999;
-        if ($ageHours <= 48) {
-            $reasons[] = __('Posted recently.');
-
-            return 14;
-        }
-        if ($ageHours <= 168) {
-            return 8;
-        }
-
-        return 4;
-    }
-
-    /**
-     * @param  list<string>  $reasons
-     */
-    protected function budgetFitScore(Quest $quest, User $freelancer, array &$reasons): float
-    {
-        $budget = $quest->budget_amount_minor;
-        $min = $freelancer->hourly_rate_min;
-        if ($budget === null || $min === null) {
-            return 4;
-        }
-
-        $implied = (float) $budget / 100 / 8;
-        if ($implied >= (float) $min * 0.85) {
-            $reasons[] = __('Budget aligns with your rate floor.');
-
-            return 10;
-        }
-
-        return 2;
-    }
-
-    /**
-     * Sponsors who follow a freelancer get their open quests boosted for that freelancer.
-     *
-     * @param  list<string>  $reasons
-     */
     protected function clientFollowBoost(Quest $quest, User $freelancer, array &$reasons): float
     {
         if ($quest->client_id === null) {
@@ -242,45 +209,11 @@ class QuestMatchingService
 
         $reasons[] = __('This sponsor follows you — your match is prioritised.');
 
-        return 24;
-    }
-
-    protected function haversineKm(float $lat1, float $lng1, float $lat2, float $lng2): float
-    {
-        $earth = 6371;
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLng = deg2rad($lng2 - $lng1);
-        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
-
-        return $earth * (2 * atan2(sqrt($a), sqrt(1 - $a)));
+        return (float) config('quest_matching.client_follow_boost_points', 8);
     }
 
     /**
-     * Open-quest discovery for Explore: freelancers get ranked matches; clients get a fresh public feed.
-     *
-     * @return Collection<int, array{quest: Quest, match_score: int, reasons: list<string>}>
-     */
-    public function discoveryFeedForExplore(User $user, int $limit = 48): Collection
-    {
-        if ($user->role?->slug === 'freelancer') {
-            return $this->rankedOpenQuestsForFreelancer($user, $limit);
-        }
-
-        return $this->fallbackOpenQuests($limit)->map(function (array $row) use ($user): array {
-            if ($user->role?->slug === 'client') {
-                return [
-                    'quest' => $row['quest'],
-                    'match_score' => 0,
-                    'reasons' => [__('Public marketplace listings — useful for benchmarking scope and budgets.')],
-                ];
-            }
-
-            return $row;
-        });
-    }
-
-    /**
-     * @return Collection<int, array{quest: Quest, match_score: int, reasons: list<string>}>
+     * @return Collection<int, array{quest: Quest, match_score: int, reasons: list<string>, match_quality: array, match_breakdown: list<string>, location_tier: string}>
      */
     protected function fallbackOpenQuests(int $limit): Collection
     {
@@ -289,7 +222,7 @@ class QuestMatchingService
             ->where(fn ($query) => $query->whereNull('admin_status')->orWhere('admin_status', '<>', AdminQuestStatus::Suspended->value))
             ->where('visibility', QuestVisibility::Public)
             ->whereNull('freelancer_id')
-            ->with(['questCategory:id,parent_id,name', 'questCategory.parent:id,name', 'stateModel:id,name', 'client:id,first_name,name'])
+            ->with(['questCategory:id,parent_id,name', 'questCategory.parent:id,name', 'stateModel:id,name', 'localGovernment:id,name', 'client:id,first_name,name'])
             ->latest('created_at')
             ->limit($limit)
             ->get();
@@ -297,6 +230,9 @@ class QuestMatchingService
         return $quests->map(fn (Quest $q) => [
             'quest' => $q,
             'match_score' => 35,
+            'match_quality' => ['label' => __('Possible match'), 'stars' => 2],
+            'match_breakdown' => [__('Add work categories in your profile to unlock smarter matches.')],
+            'location_tier' => 'unknown',
             'reasons' => [__('Add work categories in your profile to unlock smarter matches.')],
         ]);
     }

@@ -50,8 +50,8 @@
                     Browse live public briefs for inspiration on how sponsors scope work, budgets, and timelines — without leaving HustleSafe.
                 </template>
                 <template v-else>
-                    Ranked by your categories, distance, and how fresh the brief is. More signals (exact coordinates on quests)
-                    make this sharper over time.
+                    Sorted by match score: location first, then skills fit, budget alignment, tier quality, and recent activity.
+                    Jobs in your LGA appear before wider state and national listings.
                 </template>
             </p>
         </div>
@@ -113,7 +113,8 @@
                         </ul>
                     </div>
                     <div
-                        class="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-primary-600 to-teal-600 text-center shadow-lg shadow-primary-900/25 ring-1 ring-white/20"
+                        class="group relative flex h-24 w-24 shrink-0 flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-primary-600 to-teal-600 text-center shadow-lg shadow-primary-900/25 ring-1 ring-white/20"
+                        :title="matchBreakdownTitle(q)"
                     >
                         <p class="text-xs font-bold uppercase tracking-wide text-white/80">
                             Match
@@ -121,39 +122,107 @@
                         <p class="font-display text-2xl font-black text-white">
                             {{ q.match_score }}
                         </p>
+                        <p
+                            v-if="q.match_quality?.label"
+                            class="mt-1 max-w-[5.5rem] text-center text-[9px] font-bold leading-tight text-white/90"
+                        >
+                            {{ matchStars(q.match_quality?.stars) }}
+                            <span class="block">{{ q.match_quality.label }}</span>
+                        </p>
+                        <div
+                            class="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-56 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs font-semibold text-slate-700 shadow-xl group-hover:block sm:group-focus-within:block"
+                            role="tooltip"
+                        >
+                            <p class="font-black text-slate-900">{{ q.match_quality?.label || 'Match breakdown' }}</p>
+                            <ul class="mt-2 space-y-1">
+                                <li v-for="(line, bi) in q.match_breakdown || []" :key="bi">
+                                    {{ line }}
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
                 <p class="mt-4 text-xs font-semibold text-slate-500">
                     Posted {{ formatWhen(q.posted_at) }}
                 </p>
-                <div class="mt-5 flex flex-wrap items-center gap-3">
+                <div class="mt-5 flex flex-col gap-3">
+                    <div class="flex flex-wrap items-center gap-3">
                     <Link
                         :href="route('quests.show', q.slug || q.uuid)"
                         class="inline-flex items-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-800 shadow-sm hover:border-primary-200 hover:bg-primary-50"
                     >
                         View quest
                     </Link>
-                    <Link
-                        v-if="workspace.can_submit_proposals && q.category_match"
-                        :href="route('quests.proposals.create', q.slug || q.uuid)"
-                        class="inline-flex items-center rounded-full bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-primary-900/20 hover:bg-primary-700"
+                    <template v-if="explore_mode === 'freelancer' && !hasExistingProposal(q)">
+                        <Link
+                            v-if="workspace.can_submit_proposals && q.category_match && q.budget_within_limit"
+                            :href="route('quests.proposals.create', q.slug || q.uuid)"
+                            class="inline-flex items-center rounded-full bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-primary-900/20 hover:bg-primary-700"
+                        >
+                            Send proposal
+                        </Link>
+                        <button
+                            v-else
+                            type="button"
+                            disabled
+                            class="inline-flex cursor-not-allowed items-center rounded-full bg-slate-200 px-5 py-2.5 text-sm font-bold text-slate-500 opacity-70"
+                        >
+                            Send proposal
+                        </button>
+                        <p v-if="!workspace.can_submit_proposals" class="self-center text-xs font-semibold text-rose-700">
+                            Complete the checklist above to unlock proposals.
+                        </p>
+                        <p v-else-if="!q.category_match" class="self-center text-xs font-semibold text-amber-800">
+                            Add this quest’s subcategory to your profile to send a proposal.
+                        </p>
+                        <p v-else-if="!q.budget_within_limit" class="self-center text-xs font-semibold text-violet-900">
+                            {{ verificationLimitMessage(q.budget_minor) }}
+                            <Link
+                                v-if="verification_access?.verifications_url"
+                                :href="verification_access.verifications_url"
+                                class="ml-1 font-black text-violet-950 underline decoration-violet-400 underline-offset-2"
+                            >
+                                Open verifications
+                            </Link>
+                        </p>
+                    </template>
+                    </div>
+                    <div
+                        v-if="explore_mode === 'freelancer' && hasExistingProposal(q)"
+                        class="w-full rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50 via-white to-teal-50/60 p-4 shadow-sm ring-1 ring-emerald-100 sm:p-5"
+                        role="status"
                     >
-                        Send proposal
-                    </Link>
-                    <button
-                        v-else
-                        type="button"
-                        disabled
-                        class="inline-flex cursor-not-allowed items-center rounded-full bg-slate-200 px-5 py-2.5 text-sm font-bold text-slate-500 opacity-70"
-                    >
-                        Send proposal
-                    </button>
-                    <p v-if="!workspace.can_submit_proposals" class="self-center text-xs font-semibold text-rose-700">
-                        Complete the checklist above to unlock proposals.
-                    </p>
-                    <p v-else-if="!q.category_match" class="self-center text-xs font-semibold text-amber-800">
-                        Add this quest’s subcategory to your profile to send a proposal.
-                    </p>
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div class="min-w-0 flex-1 space-y-2">
+                                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-800">
+                                    Proposal already sent
+                                </p>
+                                <p class="text-sm font-semibold leading-relaxed text-emerald-950">
+                                    You have already submitted a proposal on this quest. The client can review it in their inbox — you cannot send another one while this version is active.
+                                </p>
+                                <p class="text-xs font-bold text-emerald-900/90">
+                                    Status:
+                                    <span class="font-black">{{ proposalStatusLabel(existingProposal(q)?.status) }}</span>
+                                    <template v-if="existingProposal(q)?.submitted_at">
+                                        · Submitted {{ formatWhen(existingProposal(q).submitted_at) }}
+                                    </template>
+                                </p>
+                            </div>
+                            <span
+                                class="inline-flex shrink-0 items-center rounded-full bg-emerald-600 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white shadow-sm"
+                            >
+                                {{ proposalStatusLabel(existingProposal(q)?.status) }}
+                            </span>
+                        </div>
+                        <Link
+                            v-if="existingProposal(q)?.show_url"
+                            :href="existingProposal(q).show_url"
+                            class="mt-4 inline-flex items-center gap-1 text-xs font-black uppercase tracking-wide text-emerald-900 underline decoration-emerald-400 underline-offset-2 hover:text-emerald-950"
+                        >
+                            Open your proposal
+                            <span aria-hidden="true">→</span>
+                        </Link>
+                    </div>
                 </div>
                 </div>
             </div>
@@ -202,6 +271,14 @@ const props = defineProps({
     explore_mode: {
         type: String,
         default: 'freelancer',
+    },
+    verification_access: {
+        type: Object,
+        default: null,
+    },
+    freelancer_proposals: {
+        type: Object,
+        default: () => ({}),
     },
 });
 
@@ -330,5 +407,70 @@ function formatWhen(iso) {
     } catch {
         return iso;
     }
+}
+
+function verificationLimitMessage(questBudgetMinor) {
+    const access = props.verification_access;
+    if (!access) {
+        return 'This quest is above your current verification limit.';
+    }
+
+    const limitLabel = formatBudget(access.proposal_limit_minor);
+    const missing = (access.missing_for_next_level || []).filter(Boolean).join(', ');
+    let message = `Budget ${formatBudget(questBudgetMinor)} exceeds your L${access.effective_level} limit (${limitLabel}).`;
+
+    if (missing) {
+        message += ` Complete ${missing} to unlock higher-value quests.`;
+    } else {
+        message += ' Complete more verification to unlock higher-value quests.';
+    }
+
+    return message;
+}
+
+const proposalStatusLabels = {
+    submitted: 'Submitted',
+    shortlisted: 'Shortlisted',
+    pending_award: 'Awaiting confirmation',
+    accepted: 'Accepted',
+    declined: 'Declined',
+    withdrawn: 'Withdrawn',
+};
+
+function proposalStatusLabel(status) {
+    return proposalStatusLabels[status] || String(status || '').replace(/_/g, ' ');
+}
+
+function existingProposal(quest) {
+    if (!quest) {
+        return null;
+    }
+
+    const fromMap = props.freelancer_proposals?.[quest.id] ?? props.freelancer_proposals?.[String(quest.id)];
+    if (fromMap) {
+        return fromMap;
+    }
+
+    return quest.my_proposal ?? null;
+}
+
+function hasExistingProposal(quest) {
+    if (quest?.has_my_proposal === true) {
+        return true;
+    }
+
+    return Boolean(existingProposal(quest)?.show_url);
+}
+
+function matchStars(count) {
+    const n = Math.max(0, Math.min(5, Number(count) || 0));
+
+    return '★'.repeat(n) + (n < 5 ? '☆'.repeat(5 - n) : '');
+}
+
+function matchBreakdownTitle(quest) {
+    const lines = quest?.match_breakdown || [];
+
+    return lines.length ? lines.join(' · ') : quest?.match_quality?.label || '';
 }
 </script>

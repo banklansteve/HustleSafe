@@ -255,6 +255,13 @@ class VerificationEngineService
         return $this->limitFromLevelMap(is_array($map) ? $map : [], $this->effectiveLevel($user));
     }
 
+    public function freelancerCanProposeForBudget(User $user, int $budgetMinor): bool
+    {
+        $limit = $this->freelancerProposalLimitMinor($user);
+
+        return $limit > 0 && $budgetMinor > 0 && $budgetMinor <= $limit;
+    }
+
     public function assertClientCanPostQuest(User $user, int $budgetMinor): void
     {
         $limit = $this->clientPostingLimitMinor($user);

@@ -40,6 +40,7 @@ use App\Http\Controllers\QuestDisputeController;
 use App\Http\Controllers\QuestDisputeMessageController;
 use App\Http\Controllers\QuestDisputeMutualResolveController;
 use App\Http\Controllers\QuestDisputeSettlementController;
+use App\Http\Controllers\FreelancerProposalsController;
 use App\Http\Controllers\QuestExploreController;
 use App\Http\Controllers\QuestFieldProfileController;
 use App\Http\Controllers\QuestFileController;
@@ -210,6 +211,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/dashboard/lists/{list}', [DashboardListController::class, 'show'])->name('dashboard.lists.show');
     Route::get('/dashboard/guides/trust', DashboardTrustGuideController::class)->name('dashboard.trust-guide');
+
+    Route::redirect('/proposals', '/my-proposals', 301);
+
+    Route::get('/my-proposals', [FreelancerProposalsController::class, 'index'])
+        ->middleware('freelancer')
+        ->name('freelancer.proposals.index');
 
     Route::get('/disputes', [QuestDisputeController::class, 'index'])->name('disputes.index');
     Route::get('/disputes/{dispute}', [QuestDisputeController::class, 'show'])->name('disputes.show');

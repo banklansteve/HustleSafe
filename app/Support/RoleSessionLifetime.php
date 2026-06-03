@@ -4,7 +4,7 @@ namespace App\Support;
 
 final class RoleSessionLifetime
 {
-    public const SUPER_ADMIN_MINUTES = 720;
+    public const SUPER_ADMIN_MINUTES = 20160; // 14 days
 
     public const OPERATIONS_STAFF_MINUTES = 300;
 

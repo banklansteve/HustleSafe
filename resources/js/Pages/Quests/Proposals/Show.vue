@@ -468,6 +468,8 @@
                 </div>
                 <PlatformFeeDisclosureNote class="mt-4" :platform-fee-percent="offer.platform_fee_percent_display" compact />
             </section>
+
+            <ReportConcernSheet
                 v-if="canReportProposal"
                 :action-url="route('quests.proposals.reports.store', [quest.route_key, offer.id])"
                 subtitle="Misleading quotes, harassment, or attempts to move payment off-platform should be reported. Our team triages by severity."

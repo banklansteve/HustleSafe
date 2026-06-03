@@ -47,7 +47,7 @@
 
                 <!-- Desktop shortcuts -->
                 <nav
-                    class="hidden min-w-0 flex-nowrap items-center justify-start gap-1.5 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] lg:flex xl:gap-2 xl:overflow-x-visible 2xl:gap-2.5 [&::-webkit-scrollbar]:hidden"
+                    class="hidden min-w-0 flex-wrap items-center justify-start gap-1.5 lg:flex xl:gap-2 2xl:gap-2.5"
                     aria-label="Quick navigation"
                 >
                     <Link
@@ -71,6 +71,20 @@
                         <BanknotesIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                         Wallet
                     </Link>
+                    <template v-if="isFreelancer">
+                        <Link
+                            v-for="item in freelancerNavLinks"
+                            :key="item.key"
+                            :href="item.href"
+                            prefetch="false"
+                            preserve-scroll
+                            class="nav-header-link"
+                            :class="pillClass(freelancerNavLinkActive(item))"
+                        >
+                            <component :is="item.icon" class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
+                            {{ item.label }}
+                        </Link>
+                    </template>
                     <Link
                         v-if="showMarketplaceNav"
                         :href="route('contracts.index')"
@@ -124,28 +138,6 @@
                         >
                             <PlusCircleIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
                             Create quest
-                        </Link>
-                        <Link
-                            :href="route('quests.explore')"
-                            prefetch="false"
-                            preserve-scroll
-                            class="nav-header-link"
-                            :class="pillClass(exploreActive)"
-                        >
-                            <MagnifyingGlassIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
-                            Browse quests
-                        </Link>
-                    </template>
-                    <template v-else-if="isFreelancer">
-                        <Link
-                            :href="route('portfolio.manage')"
-                            prefetch="false"
-                            preserve-scroll
-                            class="nav-header-link"
-                            :class="pillClass(portfolioManageActive)"
-                        >
-                            <BriefcaseIcon class="h-5 w-5 shrink-0 opacity-80" aria-hidden="true" />
-                            Your portfolio
                         </Link>
                         <Link
                             :href="route('quests.explore')"
@@ -371,6 +363,7 @@ import CustomerSupportBubble from '@/Components/Support/CustomerSupportBubble.vu
 import NavUserMenu from '@/Components/Layout/NavUserMenu.vue';
 import AppToastHost from '@/Components/Ui/AppToastHost.vue';
 import { useNotificationVisit } from '@/composables/useNotificationVisit';
+import { useFreelancerShellNav } from '@/composables/useFreelancerShellNav';
 import { usePlatformRoleNav } from '@/composables/usePlatformRoleNav';
 import { useUserNotificationEcho } from '@/composables/useUserNotificationEcho';
 import { pathMatches, usePathname } from '@/composables/usePathname';
@@ -607,6 +600,7 @@ function dismissClientNudge(item) {
 }
 
 const { roleSlug, isFreelancer, showClientTools, showMarketplaceNav } = usePlatformRoleNav();
+const { links: freelancerNavLinks, isLinkActive: freelancerNavLinkActive } = useFreelancerShellNav();
 const adminEntryUrl = computed(() => page.props.admin_entry_url ?? null);
 const operationsEntryUrl = computed(() => page.props.operations_entry_url ?? null);
 const impersonation = computed(() => page.props.impersonation ?? null);
@@ -642,15 +636,6 @@ const createQuestActive = computed(() => pathMatches(pathname, route('quests.cre
 const questsIndexActive = computed(() => pathMatches(pathname, route('quests.index')));
 
 const exploreActive = computed(() => pathMatches(pathname, route('quests.explore')));
-
-const portfolioManageActive = computed(() => {
-    const p = pathname.value;
-    return (
-        p.startsWith('/portfolio/manage')
-        || p.startsWith('/portfolio/create')
-        || /\/portfolio\/\d+\/edit$/.test(p)
-    );
-});
 
 function pillClass(active) {
     return active

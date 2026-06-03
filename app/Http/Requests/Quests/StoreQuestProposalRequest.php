@@ -33,12 +33,12 @@ class StoreQuestProposalRequest extends FormRequest
 
         $pricing = $this->input('pricing');
         if (is_array($pricing)) {
-            if (! array_key_exists('withholding_tax_percent', $pricing)) {
-                $pricing['withholding_tax_percent'] = 0;
-            }
-            if (! array_key_exists('vat_applies', $pricing)) {
-                $pricing['vat_applies'] = true;
-            }
+            // Freelancer proposals are a clean quote (no platform/VAT/WHT lines).
+            // Any platform + statutory lines are handled on the client funding flow.
+            $pricing['vat_applies'] = false;
+            $pricing['withholding_tax_percent'] = 0;
+            $pricing['stamp_duty_ngn'] = 0;
+            $pricing['platform_fee_ngn'] = 0;
             $this->merge(['pricing' => $pricing]);
         }
 
@@ -47,10 +47,12 @@ class StoreQuestProposalRequest extends FormRequest
 
         $pricing = $this->input('pricing', []);
         if (is_array($pricing)) {
+            $pricing['vat_applies'] = false;
+            $pricing['withholding_tax_percent'] = 0;
+            $pricing['stamp_duty_ngn'] = 0;
             $pricing['platform_fee_ngn'] = 0;
             $breakdown = ProposalMoneyCalculator::breakdown($materials, $pricing);
             if ($breakdown !== null) {
-                $pricing['platform_fee_ngn'] = (int) round($breakdown['platform_minor'] / 100);
                 $pricing['grand_total_ngn'] = (int) round($breakdown['grand_minor'] / 100);
                 $this->merge(['pricing' => $pricing]);
             }
@@ -81,11 +83,7 @@ class StoreQuestProposalRequest extends FormRequest
             'materials.*.cost_ngn' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
             'pricing' => ['required', 'array'],
             'pricing.professional_fee_ngn' => ['required', 'integer', 'min:0', 'max:1000000000'],
-            'pricing.vat_applies' => ['sometimes', 'boolean'],
-            'pricing.withholding_tax_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'pricing.travel_cost_ngn' => ['nullable', 'integer', 'min:0', 'max:500000000'],
-            'pricing.stamp_duty_ngn' => ['nullable', 'integer', 'min:0', 'max:100000000'],
-            'pricing.platform_fee_ngn' => ['nullable', 'integer', 'min:0', 'max:500000000'],
             'pricing.discount_ngn' => ['nullable', 'integer', 'min:0', 'max:500000000'],
             'pricing.grand_total_ngn' => ['required', 'integer', 'min:1', 'max:1000000000'],
             'accepted_terms' => ['accepted'],
@@ -110,7 +108,7 @@ class StoreQuestProposalRequest extends FormRequest
                 return;
             }
 
-            if (in_array($existing->status, ['submitted', 'shortlisted', 'accepted'], true)) {
+            if (in_array($existing->status, ['submitted', 'shortlisted', 'pending_award', 'accepted'], true)) {
                 $v->errors()->add('proposal', __('You have already sent a proposal for this quest.'));
 
                 return;
@@ -144,7 +142,7 @@ class StoreQuestProposalRequest extends FormRequest
             $expectedNgn = (int) round($breakdown['grand_minor'] / 100);
 
             if ($expectedNgn < 1) {
-                $v->errors()->add('pricing.grand_total_ngn', __('Grand total must reflect your fees, materials, taxes, and discounts.'));
+                $v->errors()->add('pricing.grand_total_ngn', __('Grand total must reflect your quote, materials, travel, and discounts.'));
             }
         });
     }

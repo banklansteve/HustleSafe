@@ -270,46 +270,16 @@
 
                 <section class="space-y-2 rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-6">
                     <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
-                        Fees & taxes (₦)
+                        Quote (₦)
                     </h2>
                     <p class="text-xs font-semibold text-slate-600">
-                        Totals are calculated in kobo on the server to match your quote exactly. VAT (when enabled) is
-                        <span class="font-black text-primary-800">{{ vat_preset_percent }}%</span>
-                        of professional fee + materials subtotal + travel. Withholding tax uses the same base.
+                        Your proposal is a clean quote (professional fee + materials + travel − discount). Platform fees, VAT, and other statutory lines are added on the sponsor’s checkout while funding escrow — not here.
                     </p>
-                    <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm font-semibold text-slate-800 ring-1 ring-slate-100">
-                        <input v-model="form.pricing.vat_applies" type="checkbox" class="mt-0.5 rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
-                        <span>Apply VAT to this proposal</span>
-                    </label>
                     <div class="grid gap-2 sm:grid-cols-2">
                         <div class="space-y-2">
                             <InputLabel value="Professional fee" />
                             <TextInput v-model.number="form.pricing.professional_fee_ngn" type="number" min="0" step="1" class="w-full" />
                             <InputError :message="form.errors['pricing.professional_fee_ngn']" />
-                        </div>
-                        <div class="space-y-2">
-                            <InputLabel value="VAT (computed)" />
-                            <div
-                                class="flex w-full items-center rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800 shadow-inner ring-1 ring-slate-100"
-                            >
-                                <template v-if="form.pricing.vat_applies">
-                                    {{ formatNgn(Math.round(breakdown.vatMinor / 100)) }} ({{ vat_preset_percent }}%)
-                                </template>
-                                <template v-else>₦0 — not applied</template>
-                            </div>
-                        </div>
-                        <div class="space-y-2">
-                            <InputLabel value="Withholding tax (%)" />
-                            <TextInput
-                                v-model.number="form.pricing.withholding_tax_percent"
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.1"
-                                class="w-full"
-                            />
-                            <p class="text-xs font-semibold text-slate-600">≈ {{ formatNgn(Math.round(breakdown.whtMinor / 100)) }}</p>
-                            <InputError :message="form.errors['pricing.withholding_tax_percent']" />
                         </div>
                         <div class="space-y-2 sm:col-span-2">
                             <InputLabel value="Travel / site visits (₦)" />
@@ -317,28 +287,19 @@
                             <InputError :message="form.errors['pricing.travel_cost_ngn']" />
                         </div>
                         <div class="space-y-2">
-                            <InputLabel value="Stamp duty" />
-                            <TextInput v-model.number="form.pricing.stamp_duty_ngn" type="number" min="0" step="1" class="w-full" />
-                        </div>
-                        <div class="space-y-2">
-                            <InputLabel :value="`Platform fee (${platformFeePercent}% of subtotal)`" />
-                            <TextInput v-model.number="form.pricing.platform_fee_ngn" type="number" min="0" step="1" class="w-full bg-slate-50" readonly />
-                        </div>
-                        <PlatformFeeDisclosureNote class="sm:col-span-2" :platform-fee-percent="platformFeePercent" />
-                        <div class="space-y-2">
                             <InputLabel value="Discount" />
                             <TextInput v-model.number="form.pricing.discount_ngn" type="number" min="0" step="1" class="w-full" />
                         </div>
                     </div>
                     <div class="space-y-2">
-                        <InputLabel value="Grand total (auto from breakdown)" />
+                        <InputLabel value="Grand total" />
                         <div
                             class="flex w-full items-center rounded-xl border border-primary-200 bg-primary-50/80 px-4 py-3 text-lg font-black text-primary-950 shadow-inner ring-1 ring-primary-100"
                         >
                             {{ formatNgn(computedGrandNgn) }}
                         </div>
                         <p class="text-xs font-semibold text-slate-600">
-                            Subtotal before VAT/WHT: {{ formatNgn(Math.round(breakdown.baseMinor / 100)) }} · Updates when you change any fee or material line.
+                            Updates when you change professional fee, materials, travel, or discount.
                         </p>
                         <InputError :message="form.errors['pricing.grand_total_ngn']" />
                     </div>
@@ -425,7 +386,6 @@
 
 <script setup>
 import BackChevronLink from '@/Components/Ui/BackChevronLink.vue';
-import PlatformFeeDisclosureNote from '@/Components/Billing/PlatformFeeDisclosureNote.vue';
 import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
@@ -464,8 +424,6 @@ const props = defineProps({
             summary: null,
         }),
     },
-    vat_preset_percent: { type: Number, default: 7.5 },
-    platform_fee_percent: { type: Number, default: 12 },
     proposal_edit: { type: Object, default: null },
 });
 
@@ -501,11 +459,7 @@ function buildInitialForm() {
             materials: Array.isArray(e.materials) && e.materials.length ? e.materials : [],
             pricing: {
                 professional_fee_ngn: e.pricing?.professional_fee_ngn ?? 0,
-                vat_applies: e.pricing?.vat_applies !== false,
-                withholding_tax_percent: e.pricing?.withholding_tax_percent ?? 0,
                 travel_cost_ngn: e.pricing?.travel_cost_ngn ?? 0,
-                stamp_duty_ngn: e.pricing?.stamp_duty_ngn ?? 0,
-                platform_fee_ngn: e.pricing?.platform_fee_ngn ?? 0,
                 discount_ngn: e.pricing?.discount_ngn ?? 0,
                 grand_total_ngn: e.pricing?.grand_total_ngn ?? 0,
             },
@@ -527,11 +481,7 @@ function buildInitialForm() {
         materials: [],
         pricing: {
             professional_fee_ngn: Math.round((props.quest.budget_minor || 0) / 100 * 0.85),
-            vat_applies: true,
-            withholding_tax_percent: 0,
             travel_cost_ngn: 0,
-            stamp_duty_ngn: 0,
-            platform_fee_ngn: 0,
             discount_ngn: 0,
             grand_total_ngn: 0,
         },
@@ -639,14 +589,6 @@ const materialsSubtotalNgn = computed(() =>
     form.materials.reduce((sum, row) => sum + materialLineNgn(row), 0),
 );
 
-const platformFeePercent = computed(() => {
-    const fromPage = Number(page.props.platform_fee_percent);
-    const fromProps = Number(props.platform_fee_percent);
-    const pct = Number.isFinite(fromPage) && fromPage >= 0 ? fromPage : fromProps;
-
-    return Math.max(0, Math.min(100, pct || 12));
-});
-
 const pricingSubtotalNgn = computed(() => {
     const prof = Math.max(0, Math.round(Number(form.pricing.professional_fee_ngn) || 0));
     const mat = materialsSubtotalNgn.value;
@@ -659,31 +601,14 @@ const breakdown = computed(() => {
     const prof = Math.max(0, Math.round(Number(form.pricing.professional_fee_ngn) || 0)) * 100;
     const mat = materialsSubtotalNgn.value * 100;
     const travel = Math.max(0, Math.round(Number(form.pricing.travel_cost_ngn) || 0)) * 100;
-    const stamp = Math.max(0, Math.round(Number(form.pricing.stamp_duty_ngn) || 0)) * 100;
-    const platform = Math.max(0, Math.round(Number(form.pricing.platform_fee_ngn) || 0)) * 100;
     const discount = Math.max(0, Math.round(Number(form.pricing.discount_ngn) || 0)) * 100;
     const baseMinor = prof + mat + travel;
-    const vatRate = Number(props.vat_preset_percent) || 0;
-    const vatMinor = form.pricing.vat_applies ? Math.round(baseMinor * (vatRate / 100)) : 0;
-    const whtPct = Math.max(0, Math.min(100, Number(form.pricing.withholding_tax_percent) || 0));
-    const whtMinor = Math.round(baseMinor * (whtPct / 100));
-    const grandMinor = baseMinor + vatMinor + whtMinor + stamp + platform - discount;
+    const grandMinor = baseMinor - discount;
 
-    return { baseMinor, vatMinor, whtMinor, grandMinor };
+    return { baseMinor, grandMinor };
 });
 
 const computedGrandNgn = computed(() => Math.round(breakdown.value.grandMinor / 100));
-
-watch(
-    [pricingSubtotalNgn, platformFeePercent],
-    () => {
-        const fee = Math.round(pricingSubtotalNgn.value * (platformFeePercent.value / 100));
-        if (form.pricing.platform_fee_ngn !== fee) {
-            form.pricing.platform_fee_ngn = fee;
-        }
-    },
-    { immediate: true },
-);
 
 watch(
     computedGrandNgn,
@@ -769,9 +694,7 @@ function submit() {
         materials: materialRowsForSubmit(data.materials),
         pricing: {
             ...data.pricing,
-            vat_applies: !!data.pricing?.vat_applies,
             grand_total_ngn: computedGrandNgn.value,
-            platform_fee_ngn: form.pricing.platform_fee_ngn,
         },
         accepted_terms: data.accepted_terms ? true : false,
         confirm_revision: data.confirm_revision ? true : false,

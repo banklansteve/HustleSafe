@@ -514,6 +514,12 @@ class DashboardController extends Controller
                 'icon' => 'search',
             ],
             [
+                'label' => __('My proposals'),
+                'description' => __('Track every pitch, shortlist, and award in one hub.'),
+                'href' => route('freelancer.proposals.index'),
+                'icon' => 'document',
+            ],
+            [
                 'label' => __('Improve your trust score'),
                 'description' => __('ID, profile, delivery habits — what actually moves the needle.'),
                 'href' => route('dashboard.trust-guide'),

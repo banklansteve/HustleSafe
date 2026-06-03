@@ -32,14 +32,10 @@ class QuestProposalController extends Controller
             abort(403);
         }
 
-        $active = $quest->offers()
-            ->where('freelancer_id', $user->id)
-            ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
-            ->excludingAdminSuspended()
-            ->first();
+        $existing = QuestOffer::mapForFreelancerOnQuests((int) $user->id, [(int) $quest->id])[(int) $quest->id] ?? null;
 
-        if ($active !== null && (int) $active->quest_id === (int) $quest->id) {
-            return redirect()->route('quests.proposals.show', [$quest, $active]);
+        if ($existing !== null) {
+            return redirect()->route('quests.proposals.show', [$quest, $existing]);
         }
 
         $summary = $workspace->summarize($user);

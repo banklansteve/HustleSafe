@@ -408,6 +408,14 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(QuestOffer::class, 'freelancer_id');
     }
 
+    /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<FreelancerMetric, $this>
+     */
+    public function freelancerMetric(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(FreelancerMetric::class);
+    }
+
     protected static function booted(): void
     {
         static::created(function (User $user): void {

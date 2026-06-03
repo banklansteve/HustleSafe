@@ -800,44 +800,38 @@
                             Quoted {{ formatBudget(my_offer.quoted_amount_minor) }}
                         </p>
                     </div>
-                    <button
-                        v-else-if="can_offer"
-                        type="button"
-                        class="mt-4 w-full rounded-full bg-primary-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-primary-900/20 hover:bg-primary-700"
-                        @click="goToProposalComposer"
-                    >
-                        Build proposal
-                    </button>
-                    <Link
-                        v-if="isFreelancer && can_use_quest_messaging && messages_url"
-                        :href="messages_url"
-                        class="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-primary-200 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-wide text-primary-900 shadow-sm hover:bg-primary-50"
-                    >
-                        <ChatBubbleLeftRightIcon class="h-4 w-4 shrink-0 text-primary-700" aria-hidden="true" />
-                        Message client (in-app)
-                    </Link>
-                    <p v-else class="mt-3 text-xs font-semibold text-amber-900">
-                        <template v-if="verification_access && !verification_access.can_submit_for_budget">
-                            <span>
-                                Your active limit is L{{ verification_access.effective_level }}
-                                (up to <span class="font-black">{{ formatBudget(verification_access.proposal_limit_minor) }}</span>).
-                                <template v-if="verification_access.limit_capped && verification_access.earned_proposal_limit_minor">
-                                    Your tier allows up to {{ formatBudget(verification_access.earned_proposal_limit_minor) }}; an admin custom cap applies.
-                                </template>
-                                <template v-else>
-                                    Complete more verification to unlock this quest.
-                                </template>
-                            </span>
-                        </template>
-                        <template v-else-if="workspacePanelItems.length">
-                            <span v-if="!workspace.can_submit_proposals">Use the <span class="font-black">Freelancer workspace</span> checklist above to unlock proposals.</span>
-                            <span v-else>Add this quest’s subcategory to your profile so we know you are qualified for this brief.</span>
-                        </template>
-                        <template v-else>
-                            <span v-if="!workspace.can_submit_proposals">Complete your freelancer workspace checklist to unlock proposals.</span>
-                            <span v-else>Add this quest’s subcategory to your profile so we know you are qualified for this brief.</span>
-                        </template>
-                    </p>
+                    <template v-else>
+                        <button
+                            v-if="can_offer"
+                            type="button"
+                            class="mt-4 w-full rounded-full bg-primary-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-primary-900/20 hover:bg-primary-700"
+                            @click="goToProposalComposer"
+                        >
+                            Build proposal
+                        </button>
+                        <div
+                            v-else-if="proposalBlocker"
+                            class="mt-4 rounded-xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-xs font-semibold leading-relaxed text-amber-950 ring-1 ring-amber-100"
+                        >
+                            <p>{{ proposalBlocker.message }}</p>
+                            <Link
+                                v-if="proposalBlocker.action_url"
+                                :href="proposalBlocker.action_url"
+                                class="mt-2 inline-flex items-center gap-1 font-black uppercase tracking-wide text-amber-900 underline decoration-amber-400 underline-offset-2 hover:text-amber-950"
+                            >
+                                {{ proposalBlocker.action_label || 'Fix this' }}
+                                <span aria-hidden="true">→</span>
+                            </Link>
+                        </div>
+                        <Link
+                            v-if="can_use_quest_messaging && messages_url"
+                            :href="messages_url"
+                            class="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-primary-200 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-wide text-primary-900 shadow-sm hover:bg-primary-50"
+                        >
+                            <ChatBubbleLeftRightIcon class="h-4 w-4 shrink-0 text-primary-700" aria-hidden="true" />
+                            Message client (in-app)
+                        </Link>
+                    </template>
                 </section>
 
                 <section
@@ -964,26 +958,57 @@
 
                 <section v-if="top_freelancers.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
                     <h2 class="font-display text-lg font-bold text-slate-900">
-                        Top freelancers here
+                        Recommended for this job
                     </h2>
-                    <ul class="mt-3 space-y-2">
+                    <p
+                        v-if="freelancer_match_stats?.label"
+                        class="mt-2 text-xs font-semibold leading-relaxed text-slate-600"
+                    >
+                        {{ freelancer_match_stats.total }} freelancers match this category.
+                        {{ freelancer_match_stats.label }}
+                    </p>
+                    <ul class="mt-3 space-y-3">
                         <li v-for="f in top_freelancers" :key="f.id">
-                            <Link
-                                :href="route('freelancers.public', f.slug)"
-                                class="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-sm font-bold text-slate-900 ring-1 ring-slate-100 hover:border-primary-200"
-                            >
-                                <span class="flex min-w-0 items-center gap-2">
-                                    <UserProfileAvatar
+                            <div class="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-3 ring-1 ring-slate-100">
+                                <div class="flex items-start justify-between gap-2">
+                                    <Link
                                         :href="route('freelancers.public', f.slug)"
-                                        :src="f.avatar_url"
-                                        :name="f.name"
-                                        :alt="f.name"
-                                        frame-class="h-9 w-9 text-[10px] ring-2 ring-white"
-                                    />
-                                    <span class="truncate">{{ f.name }}</span>
-                                </span>
-                                <span class="shrink-0 text-[10px] font-black text-primary-700">★ {{ f.trust }}</span>
-                            </Link>
+                                        class="flex min-w-0 flex-1 items-center gap-2 text-sm font-bold text-slate-900 hover:text-primary-800"
+                                    >
+                                        <UserProfileAvatar
+                                            :href="route('freelancers.public', f.slug)"
+                                            :src="f.avatar_url"
+                                            :name="f.name"
+                                            :alt="f.name"
+                                            frame-class="h-9 w-9 text-[10px] ring-2 ring-white"
+                                        />
+                                        <span class="min-w-0">
+                                            <span class="block truncate">{{ f.name }}</span>
+                                            <span
+                                                v-if="f.location"
+                                                class="block truncate text-[10px] font-semibold text-slate-500"
+                                            >
+                                                {{ f.location }}
+                                            </span>
+                                        </span>
+                                    </Link>
+                                    <span class="shrink-0 text-right text-[10px] font-black text-primary-700">
+                                        {{ f.match_score }}%
+                                        <span
+                                            v-if="f.match_quality?.label"
+                                            class="mt-0.5 block font-semibold text-slate-600"
+                                        >
+                                            {{ f.match_quality.label }}
+                                        </span>
+                                    </span>
+                                </div>
+                                <p
+                                    v-if="f.why_recommended"
+                                    class="mt-2 text-xs font-semibold text-slate-600"
+                                >
+                                    {{ f.why_recommended }}
+                                </p>
+                            </div>
                         </li>
                     </ul>
                 </section>
@@ -1043,6 +1068,7 @@ const props = defineProps({
     is_quest_owner: { type: Boolean, default: false },
     can_edit: { type: Boolean, default: false },
     can_offer: { type: Boolean, default: false },
+    category_match: { type: Boolean, default: false },
     verification_access: { type: Object, default: null },
     workspace: { type: Object, required: true },
     my_offer: { type: Object, default: null },
@@ -1051,6 +1077,7 @@ const props = defineProps({
     from_client_quests: { type: Array, default: () => [] },
     category_quests_other_areas: { type: Array, default: () => [] },
     top_freelancers: { type: Array, default: () => [] },
+    freelancer_match_stats: { type: Object, default: () => ({}) },
     can_use_quest_messaging: { type: Boolean, default: false },
     messages_url: { type: String, default: null },
     quest_message_threads: { type: Array, default: () => [] },
@@ -1134,6 +1161,68 @@ const workspacePanelItems = computed(() => {
     return items.slice(0, 5);
 });
 
+const categoryMatch = computed(() => props.category_match === true);
+
+const verificationLimitBlocker = computed(() => {
+    const access = props.verification_access;
+    if (!access || access.can_submit_for_budget !== false) {
+        return null;
+    }
+
+    const limitLabel = formatBudget(access.proposal_limit_minor);
+    const missing = (access.missing_for_next_level || []).filter(Boolean).join(', ');
+    let message = `This quest’s budget is above your current verification limit (L${access.effective_level}, up to ${limitLabel}).`;
+
+    if (access.limit_capped && access.earned_proposal_limit_minor) {
+        message += ` Your earned tier allows up to ${formatBudget(access.earned_proposal_limit_minor)}; an admin custom cap applies.`;
+    } else if (missing) {
+        message += ` Complete ${missing} to unlock a higher limit.`;
+    } else {
+        message += ' Complete more verification to unlock this quest.';
+    }
+
+    return {
+        message,
+        action_url: access.verifications_url || route('verifications.index'),
+        action_label: 'Open verifications',
+    };
+});
+
+const proposalBlocker = computed(() => {
+    if (!isFreelancer.value || props.my_offer || props.can_offer) {
+        return null;
+    }
+
+    if (!props.workspace?.can_submit_proposals) {
+        const first = workspacePanelItems.value[0];
+
+        return {
+            message: first?.message
+                || 'Complete your freelancer workspace checklist to unlock proposals.',
+            action_url: first?.action_url || null,
+            action_label: first?.action_label || 'Fix this',
+        };
+    }
+
+    if (!categoryMatch.value) {
+        return {
+            message: 'Add this quest’s subcategory to your profile so we know you are qualified for this brief.',
+            action_url: route('account.show', { tab: 'overview' }) + '#account-work-categories',
+            action_label: 'Update work categories',
+        };
+    }
+
+    if (verificationLimitBlocker.value) {
+        return verificationLimitBlocker.value;
+    }
+
+    return {
+        message: 'You are not eligible to propose on this quest yet.',
+        action_url: null,
+        action_label: null,
+    };
+});
+
 const viewerInsightLines = computed(() => {
     const lines = [];
     if (props.is_quest_owner) {
@@ -1144,15 +1233,8 @@ const viewerInsightLines = computed(() => {
     } else if (isFreelancer.value) {
         if (props.can_offer) {
             lines.push('You can send a proposal on this quest — highlight outcomes, timeline, and how you de-risk delivery.');
-        } else if (workspacePanelItems.value.length) {
-            // Checklist already shown in the page banner — keep insights tactical, not duplicated.
-            if (props.workspace?.can_submit_proposals) {
-                lines.push('Add this subcategory to your profile so we know you are qualified for similar briefs.');
-            }
-        } else if (!props.workspace?.can_submit_proposals) {
-            lines.push('Complete your freelancer workspace checklist to unlock proposals from this page.');
-        } else {
-            lines.push('Add this subcategory to your profile so we know you are qualified for similar briefs.');
+        } else if (proposalBlocker.value) {
+            lines.push(proposalBlocker.value.message);
         }
         if (props.my_offer) {
             lines.push('You already submitted a proposal — follow up in thread if the client has questions.');
@@ -1599,6 +1681,12 @@ function syncInvites() {
 }
 
 function goToProposalComposer() {
+    if (props.my_offer?.show_url) {
+        router.visit(props.my_offer.show_url);
+
+        return;
+    }
+
     router.visit(route('quests.proposals.create', questRouteKey.value));
 }
 

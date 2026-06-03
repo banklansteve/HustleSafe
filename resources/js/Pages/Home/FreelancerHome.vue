@@ -396,7 +396,7 @@
                                 Offers sent
                             </h3>
                             <Link
-                                :href="route('dashboard.lists.show', { list: 'freelancer-proposals-sent' })"
+                                :href="route('freelancer.proposals.index')"
                                 class="text-[11px] font-bold text-primary-700 hover:text-primary-800"
                             >
                                 See all

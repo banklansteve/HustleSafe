@@ -323,19 +323,24 @@ class QuestController extends Controller
 
         $verificationEngine = app(VerificationEngineService::class);
         $freelancerLimit = $user && $user->role?->slug === 'freelancer' ? $verificationEngine->freelancerProposalLimitMinor($user) : null;
-        $verificationCanOffer = $freelancerLimit === null || ((int) $quest->budget_amount_minor > 0 && (int) $quest->budget_amount_minor <= $freelancerLimit);
+        $categoryMatch = $user
+            && $user->role?->slug === 'freelancer'
+            && ($workspace->matchesQuestCategory($user, $quest) || $inviteOffer);
+        $verificationCanOffer = $user
+            && $user->role?->slug === 'freelancer'
+            && $verificationEngine->freelancerCanProposeForBudget($user, (int) $quest->budget_amount_minor);
 
         $canOffer = $user
             && $user->role?->slug === 'freelancer'
             && ($summary['can_submit_proposals'] ?? false)
-            && ($workspace->matchesQuestCategory($user, $quest) || $inviteOffer)
+            && $categoryMatch
             && $verificationCanOffer;
 
         $myOffer = null;
         if ($user && $user->role?->slug === 'freelancer') {
             $myOffer = $quest->offers()
                 ->where('freelancer_id', $user->id)
-                ->whereIn('status', ['submitted', 'shortlisted', 'accepted'])
+                ->whereIn('status', ['submitted', 'shortlisted', 'pending_award', 'accepted'])
                 ->excludingAdminSuspended()
                 ->first()
                 ?? $quest->offers()
@@ -367,28 +372,13 @@ class QuestController extends Controller
             ->get()
             ->map(fn (Quest $q) => $this->questCardPayload($q));
 
-        $topFreelancers = User::query()
-            ->whereRelation('role', 'slug', 'freelancer')
-            ->where('users.id', '<>', $quest->client_id)
-            ->where('state_id', $quest->state_id)
-            ->whereHas('questCategoryPreferences', function ($q) use ($quest): void {
-                $q->where('quest_categories.id', $quest->quest_category_id);
-            })
-            ->with(['trustMetrics'])
-            ->limit(24)
-            ->get()
-            ->sortByDesc(fn (User $u) => (int) ($u->trustMetrics?->freelancer_trust_score ?? 0))
-            ->take(6)
-            ->values()
-            ->map(fn (User $u) => [
-                'id' => $u->id,
-                'name' => $u->name,
-                'first_name' => $u->first_name,
-                'slug' => $u->slug,
-                'avatar_url' => $u->avatar_url,
-                'trust' => (int) ($u->trustMetrics?->freelancer_trust_score ?? 0),
-            ])
-            ->all();
+        $matcher = app(\App\Services\Matching\QuestFreelancerMatcher::class);
+        $matchResult = $matcher->recommendationsForQuest(
+            $quest,
+            (int) config('quest_matching.client_recommendations_limit', 10),
+        );
+        $topFreelancers = $matchResult['recommendations'];
+        $freelancerMatchStats = $matchResult['stats'];
 
         $fromClientQuests = Quest::query()
             ->where('id', '<>', $quest->id)
@@ -474,6 +464,7 @@ class QuestController extends Controller
             'is_quest_owner' => (bool) ($user && $user->id === $quest->client_id),
             'can_edit' => $user?->can('update', $quest) ?? false,
             'can_offer' => $canOffer,
+            'category_match' => $categoryMatch,
             'verification_access' => $user && $user->role?->slug === 'freelancer' ? [
                 'earned_level' => $verificationEngine->storedLevel($user),
                 'effective_level' => $verificationEngine->effectiveLevel($user),
@@ -482,6 +473,8 @@ class QuestController extends Controller
                 'limit_capped' => $user->custom_freelancer_proposal_limit_minor !== null
                     && $freelancerLimit < $verificationEngine->limitAtLevel($user, $verificationEngine->storedLevel($user)),
                 'can_submit_for_budget' => $verificationCanOffer,
+                'missing_for_next_level' => $verificationEngine->missingForNextLevelPublic($user),
+                'verifications_url' => route('verifications.index'),
             ] : null,
             'workspace' => $summary ? array_merge(['enabled' => true], $summary) : ['enabled' => false],
             'my_offer' => $myOffer ? [
@@ -496,6 +489,7 @@ class QuestController extends Controller
             'from_client_quests' => $fromClientQuests,
             'category_quests_other_areas' => $categoryQuestsOtherAreas,
             'top_freelancers' => $topFreelancers,
+            'freelancer_match_stats' => $freelancerMatchStats,
             'quest_field_profile' => app(QuestFormFieldProfileService::class)->profileForLeafCategoryId((int) $quest->quest_category_id),
             'field_profile_url' => route('quests.field-profile'),
             'can_use_quest_messaging' => $canUseQuestMessaging,

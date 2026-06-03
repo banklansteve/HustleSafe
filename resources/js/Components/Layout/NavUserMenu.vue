@@ -65,7 +65,7 @@
                 role="menu"
                 @click.stop
             >
-                <div v-if="mobileQuickLinks.length" class="mb-1 border-b border-slate-100 pb-2 sm:hidden">
+                <div v-if="mobileQuickLinks.length" class="mb-1 border-b border-slate-100 pb-2 lg:hidden">
                     <p class="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                         Shortcuts
                     </p>
@@ -134,6 +134,7 @@
 <script setup>
 import {
     ArrowRightOnRectangleIcon,
+    BanknotesIcon,
     BriefcaseIcon,
     ChartBarIcon,
     ChartPieIcon,
@@ -146,6 +147,7 @@ import {
     WrenchScrewdriverIcon,
 } from '@heroicons/vue/24/outline';
 import { usePathname } from '@/composables/usePathname';
+import { useFreelancerShellNav } from '@/composables/useFreelancerShellNav';
 import { usePlatformRoleNav } from '@/composables/usePlatformRoleNav';
 import { Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -166,7 +168,8 @@ const initials = computed(() => {
     return ((parts[0]?.[0] || 'H') + (parts[1]?.[0] || '')).toUpperCase();
 });
 
-const { roleSlug, isFreelancer, showClientTools } = usePlatformRoleNav();
+const { roleSlug, isFreelancer, showClientTools, showMarketplaceNav } = usePlatformRoleNav();
+const { links: freelancerNavLinks } = useFreelancerShellNav();
 
 const mobileQuickLinks = computed(() => {
     const items = [
@@ -214,21 +217,22 @@ const mobileQuickLinks = computed(() => {
         });
     }
     if (isFreelancer.value) {
-        items.push({
-            href: route('portfolio.manage'),
-            label: 'Portfolio',
-            icon: BriefcaseIcon,
-            isActive: (path) =>
-                path.startsWith('/portfolio/manage')
-                || path.startsWith('/portfolio/create')
-                || /\/portfolio\/\d+\/edit$/.test(path),
-        });
-        items.push({
-            href: route('quests.explore'),
-            label: 'Browse quests',
-            icon: MagnifyingGlassIcon,
-            isActive: (path) => path.startsWith('/quests/explore'),
-        });
+        if (showMarketplaceNav.value) {
+            items.push({
+                href: route('wallet.index'),
+                label: 'Wallet',
+                icon: BanknotesIcon,
+                isActive: (path) => path === '/wallet' || path.startsWith('/wallet/'),
+            });
+        }
+        for (const link of freelancerNavLinks.value) {
+            items.push({
+                href: link.href,
+                label: link.label,
+                icon: link.icon,
+                isActive: link.isActive,
+            });
+        }
     }
 
     return items;

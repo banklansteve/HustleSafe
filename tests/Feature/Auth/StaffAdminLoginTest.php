@@ -67,7 +67,7 @@ class StaffAdminLoginTest extends TestCase
     public function test_role_session_lifetime_values(): void
     {
         $this->assertSame(300, RoleSessionLifetime::minutesForRole('admin'));
-        $this->assertSame(720, RoleSessionLifetime::minutesForRole('super_admin'));
+        $this->assertSame(20160, RoleSessionLifetime::minutesForRole('super_admin'));
         $this->assertSame(10080, RoleSessionLifetime::minutesForRole('client'));
     }
 }

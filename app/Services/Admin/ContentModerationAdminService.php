@@ -45,7 +45,13 @@ class ContentModerationAdminService
     public function queue(Request $request, string $section): LengthAwarePaginator
     {
         $query = ModerationCase::query()
-            ->with(['subjectUser:id,name,email,created_at,trustMetrics', 'reporter:id,name,email', 'triggers', 'moderatable'])
+            ->with([
+                'subjectUser:id,name,email,created_at',
+                'subjectUser.trustMetrics:user_id,freelancer_trust_score,client_trust_score',
+                'reporter:id,name,email',
+                'triggers',
+                'moderatable',
+            ])
             ->whereIn('status', ['open', 'in_review']);
 
         if ($section === 'quests') {
@@ -160,7 +166,12 @@ class ContentModerationAdminService
 
     public function casePayload(ModerationCase $case): array
     {
-        $case->loadMissing(['triggers', 'subjectUser:id,name,email,created_at,client_trust_score', 'reporter:id,name,email']);
+        $case->loadMissing([
+            'triggers',
+            'subjectUser:id,name,email,created_at',
+            'subjectUser.trustMetrics:user_id,freelancer_trust_score,client_trust_score',
+            'reporter:id,name,email',
+        ]);
         $model = $case->moderatable;
 
         return [
