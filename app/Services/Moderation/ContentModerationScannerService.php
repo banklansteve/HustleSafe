@@ -13,6 +13,7 @@ use App\Models\QuestConversationMessage;
 use App\Models\QuestOffer;
 use App\Models\Review;
 use App\Models\User;
+use App\Support\PlainText;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -59,11 +60,11 @@ class ContentModerationScannerService
                 'visibility_state' => $this->visibilityState($payload['content_type'], $severity),
                 'source' => $source,
                 'confidence' => $confidence,
-                'title' => $payload['title'],
-                'excerpt' => Str::limit($text, 240),
+                'title' => PlainText::from($payload['title']),
+                'excerpt' => PlainText::from($text, 240),
                 'snapshot' => [
-                    'text' => $text,
-                    'title' => $payload['title'],
+                    'text' => PlainText::from($text),
+                    'title' => PlainText::from($payload['title']),
                     'content_type' => $payload['content_type'],
                     'url' => $payload['url'] ?? null,
                 ],
@@ -99,9 +100,13 @@ class ContentModerationScannerService
             'visibility_state' => 'live_under_review',
             'source' => 'user_report',
             'confidence' => 100,
-            'title' => $payload['title'],
-            'excerpt' => Str::limit((string) ($details ?: $reason), 240),
-            'snapshot' => ['text' => $payload['text'], 'report_reason' => $reason, 'report_details' => $details],
+            'title' => PlainText::from($payload['title']),
+            'excerpt' => PlainText::from((string) ($details ?: $reason), 240),
+            'snapshot' => [
+                'text' => PlainText::from($payload['text']),
+                'report_reason' => PlainText::from($reason),
+                'report_details' => PlainText::from($details),
+            ],
             'entered_queue_at' => now(),
         ]);
 

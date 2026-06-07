@@ -25,7 +25,7 @@ class UpdateKycSettingsRequest extends FormRequest
             'resubmission_limit' => ['required', 'integer', 'min:1', 'max:10'],
             'verification_fees' => ['required', 'array'],
             'verification_fees.enabled' => ['boolean'],
-            'verification_fees.cac_fee_minor' => ['required', 'integer', 'min:0'],
+            'verification_fees.cac_fee_minor' => ['required', 'numeric', 'min:0'],
             'limits' => ['required', 'array'],
             'limits.*' => ['integer', 'min:0'],
         ];

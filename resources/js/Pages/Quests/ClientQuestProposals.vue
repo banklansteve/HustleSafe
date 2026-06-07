@@ -101,6 +101,12 @@
                                 <Link :href="p.show_url" class="truncate font-display text-sm font-black text-slate-900 hover:text-primary-800">
                                     {{ displayName(p) }}
                                 </Link>
+                                <span
+                                    v-if="p.freelancer?.is_pro"
+                                    class="mt-0.5 inline-flex w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-900 ring-1 ring-amber-200"
+                                >
+                                    Pro member
+                                </span>
                                 <p v-if="p.freelancer?.headline" class="truncate text-[11px] font-semibold text-slate-500">{{ p.freelancer.headline }}</p>
                             </div>
                         </div>
@@ -142,6 +148,12 @@
                                 />
                                 <div class="min-w-0 flex-1">
                                     <Link :href="p.show_url" class="font-display text-base font-black text-slate-900">{{ displayName(p) }}</Link>
+                                    <span
+                                        v-if="p.freelancer?.is_pro"
+                                        class="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-900 ring-1 ring-amber-200"
+                                    >
+                                        Pro member
+                                    </span>
                                     <dl class="mt-3 grid grid-cols-2 gap-2 text-xs">
                                         <div><dt class="font-black uppercase tracking-wide text-slate-400">Price</dt><dd class="mt-0.5 font-black text-primary-800">{{ formatMoney(p.quoted_amount_minor) }}</dd></div>
                                         <div><dt class="font-black uppercase tracking-wide text-slate-400">Timeline</dt><dd class="mt-0.5 font-semibold text-slate-800">{{ p.timeline_label || '—' }}</dd></div>
@@ -189,6 +201,12 @@
                                     <Link :href="p.show_url" class="font-display text-base font-black text-slate-900 group-hover:text-primary-800">
                                         {{ displayName(p) }}
                                     </Link>
+                                    <span
+                                        v-if="p.freelancer?.is_pro"
+                                        class="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-900 ring-1 ring-amber-200"
+                                    >
+                                        Pro member
+                                    </span>
                                     <p v-if="p.freelancer?.headline" class="mt-0.5 line-clamp-1 text-xs font-semibold text-slate-500">
                                         {{ p.freelancer.headline }}
                                     </p>

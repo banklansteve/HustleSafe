@@ -13,6 +13,7 @@ use App\Models\VerificationEngineAuditLog;
 use App\Services\Admin\AdminVerificationQueueService;
 use App\Services\Verification\UserVerificationDecisionService;
 use App\Services\Verification\UserVerificationPresentationService;
+use App\Services\Verification\VerificationAnomalyPresenter;
 use App\Services\Verification\VerificationEngineService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -29,6 +30,7 @@ class AdminVerificationEngineController extends Controller
         private readonly VerificationEngineService $engine,
         private readonly UserVerificationPresentationService $presentation,
         private readonly AdminVerificationQueueService $verificationQueue,
+        private readonly VerificationAnomalyPresenter $anomalyPresenter,
     ) {}
 
     public function index(Request $request): Response
@@ -41,6 +43,7 @@ class AdminVerificationEngineController extends Controller
             'freelancer_levels' => $this->engine->freelancerLevelRequirements(),
             'stage_content' => $this->engine->stageContent(),
             'limits' => $this->engine->limits(),
+            'tier_catalog' => $this->engine->tierCatalog(),
             'safeguards' => $this->engine->safeguards(),
             'levelCounts' => User::query()
                 ->selectRaw('coalesce(current_verification_level, kyc_tier, verification_tier, 0) as level, count(*) as total')
@@ -89,7 +92,7 @@ class AdminVerificationEngineController extends Controller
         $this->setting('verification_freelancer_level_requirements', $data['freelancer_levels']);
         $this->setting('verification_level_requirements', $data['client_levels']);
         if (isset($data['stage_content'])) {
-            $this->setting('verification_stage_content', $data['stage_content']);
+            $this->setting('verification_stage_content', $this->engine->normalizeStageContentPayload($data['stage_content']));
         }
         $this->engine->audit($request->user(), null, 'verification_settings.updated', $old, $data, 'Updated verification types, level requirements, or stage content.');
 
@@ -101,8 +104,10 @@ class AdminVerificationEngineController extends Controller
         $data = $request->validate([
             'client_posting_minor' => ['required', 'array'],
             'freelancer_proposal_minor' => ['required', 'array'],
+            'freelancer_monthly_proposals' => ['required', 'array'],
             'client_posting_minor.*' => ['required', 'integer', 'min:0'],
             'freelancer_proposal_minor.*' => ['required', 'integer', 'min:0'],
+            'freelancer_monthly_proposals.*' => ['required', 'integer', 'min:0', 'max:500'],
         ]);
 
         $old = $this->engine->limits();
@@ -127,6 +132,7 @@ class AdminVerificationEngineController extends Controller
             'anomaly_proposal_burst_count' => ['required', 'integer', 'min:1', 'max:100'],
             'anomaly_proposal_burst_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
             'rapid_completion_high_value_minor' => ['required', 'integer', 'min:0'],
+            'min_quest_budget_minor' => ['required', 'integer', 'min:1'],
         ]);
 
         $old = $this->engine->safeguards();
@@ -279,38 +285,24 @@ class AdminVerificationEngineController extends Controller
             ]);
 
         return response()->json([
-            'users' => $users->map(function (User $user) {
-                $level = $this->engine->storedLevel($user);
-
-                return [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => $user->role?->slug ?? $user->account_type,
-                    'current_level' => $level,
-                    'current_label' => $this->engine->levelLabel($level, $user),
-                ];
-            })->values(),
+            'users' => $users->map(fn (User $user) => $this->engine->userOverrideContext($user))->values(),
         ]);
     }
 
     public function overrideLevel(Request $request, User $user): JsonResponse
     {
         $data = $request->validate([
-            'level' => ['required', 'integer', 'min:0', 'max:5'],
+            'level' => ['required', 'integer', 'min:0', 'max:'.$this->engine->maxLevelFor($user)],
             'reason' => ['required', 'string', 'min:8', 'max:1000'],
         ]);
 
         $this->engine->overrideLevel($user, $request->user(), (int) $data['level'], $data['reason']);
+        $user->refresh()->loadMissing('role:id,slug');
 
         return response()->json([
             'ok' => true,
             'message' => __('Verification level updated for :name.', ['name' => $user->name]),
-            'user' => [
-                'id' => $user->id,
-                'current_level' => $this->engine->storedLevel($user->fresh()),
-                'current_label' => $this->engine->levelLabel($this->engine->storedLevel($user->fresh()), $user->fresh()),
-            ],
+            'user' => $this->engine->userOverrideContext($user),
         ]);
     }
 
@@ -353,22 +345,20 @@ class AdminVerificationEngineController extends Controller
             ->when($request->filled('to'), fn ($q) => $q->whereDate('created_at', '<=', $request->date('to')))
             ->latest()
             ->paginate(20, ['*'], 'flag_page')
-            ->through(fn (VerificationAnomalyFlag $flag) => [
-                'id' => $flag->id,
-                'type' => $flag->type,
-                'status' => $flag->status,
-                'severity' => $flag->severity,
-                'context' => $flag->context ?? [],
-                'created_at' => $flag->created_at?->toIso8601String(),
-                'user' => [
-                    'id' => $flag->user?->id,
-                    'name' => $flag->user?->name,
-                    'email' => $flag->user?->email,
-                    'level' => $flag->user ? $this->engine->storedLevel($flag->user) : 0,
-                    'account_age_days' => $flag->user?->created_at?->diffInDays(now()),
-                    'avatar_url' => $flag->user?->avatar_url,
-                ],
-            ]);
+            ->through(function (VerificationAnomalyFlag $flag) {
+                $presented = $this->anomalyPresenter->present($flag);
+
+                return array_merge($presented, [
+                    'user' => [
+                        'id' => $flag->user?->id,
+                        'name' => $flag->user?->name,
+                        'email' => $flag->user?->email,
+                        'level' => $flag->user ? $this->engine->storedLevel($flag->user) : 0,
+                        'account_age_days' => $flag->user?->created_at?->diffInDays(now()),
+                        'avatar_url' => $flag->user?->avatar_url,
+                    ],
+                ]);
+            });
     }
 
     private function audit(Request $request)

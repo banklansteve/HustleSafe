@@ -15,6 +15,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardListController;
 use App\Http\Controllers\DashboardTrustGuideController;
 use App\Http\Controllers\Freelancer\FreelancerProController;
+use App\Http\Controllers\FreelancerCredentialController;
 use App\Http\Controllers\FreelancerCredentialVisibilityController;
 use App\Http\Controllers\FreelancerPortfolioController;
 use App\Http\Controllers\FreelancerPortfoliosDirectoryController;
@@ -33,6 +34,7 @@ use App\Http\Controllers\QuestBookmarkController;
 use App\Http\Controllers\QuestContentReportController;
 use App\Http\Controllers\ProposalClarificationController;
 use App\Http\Controllers\QuestBudgetGuidanceController;
+use App\Http\Controllers\QuestBoostController;
 use App\Http\Controllers\QuestController;
 use App\Http\Controllers\Support\CustomerSupportChatController;
 use App\Http\Controllers\QuestConversationController;
@@ -43,6 +45,7 @@ use App\Http\Controllers\QuestDisputeSettlementController;
 use App\Http\Controllers\FreelancerProposalsController;
 use App\Http\Controllers\QuestExploreController;
 use App\Http\Controllers\QuestFieldProfileController;
+use App\Http\Controllers\QuestSkillSuggestController;
 use App\Http\Controllers\QuestFileController;
 use App\Http\Controllers\QuestInviteController;
 use App\Http\Controllers\QuestOfferController;
@@ -244,6 +247,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/quests', [QuestController::class, 'store'])->name('quests.store');
     Route::get('/taggable-freelancers', UserFreelancerSearchController::class)->name('users.freelancers.search');
     Route::get('/quests/field-profile', QuestFieldProfileController::class)->name('quests.field-profile');
+    Route::get('/quests/skills/suggest', QuestSkillSuggestController::class)
+        ->middleware('throttle:60,1')
+        ->name('quests.skills.suggest');
     Route::get('/quests/budget-guidance', QuestBudgetGuidanceController::class)->name('quests.budget-guidance');
     Route::post('/quests/wizard/validate-step', [QuestWizardController::class, 'validateStep'])
         ->middleware('throttle:60,1')
@@ -357,9 +363,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('quests.proposals.reports.store');
 
     Route::patch('/quests/{quest}', [QuestController::class, 'update'])->name('quests.update');
+    Route::patch('/quests/{quest}/preferences', [QuestController::class, 'updatePreferences'])
+        ->middleware('throttle:20,1')
+        ->name('quests.preferences.update');
     Route::post('/quests/{quest}/extend-listing', [QuestController::class, 'extendListing'])->middleware('throttle:10,1')->name('quests.extend-listing');
     Route::post('/quests/{quest}/repost', [QuestController::class, 'repost'])->middleware('throttle:10,1')->name('quests.repost');
     Route::delete('/quests/{quest}', [QuestController::class, 'destroy'])->name('quests.destroy');
+    Route::post('/quests/{quest}/boost/checkout', [QuestBoostController::class, 'checkout'])
+        ->middleware('throttle:10,1')
+        ->name('quests.boost.checkout');
+    Route::post('/quests/{quest}/boost/dismiss-upsell', [QuestBoostController::class, 'dismissUpsell'])
+        ->middleware('throttle:20,1')
+        ->name('quests.boost.dismiss-upsell');
+    Route::get('/payments/quest-boost/callback', [QuestBoostController::class, 'callback'])
+        ->name('payments.quest-boost.callback');
+    Route::get('/quests/{quest}/recommendations', [QuestController::class, 'recommendations'])->name('quests.recommendations');
     Route::get('/quests/{quest}', [QuestController::class, 'show'])->name('quests.show');
 
     Route::post('/reviews', [ReviewController::class, 'store'])
@@ -389,6 +407,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/account/pro/cancel', [FreelancerProController::class, 'cancel'])
             ->middleware('throttle:10,1')
             ->name('freelancer.pro.cancel');
+        Route::patch('/account/pro/profile-sections', [FreelancerProController::class, 'updateProfileSections'])
+            ->name('freelancer.pro.profile-sections');
         Route::get('/payments/pro/callback', [FreelancerProController::class, 'callback'])->name('freelancer.pro.callback');
 
         $credentialTypes = array_map(fn (CredentialType $t) => $t->value, CredentialType::cases());

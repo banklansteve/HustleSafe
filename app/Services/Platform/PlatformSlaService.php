@@ -42,7 +42,7 @@ class PlatformSlaService
         }
 
         $triggered = Carbon::parse($triggeredAt ?? now());
-        $dueAt = $this->computeDueAt($slaKey, $triggered);
+        $dueAt = $this->computeDueAtForUser($slaKey, $triggered, $triggeredBy);
 
         return PlatformSlaClock::query()->create([
             'sla_key' => $slaKey,
@@ -81,6 +81,18 @@ class PlatformSlaService
 
     public function computeDueAt(string $slaKey, CarbonInterface $from): CarbonInterface
     {
+        return $this->computeDueAtForUser($slaKey, $from, null);
+    }
+
+    public function computeDueAtForUser(string $slaKey, CarbonInterface $from, ?User $user): CarbonInterface
+    {
+        if ($slaKey === 'kyc_verification' && $user !== null) {
+            $hours = app(\App\Services\Freelancer\FreelancerProSubscriptionService::class)
+                ->kycVerificationSlaHours($user);
+
+            return $from->copy()->addHours(max(1, $hours));
+        }
+
         $definition = $this->definition($slaKey);
         $value = max(1, $this->configuredValue($slaKey));
         $unit = (string) ($definition['unit'] ?? 'hours');
@@ -90,6 +102,25 @@ class PlatformSlaService
             'calendar_days' => $from->copy()->addDays($value),
             default => $from->copy()->addHours($value),
         };
+    }
+
+    public function userExpectationMessageForUser(string $slaKey, ?User $user): string
+    {
+        if ($slaKey === 'kyc_verification' && $user !== null) {
+            $hours = app(\App\Services\Freelancer\FreelancerProSubscriptionService::class)
+                ->kycVerificationSlaHours($user);
+            $template = (string) (config('sla.definitions.kyc_verification.user_message')
+                ?? 'We aim to complete your verification review within :duration.');
+
+            return str_replace(':duration', $this->hoursLabel($hours), $template);
+        }
+
+        return $this->userExpectationMessage($slaKey);
+    }
+
+    protected function hoursLabel(int $hours): string
+    {
+        return trans_choice(':count hour|:count hours', $hours, ['count' => $hours]);
     }
 
     public function configuredValue(string $slaKey): int

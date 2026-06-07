@@ -17,6 +17,7 @@ use App\Models\QuestOffer;
 use App\Models\Review;
 use App\Models\User;
 use App\Notifications\AdminUserMessageNotification;
+use App\Support\PlainText;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -96,7 +97,7 @@ class ContentModerationAdminService
             ->withQueryString()
             ->through(fn (ModerationDecision $decision) => [
                 'id' => $decision->id,
-                'content' => $decision->case?->title,
+                'content' => PlainText::from($decision->case?->title, 180),
                 'content_type' => $decision->case?->content_type,
                 'decision' => $decision->action,
                 'admin' => $decision->admin?->name,
@@ -177,8 +178,8 @@ class ContentModerationAdminService
         return [
             'id' => $case->id,
             'uuid' => $case->uuid,
-            'title' => $case->title,
-            'excerpt' => $case->excerpt,
+            'title' => PlainText::from($case->title),
+            'excerpt' => PlainText::from($case->excerpt, 320),
             'content_type' => $case->content_type,
             'queue' => $case->queue,
             'status' => $case->status,
@@ -199,16 +200,33 @@ class ContentModerationAdminService
             'triggers' => $case->triggers->map(fn ($trigger) => [
                 'rule_key' => $trigger->rule_key,
                 'rule_type' => $trigger->rule_type,
-                'category' => $trigger->category,
+                'category' => PlainText::from($trigger->category),
                 'severity' => $trigger->severity,
                 'confidence' => $trigger->confidence,
-                'matched_text' => $trigger->matched_text,
-                'context' => $trigger->context,
+                'matched_text' => PlainText::from($trigger->matched_text, 240),
+                'context' => PlainText::from($trigger->context, 320),
                 'meta' => $trigger->meta ?? [],
             ])->values(),
-            'snapshot' => $case->snapshot ?? [],
+            'snapshot' => $this->plainSnapshot($case->snapshot ?? []),
             'model' => $this->modelSummary($model),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $snapshot
+     * @return array<string, mixed>
+     */
+    private function plainSnapshot(array $snapshot): array
+    {
+        $plain = $snapshot;
+
+        foreach (['text', 'title', 'report_reason', 'report_details'] as $key) {
+            if (isset($plain[$key]) && is_string($plain[$key])) {
+                $plain[$key] = PlainText::from($plain[$key]);
+            }
+        }
+
+        return $plain;
     }
 
     private function applyContentAction(ModerationCase $case, string $action, array $edited): void

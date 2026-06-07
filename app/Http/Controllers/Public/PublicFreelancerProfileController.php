@@ -9,6 +9,7 @@ use App\Models\Portfolio;
 use App\Models\Review;
 use App\Models\User;
 use App\Models\UserFollow;
+use App\Services\Freelancer\FreelancerProSubscriptionService;
 use App\Services\PowerHoursService;
 use App\Services\Verification\VerificationEngineService;
 use Illuminate\Http\RedirectResponse;
@@ -117,6 +118,7 @@ class PublicFreelancerProfileController extends Controller
             : $user->name;
         $verificationEngine = app(VerificationEngineService::class);
         $powerHours = app(PowerHoursService::class);
+        $proMembership = app(FreelancerProSubscriptionService::class);
         $completedVerificationTypes = $verificationEngine->completedVerificationTypes($user);
 
         $profile = [
@@ -125,6 +127,7 @@ class PublicFreelancerProfileController extends Controller
             'name' => $displayName !== '' ? $displayName : $user->name,
             'avatar_url' => $user->avatar_url,
             'verification_tier' => $user->verification_tier,
+            'is_pro' => $proMembership->isPro($user),
             'verification_engine' => [
                 'earned_level' => $verificationEngine->storedLevel($user),
                 'effective_level' => $verificationEngine->effectiveLevel($user),
@@ -189,6 +192,10 @@ class PublicFreelancerProfileController extends Controller
             ])->all();
         } else {
             $profile['credentials'] = [];
+        }
+
+        if ($proMembership->isPro($user)) {
+            $profile['pro_sections'] = $proMembership->proProfileSectionsFrom($user);
         }
 
         return Inertia::render('Public/FreelancerProfile', [

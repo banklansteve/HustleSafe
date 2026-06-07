@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Freelancer;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Freelancer\BeginFreelancerProUpgradeRequest;
+use App\Http\Requests\Freelancer\UpdateFreelancerProProfileSectionsRequest;
 use App\Services\Freelancer\FreelancerProPaymentService;
 use App\Services\Freelancer\FreelancerProSubscriptionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class FreelancerProController extends Controller
 {
@@ -25,7 +27,7 @@ class FreelancerProController extends Controller
         ]);
     }
 
-    public function upgrade(BeginFreelancerProUpgradeRequest $request): RedirectResponse
+    public function upgrade(BeginFreelancerProUpgradeRequest $request): RedirectResponse|SymfonyResponse
     {
         $payload = $this->subscriptions->beginUpgrade(
             $request->user(),
@@ -64,5 +66,20 @@ class FreelancerProController extends Controller
         $this->subscriptions->cancel($request->user(), $request->input('reason'));
 
         return back()->with('success', __('Your Pro subscription has been cancelled.'));
+    }
+
+    public function updateProfileSections(UpdateFreelancerProProfileSectionsRequest $request): RedirectResponse
+    {
+        $user = $request->user();
+        $data = $request->validated();
+        $settings = $user->public_profile_settings ?? [];
+
+        $settings['pro_testimonials'] = array_values($data['testimonials'] ?? []);
+        $settings['pro_external_links'] = array_values($data['external_links'] ?? []);
+        $settings['pro_media_links'] = array_values($data['media_links'] ?? []);
+
+        $user->forceFill(['public_profile_settings' => $settings])->save();
+
+        return back()->with('success', __('Pro profile sections saved.'));
     }
 }

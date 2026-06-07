@@ -26,14 +26,17 @@ class AdminSettingsRegistry
         $sections = collect($this->definitions())->map(function (array $section) use ($stored) {
             $settings = collect($section['settings'])->map(function (array $setting) use ($section, $stored) {
                 $record = $stored->get($setting['key']);
-                $value = $record?->value['value'] ?? $setting['default'];
+                $storedMinor = $record?->value['value'] ?? $setting['default'];
+                $value = $setting['type'] === 'money'
+                    ? $this->moneyMajorFromMinor((int) $storedMinor)
+                    : $storedMinor;
 
                 return [
                     ...$setting,
                     'value' => $setting['sensitive'] ?? false ? $this->mask($value) : $value,
                     'stored' => $record !== null,
                     'impact_count' => $this->impactCount($setting),
-                    'current_note' => 'Current stored value: '.$this->displayValue($value),
+                    'current_note' => 'Current stored value: '.$this->displayValue($value, $setting['type']),
                 ];
             })->values();
 
@@ -107,8 +110,8 @@ class AdminSettingsRegistry
                         'section' => $sectionKey,
                         'key' => $key,
                         'label' => $definition['label'],
-                        'from' => ($definition['sensitive'] ?? false) ? '[masked]' : $oldValue,
-                        'to' => ($definition['sensitive'] ?? false) ? '[masked]' : $newValue,
+                        'from' => ($definition['sensitive'] ?? false) ? '[masked]' : $this->logValue($oldValue, $definition['type']),
+                        'to' => ($definition['sensitive'] ?? false) ? '[masked]' : $this->logValue($newValue, $definition['type']),
                     ],
                     request: $request,
                 );
@@ -163,13 +166,13 @@ class AdminSettingsRegistry
             $this->section('verification', 'Verification Tiers & Limits', 'Control what users can do at each trust tier.', $tierFields, 'matrix'),
             $this->section('financial', 'Financial & Escrow', 'Fees, escrow requirements, payout cadence, VAT and currency display.', [
                 $this->setting('financial.platform_fee_percent', 'Platform fee (%) — single source of truth', 'number', 12, 'The only platform service fee rate. Shown on proposals, contracts, checkout, emails, legal pages, and all customer-facing copy. Applied to proposal subtotals (professional fee + materials + travel) and escrow release calculations.'),
-                $this->setting('financial.high_value_quest_threshold_minor', 'High-value quest threshold (kobo)', 'money', 100_000_000, 'Quests at or above this budget may require extra verification or category approval rules.'),
+                $this->setting('financial.high_value_quest_threshold_minor', 'High-value quest threshold (₦)', 'money', 100_000_000, 'Quests at or above this budget may require extra verification or category approval rules.'),
                 $this->setting('financial.freelancer_fee_percent', 'Freelancer-side service fee % (legacy display)', 'number', 10, 'Deprecated for global billing — use Platform fee above. Category overrides may still reference this field.'),
-                $this->setting('financial.minimum_escrow_minor', 'Minimum contract value requiring escrow', 'money', 0, 'Zero makes escrow mandatory for all contracts.'),
+                $this->setting('financial.minimum_escrow_minor', 'Minimum contract value requiring escrow (₦)', 'money', 0, 'Zero makes escrow mandatory for all contracts.'),
                 $this->setting('financial.escrow_release_cooldown_hours', 'Minimum hours after escrow funding before release', 'number', 24, 'Clients cannot mark complete or release funds until this period passes after escrow is funded. Super admins may override from Financial Control.'),
-                $this->setting('financial.high_value_release_authorization_minor', 'High-value release authorisation threshold (kobo)', 'money', 100_000_000, 'Contracts at or above this amount (₦1,000,000.00) require super-admin authorisation before escrow can be released, even after the cooldown.'),
+                $this->setting('financial.high_value_release_authorization_minor', 'High-value release authorisation threshold (₦)', 'money', 100_000_000, 'Contracts at or above this amount (₦1,000,000) require super-admin authorisation before escrow can be released, even after the cooldown.'),
                 $this->setting('financial.auto_release_hours', 'Escrow auto-release period', 'number', 72, 'Hours after agreed delivery date before escrow auto-releases if no dispute. Client emails at due day, +24h, and +36h.'),
-                $this->setting('financial.minimum_payout_minor', 'Minimum payout threshold', 'money', 500000, 'Minimum pending earnings before payout.'),
+                $this->setting('financial.minimum_payout_minor', 'Minimum payout threshold (₦)', 'money', 500000, 'Minimum pending earnings before payout.'),
                 $this->setting('financial.payout_schedule', 'Payout processing schedule', 'select', 'daily', 'Instant, daily batch or twice-weekly processing.', ['options' => ['instant' => 'Instant', 'daily' => 'Daily batch', 'twice_weekly' => 'Twice weekly']]),
                 $this->setting('financial.payout_batch_time', 'Payout batch time', 'time', '16:00', 'WAT batch payout processing time.'),
                 $this->setting('financial.vat_enabled', 'VAT registration enabled', 'boolean', true, 'Adds VAT to service fees when enabled.'),
@@ -286,16 +289,18 @@ class AdminSettingsRegistry
                 $this->setting('moderation.image_flag_threshold', 'Image flag threshold', 'number', 70, 'Confidence score to flag.'),
                 $this->setting('moderation.image_reject_threshold', 'Image reject threshold', 'number', 95, 'Confidence score to block pending review.'),
             ]),
-            $this->section('freelancer_pro', 'Freelancer Pro Membership', 'Self-service Pro subscription pricing and free-tier proposal quota.', [
-                $this->setting('freelancer_pro.monthly_price_minor', 'Pro monthly price (NGN)', 'money', 1_000_000, 'Monthly Pro subscription price.'),
-                $this->setting('freelancer_pro.annual_price_minor', 'Pro annual price (NGN)', 'money', 10_000_000, 'Annual Pro subscription price (discounted vs 12× monthly).'),
-                $this->setting('freelancer_pro.free_proposals_per_month', 'Free tier proposals per month', 'number', 10, 'Monthly proposal limit for non-Pro freelancers (5–50).'),
+            $this->section('freelancer_pro', 'Freelancer Pro Membership', 'Self-service Pro subscription pricing, portfolio limits, and verification SLA. Pro never bypasses trust tiers or job value caps. Monthly proposal counts are configured per verification tier in Verification Engine → Limits.', [
+                $this->setting('freelancer_pro.monthly_price_minor', 'Pro monthly price (₦)', 'money', 1_000_000, 'Monthly Pro subscription price.'),
+                $this->setting('freelancer_pro.annual_price_minor', 'Pro annual price (₦)', 'money', 10_000_000, 'Annual Pro subscription price (discounted vs 12× monthly).'),
+                $this->setting('freelancer_pro.free_portfolio_items', 'Free tier portfolio items', 'number', 5, 'Maximum portfolio items for non-Pro freelancers. Pro members have unlimited uploads.'),
+                $this->setting('freelancer_pro.kyc_sla_hours', 'Pro KYC review SLA (hours)', 'number', 24, 'Maximum turnaround for Pro freelancer verification reviews.'),
+                $this->setting('freelancer_pro.standard_kyc_sla_hours', 'Standard KYC review SLA (hours)', 'number', 72, 'Turnaround shown to free-tier freelancers (48–72 hours typical).'),
             ]),
-            $this->section('quest_boosts', 'Quest Boost Pricing', 'Admin-granted quest boost tier prices. Applies to new boosts only.', [
-                $this->setting('quest_boosts.price_3_day_minor', '3-day boost price (NGN)', 'money', 800_000, '72-hour boost reference price.'),
-                $this->setting('quest_boosts.price_7_day_minor', '7-day boost price (NGN)', 'money', 1_500_000, '7-day boost reference price.'),
-                $this->setting('quest_boosts.price_14_day_minor', '14-day boost price (NGN)', 'money', 2_800_000, '14-day boost reference price.'),
-                $this->setting('quest_boosts.price_30_day_minor', '30-day boost price (NGN)', 'money', 5_200_000, '30-day boost reference price.'),
+            $this->section('quest_boosts', 'Quest Boost Pricing', 'Client-paid quest boost tier prices in naira. Applies to new boosts only.', [
+                $this->setting('quest_boosts.price_3_day_minor', '3-day boost price (₦)', 'money', 800_000, '72-hour boost price.'),
+                $this->setting('quest_boosts.price_7_day_minor', '7-day boost price (₦)', 'money', 1_500_000, '7-day boost price.'),
+                $this->setting('quest_boosts.price_14_day_minor', '14-day boost price (₦)', 'money', 2_800_000, '14-day boost price.'),
+                $this->setting('quest_boosts.price_30_day_minor', '30-day boost price (₦)', 'money', 5_200_000, '30-day boost price.'),
             ]),
             $this->section('promotions', 'Featured Listings & Promotions', 'Boost tiers, coupons, referral programme and reward controls.', [
                 $this->setting('promotions.max_featured_per_client', 'Maximum concurrent featured Quests per client', 'number', 3, 'Prevents one client dominating placement.'),
@@ -306,9 +311,9 @@ class AdminSettingsRegistry
             ]),
             $this->section('referrals', 'Referral Programme', 'Referral programme eligibility, reward types, qualifying events, expiry and abuse limits.', [
                 $this->setting('referrals.enabled', 'Referral programme enabled', 'boolean', true, 'Master referral toggle.'),
-                $this->setting('referrals.client_reward_minor', 'Client referral reward amount', 'money', 500000, 'Reward after first funded Quest.'),
+                $this->setting('referrals.client_reward_minor', 'Client referral reward amount (₦)', 'money', 500000, 'Reward after first funded Quest.'),
                 $this->setting('referrals.client_reward_type', 'Client referral reward type', 'select', 'wallet_credit', 'Reward format for referred clients.', ['options' => ['wallet_credit' => 'Wallet credit', 'cash_payout' => 'Cash payout', 'coupon' => 'Coupon']]),
-                $this->setting('referrals.freelancer_reward_minor', 'Freelancer referral reward amount', 'money', 500000, 'Reward after first milestone payout.'),
+                $this->setting('referrals.freelancer_reward_minor', 'Freelancer referral reward amount (₦)', 'money', 500000, 'Reward after first milestone payout.'),
                 $this->setting('referrals.freelancer_reward_type', 'Freelancer referral reward type', 'select', 'wallet_credit', 'Reward format for referred freelancers.', ['options' => ['wallet_credit' => 'Wallet credit', 'cash_payout' => 'Cash payout', 'coupon' => 'Coupon']]),
                 $this->setting('referrals.qualifying_event', 'Referral qualifying event', 'select', 'first_transaction', 'Event that triggers reward.', ['options' => ['first_login' => 'First login', 'profile_completion' => 'First profile completion', 'first_transaction' => 'First transaction']]),
                 $this->setting('referrals.reward_expiry_days', 'Referral reward expiry days', 'number', 90, 'Wallet credit validity period.'),
@@ -328,7 +333,7 @@ class AdminSettingsRegistry
                 $this->setting('sla.sanction_appeal.working_days', 'Sanction appeal review (working days)', 'number', 5, 'User sanction appeal decisions.'),
             ]),
             $this->section('disputes', 'Dispute & Resolution', 'Dispute windows, escalation deadlines, fees, appeals and suspension thresholds.', [
-                $this->setting('disputes.minimum_formal_value_minor', 'Minimum formal dispute value', 'money', 5000000, 'Below this uses simplified process.'),
+                $this->setting('disputes.minimum_formal_value_minor', 'Minimum formal dispute value (₦)', 'money', 5000000, 'Below this uses simplified process.'),
                 $this->setting('disputes.window_days_after_completion', 'Dispute window after completion', 'number', 7, 'Days after completion to raise dispute.'),
                 $this->setting('disputes.tier1_hours', 'Tier 1 self-resolution window', 'number', 48, 'Hours before escalation.'),
                 $this->setting('disputes.tier2_hours', 'Tier 2 AI mediation window', 'number', 72, 'Hours before admin review.'),
@@ -429,7 +434,8 @@ class AdminSettingsRegistry
     private function castValue(mixed $value, string $type): mixed
     {
         return match ($type) {
-            'number', 'money' => is_numeric($value) ? (float) $value : 0,
+            'number' => is_numeric($value) ? (float) $value : 0,
+            'money' => is_numeric($value) ? max(0, (int) round(((float) $value) * 100)) : 0,
             'boolean' => $this->castBoolean($value),
             default => is_array($value) ? $value : (string) $value,
         };
@@ -470,7 +476,7 @@ class AdminSettingsRegistry
         return Str::substr($text, 0, 4).str_repeat('•', max(4, strlen($text) - 8)).Str::substr($text, -4);
     }
 
-    private function displayValue(mixed $value): string
+    private function displayValue(mixed $value, string $type = 'text'): string
     {
         if (is_bool($value)) {
             return $value ? 'Enabled' : 'Disabled';
@@ -481,8 +487,25 @@ class AdminSettingsRegistry
         if ($value === '' || $value === null) {
             return 'Not set';
         }
+        if ($type === 'money') {
+            return '₦'.number_format((float) $value, 0);
+        }
 
         return (string) $value;
+    }
+
+    private function moneyMajorFromMinor(int $minor): float
+    {
+        return round($minor / 100, 2);
+    }
+
+    private function logValue(mixed $value, string $type): mixed
+    {
+        if ($type !== 'money' || ! is_numeric($value)) {
+            return $value;
+        }
+
+        return $this->moneyMajorFromMinor((int) $value);
     }
 
     private function impactCount(array $setting): int

@@ -941,6 +941,7 @@ const navGroups = [
             { label: 'Onboarding quality control', href: route('admin.onboarding-quality.index'), icon: ShieldCheckIcon, match: (p) => matchPathPrefix(p, '/admin/onboarding-quality', { exclude: ['/admin/onboarding-quality/flagged-profiles'] }) },
             { label: 'Flagged profiles', href: route('admin.onboarding-quality.flagged'), icon: ShieldCheckIcon, match: (p) => matchPathPrefix(p, '/admin/onboarding-quality/flagged-profiles') },
             { label: 'Quest & proposal review', href: route('admin.moderation.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/moderation') },
+            { label: 'Premium & Boost Patrol', href: route('admin.premium-patrol.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/premium-patrol') },
             { label: 'Content Moderation', href: route('admin.content-moderation.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/content-moderation') },
             { label: 'Conversation monitoring', href: route('admin.conversation-monitoring.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/conversation-monitoring') },
             { label: 'Proactive outreach', href: route('admin.outreach.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/outreach') },

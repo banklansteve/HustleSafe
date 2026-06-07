@@ -10,6 +10,7 @@ use App\Notifications\ProposalViewedMilestoneNotification;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\Proposals\ProposalClarificationService;
 use App\Services\QuestProposalPricingHintService;
+use App\Services\Verification\VerificationEngineService;
 use App\Services\UserNotificationInboxService;
 use App\Support\PlatformSettings;
 use App\Support\QuestCommerceUi;
@@ -73,16 +74,19 @@ class QuestProposalController extends Controller
         $cid = (string) (int) ($quest->quest_category_id ?? 0);
         $catHints = $hints['by_category'][$cid] ?? null;
         $pricingHints = app(QuestProposalPricingHintService::class)->hintsFor($user, $quest);
+        $verificationEngine = app(VerificationEngineService::class);
 
         return Inertia::render('Quests/Proposals/Create', [
-            'quest' => $this->questComposerPayload($quest),
+            'quest' => $this->questComposerPayload($quest->loadMissing('preferences')),
             'workspace' => array_merge(['enabled' => true], $summary),
+            'proposal_limits' => $verificationEngine->freelancerProposalLimitContext($user, (int) ($quest->budget_amount_minor ?? 0)),
             'market_hints' => [
                 'category' => $catHints,
                 'global_budget' => $hints['global_budget'] ?? null,
                 'global_completion' => $hints['global_completion'] ?? null,
             ],
             'pricing_hints' => $pricingHints,
+            'preference_profile' => app(\App\Services\Quest\QuestPreferenceProfileService::class)->profileForLeafCategoryId((int) $quest->quest_category_id),
             'vat_preset_percent' => (float) config('quests.proposal_vat_percent', 7.5),
             'platform_fee_percent' => PlatformSettings::platformFeePercent(),
             'proposal_edit' => null,
@@ -125,10 +129,12 @@ class QuestProposalController extends Controller
         $catHints = $hints['by_category'][$cid] ?? null;
         $summary = $workspace->summarize($user);
         $pricingHints = app(QuestProposalPricingHintService::class)->hintsFor($user, $quest);
+        $verificationEngine = app(VerificationEngineService::class);
 
         return Inertia::render('Quests/Proposals/Create', [
             'quest' => $this->questComposerPayload($quest),
             'workspace' => array_merge(['enabled' => true], $summary),
+            'proposal_limits' => $verificationEngine->freelancerProposalLimitContext($user, (int) ($quest->budget_amount_minor ?? 0)),
             'market_hints' => [
                 'category' => $catHints,
                 'global_budget' => $hints['global_budget'] ?? null,
@@ -157,7 +163,15 @@ class QuestProposalController extends Controller
             'localGovernment:id,name',
             'acceptedOffer',
         ]);
-        $offer->loadMissing(['freelancer:id,first_name,name,slug,avatar_url,username,headline']);
+        $offer->loadMissing([
+            'freelancer:id,first_name,name,slug,avatar_url,username,headline,state_id,local_government_id',
+            'freelancer.trustMetrics',
+            'freelancer.stateModel:id,name',
+            'freelancer.localGovernmentModel:id,name',
+            'freelancer.role:id,slug',
+            'preferenceResponses',
+        ]);
+        $quest->loadMissing('preferences');
 
         $user = $request->user();
         $isClient = $user && (int) $user->id === (int) $quest->client_id;
@@ -184,9 +198,19 @@ class QuestProposalController extends Controller
         $commerce = array_merge($commerce, QuestCommerceUi::fundingForOffer($quest, $offer, $user));
         $commerce = array_merge($commerce, QuestCommerceUi::partyExtras($quest, $user));
 
+        $preferenceResponses = (! $isObserver && $isClient)
+            ? app(\App\Services\Quest\ProposalPreferenceResponseService::class)->displayForOffer($offer, $quest)
+            : [];
+
+        $freelancerInsight = $offer->freelancer && ! $isFreelancerAuthor
+            ? app(\App\Services\Quest\PartyInsightService::class)->freelancerInsight($offer->freelancer)
+            : null;
+
         return Inertia::render('Quests/Proposals/Show', [
             'quest' => $this->questComposerPayload($quest),
             'offer' => $this->offerPayload($offer, $quest, $isObserver),
+            'preference_responses' => $preferenceResponses,
+            'freelancer_insight' => $freelancerInsight,
             'is_client' => (bool) $isClient,
             'is_author' => (bool) $isFreelancerAuthor,
             'observer_mode' => (bool) $isObserver,
@@ -250,6 +274,7 @@ class QuestProposalController extends Controller
             'corrections_included' => (bool) $offer->corrections_included,
             'corrections_rounds' => $offer->corrections_rounds,
             'progress_report_frequency' => $offer->progress_report_frequency ?? 'weekly',
+            'progress_report_frequency_note' => $offer->progress_report_frequency_note ?? '',
             'materials' => $materials,
             'pricing' => $pricing,
         ];
@@ -282,6 +307,16 @@ class QuestProposalController extends Controller
                 'name' => $quest->client?->name,
                 'first_name' => $quest->client?->first_name,
             ],
+            'required_skills' => $quest->required_skills ?? [],
+            'start_timing' => $quest->start_timing instanceof \App\Enums\QuestStartTiming
+                ? $quest->start_timing->value
+                : (string) ($quest->start_timing ?? ''),
+            'scheduled_start_date' => $quest->scheduled_start_date?->toDateString(),
+            'estimated_delivery_date' => $quest->estimated_delivery_date?->toDateString(),
+            'delivery_deadline' => $quest->delivery_deadline?->toDateString(),
+            'auto_listing_expiry_days' => $quest->auto_listing_expiry_days,
+            'preferences' => app(\App\Services\Quest\QuestPreferenceService::class)->displayListForQuest($quest->loadMissing('preferences')),
+            'has_specified_preferences' => app(\App\Services\Quest\QuestPreferenceService::class)->hasSpecifiedPreferences($quest),
             'escrow_status' => $quest->escrow_status ?? 'none',
             'status' => $quest->status instanceof QuestStatus ? $quest->status->value : (string) $quest->status,
         ];

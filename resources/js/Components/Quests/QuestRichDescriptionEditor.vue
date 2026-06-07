@@ -119,7 +119,17 @@
                 Clear
             </button>
         </div>
-        <editor-content v-if="editor" :editor="editor" class="quest-rich-editor min-h-[11rem] px-3 py-3 sm:min-h-[12rem] sm:px-4 sm:py-4" />
+        <editor-content
+            v-if="editor"
+            :editor="editor"
+            class="quest-rich-editor min-h-[11rem] bg-white px-3 py-3 text-gray-600 sm:min-h-[12rem] sm:px-4 sm:py-4"
+        />
+        <div
+            v-else
+            class="flex min-h-[11rem] items-center justify-center bg-white px-3 py-3 text-sm font-semibold text-slate-500 sm:min-h-[12rem] sm:px-4 sm:py-4"
+        >
+            Loading editor…
+        </div>
     </div>
 </template>
 
@@ -150,10 +160,31 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue']);
 
-const textColor = ref('#0f172a');
+const DEFAULT_TEXT_COLOR = '#4b5563';
+const textColor = ref(DEFAULT_TEXT_COLOR);
+
+const LIGHT_COLOR_PATTERN = /^(?:#(?:fff(?:fff)?|f[89a-f]{5})|white|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|rgb\(\s*255\s+255\s+255\s*\))$/i;
+
+/** Strip invisible/light inline colours saved from older editor sessions or pasted HTML. */
+function sanitizeDescriptionHtml(html) {
+    if (!html || typeof html !== 'string') {
+        return '';
+    }
+
+    return html.replace(/color\s*:\s*([^;"']+)/gi, (match, raw) => {
+        const value = String(raw).trim().toLowerCase();
+
+        if (LIGHT_COLOR_PATTERN.test(value)) {
+            return `color: ${DEFAULT_TEXT_COLOR}`;
+        }
+
+        return match;
+    });
+}
 
 const editor = useEditor({
-    content: props.modelValue || '',
+    immediatelyRender: false,
+    content: sanitizeDescriptionHtml(props.modelValue || ''),
     extensions: [
         StarterKit.configure({
             heading: {
@@ -177,12 +208,16 @@ const editor = useEditor({
     ],
     editorProps: {
         attributes: {
-            class: 'prose prose-slate max-w-none focus:outline-none min-h-[10rem] text-[15px] font-medium leading-relaxed text-slate-800',
+            class: 'quest-rich-prosemirror max-w-none focus:outline-none min-h-[10rem] text-[15px] font-medium leading-relaxed text-gray-600',
+            style: `color: ${DEFAULT_TEXT_COLOR}`,
             spellcheck: 'true',
         },
     },
+    onCreate: ({ editor: ed }) => {
+        ed.commands.unsetColor();
+    },
     onUpdate: ({ editor: ed }) => {
-        emit('update:modelValue', ed.getHTML());
+        emit('update:modelValue', sanitizeDescriptionHtml(ed.getHTML()));
     },
 });
 
@@ -194,8 +229,10 @@ watch(
             return;
         }
         const current = ed.getHTML();
-        if (val !== current) {
-            ed.commands.setContent(val || '', false);
+        const next = sanitizeDescriptionHtml(val || '');
+        if (next !== current) {
+            ed.commands.setContent(next, false);
+            ed.commands.unsetColor();
         }
     },
 );
@@ -237,10 +274,56 @@ onBeforeUnmount(() => {
 </script>
 
 <style>
-/* TipTap / ProseMirror base (package does not ship a single global CSS in v2) */
-.quest-rich-editor .ProseMirror {
+/* TipTap / ProseMirror — explicit dark body text (no prose plugin; avoids light inherited colours) */
+.quest-rich-editor .ProseMirror,
+.quest-rich-editor .quest-rich-prosemirror {
     outline: none;
     min-height: 10rem;
+    color: #4b5563 !important;
+    caret-color: #334155;
+}
+
+.quest-rich-editor .ProseMirror :where(p, li, h2, h3, blockquote, strong, em, u, s, span) {
+    color: inherit;
+}
+
+/* Force readable body copy even when legacy drafts stored light inline colours */
+.quest-rich-editor .ProseMirror [style*="color: white"],
+.quest-rich-editor .ProseMirror [style*="color:white"],
+.quest-rich-editor .ProseMirror [style*="color: #fff"],
+.quest-rich-editor .ProseMirror [style*="color:#fff"],
+.quest-rich-editor .ProseMirror [style*="color: rgb(255, 255, 255)"],
+.quest-rich-editor .ProseMirror [style*="color:rgb(255, 255, 255)"] {
+    color: #4b5563 !important;
+}
+
+.quest-rich-editor .ProseMirror h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.35;
+    margin-top: 0.75rem;
+    margin-bottom: 0.35rem;
+}
+
+.quest-rich-editor .ProseMirror h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1.35;
+    margin-top: 0.65rem;
+    margin-bottom: 0.25rem;
+}
+
+.quest-rich-editor .ProseMirror ul,
+.quest-rich-editor .ProseMirror ol {
+    margin: 0.5rem 0;
+    padding-left: 1.25rem;
+}
+
+.quest-rich-editor .ProseMirror blockquote {
+    margin: 0.5rem 0;
+    border-left: 3px solid rgb(203 213 225);
+    padding-left: 0.85rem;
+    font-style: italic;
 }
 
 .quest-rich-editor .ProseMirror p.is-editor-empty:first-child::before {
@@ -248,7 +331,7 @@ onBeforeUnmount(() => {
     float: left;
     height: 0;
     pointer-events: none;
-    color: rgb(148 163 184);
+    color: rgb(148 163 184) !important;
     font-weight: 600;
 }
 

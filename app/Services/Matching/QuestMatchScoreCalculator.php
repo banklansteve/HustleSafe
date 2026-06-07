@@ -5,6 +5,7 @@ namespace App\Services\Matching;
 use App\Models\FreelancerMetric;
 use App\Models\Quest;
 use App\Models\User;
+use App\Services\Freelancer\FreelancerProSubscriptionService;
 use App\Services\Verification\VerificationEngineService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Arr;
@@ -13,6 +14,7 @@ class QuestMatchScoreCalculator
 {
     public function __construct(
         protected VerificationEngineService $verificationEngine,
+        protected FreelancerProSubscriptionService $freelancerPro,
     ) {}
 
     /**
@@ -66,6 +68,11 @@ class QuestMatchScoreCalculator
 
         if ($this->urgencyBonusApplies($quest, $metrics)) {
             $bonuses['urgency'] = (float) config('quest_matching.urgency_bonus_points', 5);
+        }
+
+        // Pro visibility bonus only when the freelancer already passes qualification gates.
+        if ($passesSkillsGate && $passesLanguageGate && $this->freelancerPro->isPro($freelancer)) {
+            $bonuses['freelancer_pro'] = (float) config('freelancer_pro.match_score_bonus_points', config('quest_matching.freelancer_pro_bonus_points', 8));
         }
 
         $disputePenalty = $this->disputePenaltyPoints($metrics);

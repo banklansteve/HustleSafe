@@ -14,6 +14,7 @@ use App\Models\Review;
 use App\Models\State;
 use App\Models\User;
 use App\Models\UserFollow;
+use App\Services\Freelancer\FreelancerProSubscriptionService;
 use App\Services\PowerHoursService;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\Request;
@@ -240,6 +241,9 @@ class AccountHubController extends Controller
                 ->values()
                 ->all(),
             'commerce_hub' => $this->commerceHubFor($user, $isFreelancer),
+            'proMembership' => $isFreelancer
+                ? app(FreelancerProSubscriptionService::class)->dashboardPayload($user)
+                : null,
         ]);
     }
 

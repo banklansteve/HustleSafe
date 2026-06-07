@@ -88,13 +88,172 @@ final class FreelancerProSubscriptionService
                     : 0,
             ],
             'quota' => $quota,
-            'benefits' => [
-                __('Unlimited proposal submissions per month'),
-                __('Verified Pro badge on your profile'),
-                __('Priority placement in category search results'),
-                __('Early access to invite-only quests'),
-                __('Pro Member label on your proposals'),
+            'benefits' => $this->benefitsCatalog(),
+            'trust_exclusions' => $this->trustExclusionsCatalog(),
+            'verification_sla' => [
+                'pro_hours' => $this->kycVerificationSlaHours($user),
+                'standard_hours' => PlatformSettings::freelancerStandardKycSlaHours(),
+                'is_pro' => $subscription->isProActive(),
             ],
+            'portfolio_limit' => [
+                'max_items' => $this->maxPortfolioItems($user),
+                'current_count' => $user->portfolios()->count(),
+            ],
+            'free_tier_highlights' => [
+                [
+                    'title' => __('Monthly proposal submission cap'),
+                    'description' => __('Each verification level has a monthly proposal count limit (configured in Verification Engine). Pro removes this cap — job value limits still apply per tier.'),
+                ],
+                [
+                    'title' => __('Portfolio item limit'),
+                    'description' => __('Free accounts can publish up to :count portfolio items.', [
+                        'count' => PlatformSettings::freelancerFreePortfolioItemLimit(),
+                    ]),
+                ],
+                [
+                    'title' => __('Standard search placement'),
+                    'description' => __('You appear in matching when your skills and verification tier qualify — at the default rank.'),
+                ],
+                [
+                    'title' => __('Standard verification turnaround'),
+                    'description' => __('Identity and credential reviews typically complete within :hours hours.', [
+                        'hours' => PlatformSettings::freelancerStandardKycSlaHours(),
+                    ]),
+                ],
+            ],
+            'payment_steps' => [
+                __('Choose monthly or annual billing on the next screen.'),
+                __('You will be redirected to Paystack to pay securely with card or bank transfer.'),
+                __('Once payment is confirmed, Pro activates immediately — no manual review needed.'),
+                __('Return here to see your active membership and renewal date.'),
+            ],
+            'pro_profile_sections' => $this->proProfileSectionsFrom($user),
+        ];
+    }
+
+    /**
+     * @return list<array{key: string, title: string, description: string}>
+     */
+    public function benefitsCatalog(): array
+    {
+        $proKycHours = PlatformSettings::freelancerProKycSlaHours();
+        $standardKycHours = PlatformSettings::freelancerStandardKycSlaHours();
+        $portfolioLimit = PlatformSettings::freelancerFreePortfolioItemLimit();
+
+        return [
+            [
+                'key' => 'unlimited_proposals',
+                'title' => __('Unlimited proposals per month'),
+                'description' => __('No monthly proposal submission cap. You still need the verification tier required for each quest’s job value.'),
+            ],
+            [
+                'key' => 'pro_badge',
+                'title' => __('Premium freelancer badge'),
+                'description' => __('A Pro badge on your public profile, search results, and proposals — visible proof of commitment, not a trust tier upgrade.'),
+            ],
+            [
+                'key' => 'search_priority',
+                'title' => __('Priority in recommendations'),
+                'description' => __('Rank higher in client freelancer recommendations and quest feeds when your skills and verification tier already qualify you for the work.'),
+            ],
+            [
+                'key' => 'quest_notifications',
+                'title' => __('Featured quest notifications'),
+                'description' => __('Get notified earlier for new quests in your categories when you are within your current verification tier limits.'),
+            ],
+            [
+                'key' => 'faster_verification',
+                'title' => __('Faster verification processing'),
+                'description' => __('Verification reviews target :pro hours (vs :standard hours standard). Dedicated support if documents need resubmission — speeds tier progression when you are actively verifying.', [
+                    'pro' => $proKycHours,
+                    'standard' => $standardKycHours,
+                ]),
+            ],
+            [
+                'key' => 'portfolio_unlimited',
+                'title' => __('Unlimited portfolio uploads'),
+                'description' => __('Publish as many portfolio items as you need. Free accounts are limited to :count items.', ['count' => $portfolioLimit]),
+            ],
+            [
+                'key' => 'profile_sections',
+                'title' => __('Custom profile sections'),
+                'description' => __('Add testimonials, media highlights, and external links to your public profile when you are Pro.'),
+            ],
+            [
+                'key' => 'support_priority',
+                'title' => __('Priority customer support'),
+                'description' => __('Support chats are bumped to a higher priority queue for quicker responses.'),
+            ],
+        ];
+    }
+
+    /**
+     * Premium must never bypass trust / verification rules.
+     *
+     * @return list<array{title: string, description: string}>
+     */
+    public function trustExclusionsCatalog(): array
+    {
+        return [
+            [
+                'title' => __('Job value tier limits'),
+                'description' => __('Pro does not raise the maximum quest value you can propose on. Your verification level still controls that cap.'),
+            ],
+            [
+                'title' => __('Account age requirements'),
+                'description' => __('Pro does not skip waiting periods between verification levels. Account age gates remain in force.'),
+            ],
+            [
+                'title' => __('Verification requirements'),
+                'description' => __('Pro does not replace NIN, BVN, CAC, or other document checks. You must complete each step to advance.'),
+            ],
+            [
+                'title' => __('Automatic tier jumps'),
+                'description' => __('Pro never moves you to a higher trust tier. Faster verification processing helps only after you submit valid documents.'),
+            ],
+        ];
+    }
+
+    public function kycVerificationSlaHours(User $user): int
+    {
+        return $this->isPro($user)
+            ? PlatformSettings::freelancerProKycSlaHours()
+            : PlatformSettings::freelancerStandardKycSlaHours();
+    }
+
+    /**
+     * null = unlimited (Pro).
+     */
+    public function maxPortfolioItems(User $user): ?int
+    {
+        return $this->isPro($user) ? null : PlatformSettings::freelancerFreePortfolioItemLimit();
+    }
+
+    public function canUseCustomProfileSections(User $user): bool
+    {
+        return $this->isPro($user);
+    }
+
+    /**
+     * @return array{testimonials: list<array<string, string>>, external_links: list<array<string, string>>, media_links: list<array<string, string>>}
+     */
+    public function proProfileSectionsFrom(User $user): array
+    {
+        $settings = $user->public_profile_settings ?? [];
+
+        return [
+            'testimonials' => array_values(array_filter(
+                is_array($settings['pro_testimonials'] ?? null) ? $settings['pro_testimonials'] : [],
+                fn ($row) => is_array($row) && trim((string) ($row['quote'] ?? '')) !== '',
+            )),
+            'external_links' => array_values(array_filter(
+                is_array($settings['pro_external_links'] ?? null) ? $settings['pro_external_links'] : [],
+                fn ($row) => is_array($row) && filled($row['url'] ?? null),
+            )),
+            'media_links' => array_values(array_filter(
+                is_array($settings['pro_media_links'] ?? null) ? $settings['pro_media_links'] : [],
+                fn ($row) => is_array($row) && filled($row['url'] ?? null),
+            )),
         ];
     }
 
@@ -175,6 +334,9 @@ final class FreelancerProSubscriptionService
             app(FreelancerProLedgerService::class)->recordSubscriptionPayment($payment);
 
             $subscription->user->notify(new FreelancerProSubscriptionConfirmedNotification($subscription));
+
+            app(\App\Services\Admin\PremiumPatrol\PremiumPatrolAnomalyService::class)
+                ->scanAfterPremiumPayment($payment->fresh());
 
             return $subscription->fresh();
         });

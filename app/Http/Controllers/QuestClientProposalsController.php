@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Models\User;
+use App\Services\Freelancer\FreelancerProSubscriptionService;
 use App\Services\Proposals\ProposalCompletenessScoreService;
 use App\Services\Proposals\ProposalShortlistService;
 use App\Services\Verification\VerificationEngineService;
@@ -72,6 +73,7 @@ class QuestClientProposalsController extends Controller
     ): array {
         $completeness ??= app(ProposalCompletenessScoreService::class);
         $verification ??= app(VerificationEngineService::class);
+        $proMembership = app(FreelancerProSubscriptionService::class);
 
         $freelancer = $o->freelancer;
         $trustTier = $freelancer ? $verification->effectiveLevel($freelancer) : 0;
@@ -110,6 +112,7 @@ class QuestClientProposalsController extends Controller
                 'slug' => $freelancer->slug,
                 'avatar_url' => $freelancer->avatar_url,
                 'headline' => $freelancer->headline,
+                'is_pro' => $proMembership->isPro($freelancer),
             ] : null,
             'show_url' => route('quests.proposals.show', [$quest->getRouteKey(), $o->id]),
         ];

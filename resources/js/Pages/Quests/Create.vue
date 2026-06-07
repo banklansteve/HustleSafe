@@ -26,6 +26,120 @@
             </div>
 
             <div
+                v-if="postingLimits"
+                class="mt-6 overflow-hidden rounded-2xl border border-amber-200/90 bg-gradient-to-br from-amber-50/95 via-white to-primary-50/40 shadow-sm ring-1 ring-amber-100/80"
+                role="region"
+                aria-label="Quest budget and verification limits"
+            >
+                <div class="border-b border-amber-100/80 bg-white/60 px-4 py-3 sm:px-5">
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-900/80">
+                        Before you start
+                    </p>
+                    <p class="mt-1 text-sm font-bold leading-snug text-slate-900">
+                        Know your quest budget limit and what unlocks the next tier
+                    </p>
+                </div>
+                <div class="grid gap-4 px-4 py-4 sm:grid-cols-2 sm:px-5 sm:py-5">
+                    <div class="rounded-xl border border-white/80 bg-white/90 p-4 shadow-sm ring-1 ring-slate-100">
+                        <p class="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                            Your limit now
+                        </p>
+                        <p class="mt-1 text-xs font-bold text-primary-800">
+                            {{ postingLimits.current_label }}
+                        </p>
+                        <p class="mt-2 text-2xl font-black tabular-nums text-slate-900">
+                            {{ postingLimits.limit_formatted }}
+                        </p>
+                        <p
+                            v-if="postingLimits.limit_capped && postingLimits.earned_limit_formatted"
+                            class="mt-2 text-xs font-semibold leading-relaxed text-amber-900"
+                        >
+                            Your earned tier allows {{ postingLimits.earned_limit_formatted }}; an admin custom cap applies.
+                        </p>
+                        <p
+                            v-else-if="!postingLimits.can_post"
+                            class="mt-2 text-xs font-semibold leading-relaxed text-rose-800"
+                        >
+                            <template v-if="postingLimits.restricted">
+                                Your account is temporarily restricted from posting quests.
+                            </template>
+                            <template v-else>
+                                You cannot post a quest yet — complete verification below to unlock posting.
+                            </template>
+                        </p>
+                        <p v-else class="mt-2 text-xs font-semibold leading-relaxed text-slate-600">
+                            Maximum budget you can set on this quest at your current verification level.
+                        </p>
+                    </div>
+                    <div
+                        v-if="postingLimits.next_level_label && postingLimits.next_level_limit_formatted"
+                        class="rounded-xl border border-primary-100/80 bg-primary-50/50 p-4 shadow-sm ring-1 ring-primary-100/60"
+                    >
+                        <p class="text-[10px] font-black uppercase tracking-wider text-primary-800">
+                            Next tier
+                        </p>
+                        <p class="mt-1 text-xs font-bold text-primary-900">
+                            {{ postingLimits.next_level_label }}
+                        </p>
+                        <p class="mt-2 text-2xl font-black tabular-nums text-slate-900">
+                            up to {{ postingLimits.next_level_limit_formatted }}
+                        </p>
+                        <p class="mt-2 text-xs font-semibold leading-relaxed text-slate-600">
+                            Complete the steps below to raise your posting limit before you reach the budget step.
+                        </p>
+                    </div>
+                    <div
+                        v-else-if="postingLimits.at_max_level"
+                        class="rounded-xl border border-emerald-100/80 bg-emerald-50/40 p-4 shadow-sm ring-1 ring-emerald-100/60"
+                    >
+                        <p class="text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                            Highest tier
+                        </p>
+                        <p class="mt-2 text-sm font-semibold leading-relaxed text-slate-700">
+                            You are at the top verification level for clients. Platform maximum per quest is
+                            {{ postingLimits.platform_max_formatted }}.
+                        </p>
+                    </div>
+                </div>
+                <div
+                    v-if="postingLimits.next_unlock_hint || postingLimits.missing_requirements?.length"
+                    class="border-t border-amber-100/80 px-4 py-4 sm:px-5"
+                >
+                    <p
+                        v-if="postingLimits.next_unlock_title"
+                        class="text-xs font-black uppercase tracking-wide text-slate-500"
+                    >
+                        To unlock {{ postingLimits.next_level_label || 'the next level' }}
+                    </p>
+                    <p
+                        v-if="postingLimits.next_unlock_hint"
+                        class="mt-2 text-sm font-semibold leading-relaxed text-slate-800"
+                    >
+                        {{ postingLimits.next_unlock_hint }}
+                    </p>
+                    <ul
+                        v-if="postingLimits.missing_requirements?.length"
+                        class="mt-3 space-y-2"
+                    >
+                        <li
+                            v-for="item in postingLimits.missing_requirements"
+                            :key="item"
+                            class="flex items-start gap-2 text-sm font-semibold text-slate-800"
+                        >
+                            <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary-600" aria-hidden="true" />
+                            <span>{{ item }}</span>
+                        </li>
+                    </ul>
+                    <Link
+                        :href="postingLimits.verifications_url || route('verifications.index')"
+                        class="mt-4 inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white transition hover:bg-slate-800"
+                    >
+                        Open verifications
+                    </Link>
+                </div>
+            </div>
+
+            <div
                 class="mt-6 rounded-2xl border border-slate-200/90 bg-white px-4 py-4 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-slate-100 sm:px-5"
                 role="region"
                 aria-label="Disputes and escrow"
@@ -108,9 +222,26 @@
                             </div>
                             <div class="mt-6 space-y-4">
                                 <div>
-                                    <InputLabel for="title" value="Title" />
-                                    <TextInput id="title" v-model="form.title" type="text" class="mt-2 w-full rounded-xl border-slate-200 font-semibold shadow-sm" required />
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel for="title" value="Title" />
+                                        <FieldHint text="Short headline shown in search — be specific about what you need." />
+                                    </div>
+                                    <TextInput id="title" v-model="form.title" type="text" maxlength="100" class="mt-2 w-full rounded-xl border-slate-200 font-semibold shadow-sm" required />
                                     <InputError class="mt-2" :message="form.errors.title" />
+                                </div>
+                                <div v-if="fieldProfile.show_required_skills && form.quest_category_id">
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel value="Required skills (optional)" />
+                                        <FieldHint text="Pick up to 10 skills so we can surface freelancers who match your brief." />
+                                    </div>
+                                    <SkillTagInput
+                                        v-model="form.required_skills"
+                                        class="mt-2"
+                                        :category-id="form.quest_category_id"
+                                        :suggest-url="skillsSuggestUrl"
+                                        :invalid="!!form.errors.required_skills"
+                                    />
+                                    <InputError class="mt-2" :message="form.errors.required_skills" />
                                 </div>
                                 <div>
                                     <div class="flex items-center gap-1">
@@ -188,7 +319,10 @@
                                     <InputError class="mt-2" :message="form.errors.availability_need" />
                                 </div>
                                 <div>
-                                    <InputLabel for="traffic_source" value="Traffic source (optional)" />
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel for="traffic_source" value="Traffic source (optional)" />
+                                        <FieldHint text="How you found HustleSafe or this posting flow — for your own tracking only." />
+                                    </div>
                                     <TextInput id="traffic_source" v-model="form.traffic_source" type="text" class="mt-2 w-full rounded-xl border-slate-200 shadow-sm" placeholder="e.g. instagram, newsletter" />
                                 </div>
                                 <p class="text-xs font-semibold leading-relaxed text-slate-600">
@@ -230,7 +364,10 @@
                             </h2>
                             <div class="mt-6 grid gap-5 sm:grid-cols-2">
                                 <div>
-                                    <InputLabel for="state_id" value="State" />
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel for="state_id" value="State" />
+                                        <FieldHint text="Where the work happens or where you are based as the client." />
+                                    </div>
                                     <UiSelect
                                         id="state_id"
                                         v-model="form.state_id"
@@ -242,7 +379,10 @@
                                     <InputError class="mt-2" :message="form.errors.state_id" />
                                 </div>
                                 <div>
-                                    <InputLabel for="local_government_id" value="LGA" />
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel for="local_government_id" value="LGA" />
+                                        <FieldHint text="Local government area — helps match freelancers nearby." />
+                                    </div>
                                     <UiSelect
                                         id="local_government_id"
                                         v-model="form.local_government_id"
@@ -255,7 +395,10 @@
                                     <InputError class="mt-2" :message="form.errors.local_government_id" />
                                 </div>
                                 <div class="sm:col-span-2">
-                                    <InputLabel for="city" value="City / area" />
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel for="city" value="City / area" />
+                                        <FieldHint text="Neighbourhood or city name so pros can judge travel and logistics." />
+                                    </div>
                                     <TextInput id="city" v-model="form.city" type="text" class="mt-2 w-full rounded-xl border-slate-200 shadow-sm" required />
                                     <InputError class="mt-2" :message="form.errors.city" />
                                 </div>
@@ -277,12 +420,18 @@
                                     <InputError class="mt-2" :message="form.errors.start_timing" />
                                 </div>
                                 <div v-if="form.start_timing === 'scheduled'">
-                                    <InputLabel for="sched" value="Planned start date" />
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel for="sched" value="Planned start date" />
+                                        <FieldHint text="First day you expect work to begin — used for scheduling only." />
+                                    </div>
                                     <PremiumDatePicker id="sched" v-model="form.scheduled_start_date" class="mt-2" placeholder="Pick start date" />
                                     <InputError class="mt-2" :message="form.errors.scheduled_start_date" />
                                 </div>
                                 <div>
-                                    <InputLabel for="ecd" value="Estimated duration (days)" />
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel for="ecd" value="Estimated duration (days)" />
+                                        <FieldHint text="Rough time to complete the work — not how long proposals stay open." />
+                                    </div>
                                     <UiSelect
                                         id="ecd"
                                         v-model="form.estimated_completion_days"
@@ -311,6 +460,20 @@
                                     />
                                     <InputError class="mt-2" :message="form.errors.estimated_delivery_date" />
                                 </div>
+                                <div>
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel for="delivery_deadline" value="Delivery deadline (optional)" />
+                                        <FieldHint text="Hard cutoff date for finished work, if you have one." />
+                                    </div>
+                                    <PremiumDatePicker
+                                        id="delivery_deadline"
+                                        v-model="form.delivery_deadline"
+                                        class="mt-2"
+                                        placeholder="Date only — no time"
+                                        :min="todayIso"
+                                    />
+                                    <InputError class="mt-2" :message="form.errors.delivery_deadline" />
+                                </div>
                                 <div class="rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/90 to-white p-4 ring-1 ring-slate-100 sm:p-5">
                                     <div class="flex flex-wrap items-end justify-between gap-2">
                                         <InputLabel for="budget" value="Quest budget" />
@@ -318,19 +481,29 @@
                                     </div>
                                     <div class="mt-2 flex justify-between gap-2 text-[10px] font-black uppercase tracking-wider text-slate-500">
                                         <span>Min {{ formatNgn(minBudgetMinor) }}</span>
-                                        <span>Max {{ formatNgn(effectiveMaxBudgetMinor) }}</span>
+                                        <span>Your max {{ formatNgn(effectiveMaxBudgetMinor) }}</span>
                                     </div>
                                     <p
-                                        v-if="clampedBudgetMinor >= maxBudgetMinor"
-                                        class="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold leading-relaxed text-slate-700 ring-1 ring-slate-100"
+                                        v-if="isVerificationCapped"
+                                        class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold leading-relaxed text-amber-950 ring-1 ring-amber-100"
                                     >
-                                        Need a budget above {{ formatNgn(maxBudgetMinor) }}? Please get in touch with our team — we will help you post high-value quests safely.
+                                        Your verification level ({{ postingLimits?.current_label || 'current tier' }}) caps this quest at
+                                        {{ formatNgn(verificationLimit) }}.
+                                        <template v-if="postingLimits?.next_level_limit_formatted">
+                                            Reach {{ postingLimits.next_level_label }} to post up to {{ postingLimits.next_level_limit_formatted }}.
+                                        </template>
+                                        <Link
+                                            :href="postingLimits?.verifications_url || route('verifications.index')"
+                                            class="font-black text-primary-800 underline decoration-primary-300 underline-offset-2"
+                                        >
+                                            Open verifications
+                                        </Link>
                                     </p>
                                     <p
-                                        v-if="verificationLimit && verificationLimit < maxBudgetMinor"
-                                        class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-black leading-relaxed text-amber-800"
+                                        v-if="clampedBudgetMinor >= platformMaxBudgetMinor"
+                                        class="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold leading-relaxed text-slate-700 ring-1 ring-slate-100"
                                     >
-                                        Your current verification level caps Quest budgets at {{ formatNgn(verificationLimit) }}.
+                                        Need a budget above {{ formatNgn(platformMaxBudgetMinor) }}? Please get in touch with our team — we will help you post high-value quests safely.
                                     </p>
                                     <p
                                         v-if="budgetGuidanceCopy"
@@ -374,39 +547,44 @@
                                 Scope & requirements
                             </h2>
                             <div class="mt-6 space-y-5">
-                                <div v-if="fieldProfile.show_site_visit">
-                                    <div class="flex items-center gap-1">
-                                        <InputLabel value="Site visits before proposals?" />
-                                        <FieldHint text="Great for trades, property, or on-site assessments. Digital-only work usually skips this." />
-                                    </div>
-                                    <UiSelect v-model="siteVisitChoice" class="mt-2" :options="yesNoOptions" />
-                                </div>
                                 <div>
                                     <div class="flex items-center gap-1">
                                         <InputLabel value="Project type" />
-                                        <FieldHint text="Hourly unlocks estimated hours below." />
+                                        <FieldHint text="Fixed price = one total fee. Hourly = paid by the hour — add estimated hours below." />
                                     </div>
                                     <UiSelect v-model="form.project_type" class="mt-2" :options="projectTypeOptions" placeholder="Optional" />
                                 </div>
                                 <div v-if="fieldProfile.show_hourly_fields && form.project_type === 'hourly'">
-                                    <InputLabel for="eh" value="Estimated hours" />
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel for="eh" value="Estimated hours (optional)" />
+                                        <FieldHint text="Total hours you expect — helps freelancers price hourly work." />
+                                    </div>
                                     <input id="eh" v-model.number="form.estimated_hours" type="number" min="1" max="2000" class="mt-2 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm" />
                                     <InputError class="mt-2" :message="form.errors.estimated_hours" />
                                 </div>
                                 <div v-if="fieldProfile.show_team_size">
-                                    <InputLabel value="Freelancers needed" />
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel value="People for the job" />
+                                        <FieldHint text="Solo, a small team, on-site help from you, or let the pro choose crew size." />
+                                    </div>
                                     <UiSelect v-model="form.team_size" class="mt-2" :options="teamSizeOptions" />
                                     <InputError class="mt-2" :message="form.errors.team_size" />
                                 </div>
                                 <div v-if="fieldProfile.show_site_access" class="space-y-4 rounded-xl border border-slate-100 bg-slate-50/60 p-4 ring-1 ring-slate-100">
                                     <p class="text-xs font-black uppercase tracking-wide text-slate-600">On-site brief</p>
                                     <div>
-                                        <InputLabel value="Location accessibility" />
+                                        <div class="flex items-center gap-1">
+                                            <InputLabel value="Location accessibility" />
+                                            <FieldHint text="Stairs, lifts, ladder work, or tight access — so pros know what to expect." />
+                                        </div>
                                         <UiSelect v-model="form.site_access_level" class="mt-2" :options="siteAccessOptions" placeholder="Select access type" />
                                         <InputError class="mt-2" :message="form.errors.site_access_level" />
                                     </div>
                                     <div>
-                                        <InputLabel value="Are pets usually on-site?" />
+                                        <div class="flex items-center gap-1">
+                                            <InputLabel value="Are pets usually on-site?" />
+                                            <FieldHint text="Helps pros prepare if animals are normally present during visits." />
+                                        </div>
                                         <div class="mt-2 flex flex-wrap gap-4 text-sm font-semibold text-slate-800">
                                             <label class="inline-flex cursor-pointer items-center gap-2">
                                                 <input v-model="form.pets_on_site" type="radio" class="text-primary-600 focus:ring-primary-500" :value="true" />
@@ -420,7 +598,10 @@
                                         <InputError class="mt-2" :message="form.errors.pets_on_site" />
                                     </div>
                                     <div v-if="form.pets_on_site === true">
-                                        <InputLabel value="Pet details (optional)" />
+                                        <div class="flex items-center gap-1">
+                                            <InputLabel value="Pet details (optional)" />
+                                            <FieldHint text="Breed, temperament, or where pets stay while work happens." />
+                                        </div>
                                         <textarea
                                             v-model="form.pets_detail"
                                             rows="2"
@@ -431,6 +612,12 @@
                                         <InputError class="mt-2" :message="form.errors.pets_detail" />
                                     </div>
                                 </div>
+                                <QuestPreferenceFields
+                                    v-if="preferenceProfile && (preferenceProfile.show_preferences || preferenceProfile.catch_all_message)"
+                                    v-model="form.preferences"
+                                    :profile="preferenceProfile"
+                                    class="mt-6"
+                                />
                             </div>
                         </section>
 
@@ -461,7 +648,10 @@
                                     <InputError class="mt-2" :message="form.errors.auto_listing_expiry_days" />
                                 </div>
                                 <div>
-                                    <InputLabel for="maxo" value="Max proposals (optional)" />
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel for="maxo" value="Max proposals (optional)" />
+                                        <FieldHint text="Limit how many freelancers can apply — leave blank for no cap." />
+                                    </div>
                                     <input id="maxo" v-model.number="form.max_offers" type="number" min="1" max="200" class="mt-2 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm" />
                                 </div>
                                 <div v-if="freelancerNetworkGroups.length">
@@ -480,9 +670,12 @@
                                     />
                                 </div>
                                 <div>
-                                    <p class="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                        Or search freelancers
-                                    </p>
+                                    <div class="flex items-center gap-1">
+                                        <p class="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Or search freelancers
+                                        </p>
+                                        <FieldHint text="Find someone by name to tag — useful for invite-only quests or direct invites." />
+                                    </div>
                                     <TextInput v-model="tagQuery" type="search" class="mt-2 w-full rounded-xl border-slate-200 text-sm shadow-sm" placeholder="Search by name…" />
                                     <ul v-if="tagResults.length" class="mt-2 max-h-40 overflow-auto rounded-xl border border-slate-100 bg-white shadow-md">
                                         <li v-for="u in tagResults" :key="u.id">
@@ -497,7 +690,10 @@
                                     </div>
                                 </div>
                                 <div>
-                                    <InputLabel value="Reference files" />
+                                    <div class="flex items-center gap-1">
+                                        <InputLabel value="Reference files (optional)" />
+                                        <FieldHint text="Briefs, mood boards, specs, or photos freelancers should review before proposing." />
+                                    </div>
                                     <div
                                         class="mt-2 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-7 text-center transition active:scale-[0.99] sm:py-8"
                                         :class="dragOver ? 'border-primary-400 bg-primary-50/80' : 'border-slate-200 bg-slate-50/80 hover:border-primary-300'"
@@ -675,6 +871,8 @@ import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
 import FieldHint from '@/Components/Ui/FieldHint.vue';
 import UiMultiSelect from '@/Components/Ui/UiMultiSelect.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
+import SkillTagInput from '@/Components/Quests/SkillTagInput.vue';
+import QuestPreferenceFields from '@/Components/Quests/QuestPreferenceFields.vue';
 import QuestRichDescriptionEditor from '@/Components/Quests/QuestRichDescriptionEditor.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
@@ -692,10 +890,15 @@ const props = defineProps({
     locations: { type: Array, required: true },
     categoryTree: { type: Array, required: true },
     startTimingOptions: { type: Array, required: true },
-    maxBudgetMinor: { type: Number, default: 500_000_000 },
+    maxBudgetMinor: { type: Number, default: 0 },
     verificationLimit: { type: Number, default: null },
-    minBudgetMinor: { type: Number, default: 10_000 },
+    posting_limits: {
+        type: Object,
+        default: null,
+    },
+    minBudgetMinor: { type: Number, default: 0 },
     fieldProfileUrl: { type: String, required: true },
+    skillsSuggestUrl: { type: String, required: true },
     freelancersYouFollow: { type: Array, default: () => [] },
     freelancersFollowingYou: { type: Array, default: () => [] },
     quest_stats_hints: {
@@ -736,6 +939,9 @@ const fileInput = ref(null);
 const fileRows = ref([]);
 let fileRowKey = 0;
 const parentCategoryId = ref(0);
+const preferenceProfile = ref({});
+const todayIso = new Date().toISOString().slice(0, 10);
+
 const fieldProfile = reactive({
     show_site_visit: false,
     show_site_access: false,
@@ -744,6 +950,7 @@ const fieldProfile = reactive({
     show_hourly_fields: true,
     show_team_size: true,
     show_location_pref: true,
+    show_required_skills: false,
     remote_first: false,
     default_site_visits: false,
 });
@@ -784,10 +991,8 @@ const projectTypeOptions = [
 const teamSizeOptions = [
     { value: 'solo', label: 'Solo freelancer' },
     { value: 'small_team', label: 'Small team (2–5)' },
-];
-const yesNoOptions = [
-    { value: 'yes', label: 'Yes, visits may be needed' },
-    { value: 'no', label: 'No site visits' },
+    { value: 'flexible_crew', label: 'Pro decides crew size (any number needed)' },
+    { value: 'client_assists', label: 'Client or family will assist on site' },
 ];
 
 const siteAccessOptions = [
@@ -798,8 +1003,6 @@ const siteAccessOptions = [
     { value: 'narrow_or_difficult_access', label: 'Narrow or difficult access' },
     { value: 'other', label: 'Other (explain in description)' },
 ];
-
-const siteVisitChoice = ref('no');
 
 const form = useForm({
     quest_category_id: 0,
@@ -815,6 +1018,9 @@ const form = useForm({
     scheduled_start_date: '',
     estimated_completion_days: 14,
     estimated_delivery_date: '',
+    delivery_deadline: '',
+    required_skills: [],
+    preferences: {},
     budget_amount_minor: 10_000,
     project_type: 'fixed_price',
     estimated_hours: null,
@@ -980,7 +1186,7 @@ const freelancerNetworkGroups = computed(() => {
 });
 
 function clampBudgetMinor(n) {
-    const minB = props.minBudgetMinor;
+    const minB = minBudgetMinorValue.value;
     const maxB = effectiveMaxBudgetMinor.value;
     const x = Number(n);
     if (!Number.isFinite(x)) {
@@ -991,7 +1197,7 @@ function clampBudgetMinor(n) {
 }
 
 const budgetSliderStep = computed(() => {
-    const span = effectiveMaxBudgetMinor.value - props.minBudgetMinor;
+    const span = effectiveMaxBudgetMinor.value - minBudgetMinorValue.value;
     if (span <= 500_000) {
         return 10_000;
     }
@@ -1012,7 +1218,20 @@ const budgetSliderModel = computed({
 });
 
 const clampedBudgetMinor = computed(() => clampBudgetMinor(form.budget_amount_minor));
-const effectiveMaxBudgetMinor = computed(() => Math.max(props.minBudgetMinor, Math.min(props.maxBudgetMinor, props.verificationLimit || props.maxBudgetMinor)));
+const postingLimits = computed(() => props.posting_limits);
+const platformMaxBudgetMinor = computed(() => postingLimits.value?.platform_max_minor ?? props.maxBudgetMinor ?? 0);
+const minBudgetMinorValue = computed(() => postingLimits.value?.min_quest_budget_minor ?? props.minBudgetMinor ?? 0);
+const effectiveMaxBudgetMinor = computed(() => {
+    const platform = platformMaxBudgetMinor.value;
+    const tier = props.verificationLimit ?? postingLimits.value?.limit_minor ?? platform;
+    const tierCap = tier > 0 ? tier : platform;
+
+    return Math.max(minBudgetMinorValue.value, Math.min(platform, tierCap));
+});
+const isVerificationCapped = computed(() => {
+    const limit = props.verificationLimit ?? postingLimits.value?.limit_minor;
+    return limit != null && limit > 0 && limit < platformMaxBudgetMinor.value;
+});
 
 const budgetNairaText = ref('');
 
@@ -1171,9 +1390,6 @@ const previewBlocks = computed(() => {
             id: 5,
             title: 'Scope',
             rows: [
-                ...(fieldProfile.show_site_visit
-                    ? [{ label: 'Site visits', value: form.site_visits_allowed ? 'Allowed / expected' : 'Not expected' }]
-                    : []),
                 ...(fieldProfile.show_site_access
                     ? [
                           { label: 'Location access', value: optionLabel(siteAccessOptions, form.site_access_level) },
@@ -1190,7 +1406,7 @@ const previewBlocks = computed(() => {
                 ...(fieldProfile.show_hourly_fields && form.project_type === 'hourly'
                     ? [{ label: 'Est. hours', value: String(form.estimated_hours ?? '—') }]
                     : []),
-                ...(fieldProfile.show_team_size ? [{ label: 'Team', value: optionLabel(teamSizeOptions, form.team_size) }] : []),
+                ...(fieldProfile.show_team_size ? [{ label: 'People for the job', value: optionLabel(teamSizeOptions, form.team_size) }] : []),
             ],
         },
         {
@@ -1215,8 +1431,8 @@ function validationDeps() {
         fieldProfile,
         categoryTree: props.categoryTree,
         locations: props.locations,
-        maxBudgetMinor: props.maxBudgetMinor,
-        minBudgetMinor: props.minBudgetMinor,
+        maxBudgetMinor: effectiveMaxBudgetMinor.value,
+        minBudgetMinor: minBudgetMinorValue.value,
         proposalDeadlineBounds: proposalDeadlineBounds.value,
     };
 }
@@ -1234,7 +1450,6 @@ const { clearDraft } = useQuestCreateDraft(
         step: step.value,
         parentCategoryId: parentCategoryId.value,
         fieldProfile: { ...fieldProfile },
-        siteVisitChoice: siteVisitChoice.value,
         utm: { ...utm },
         tagLabelById: { ...tagLabelById.value },
         form,
@@ -1247,13 +1462,11 @@ const { clearDraft } = useQuestCreateDraft(
             parentCategoryId.value = data.parentCategoryId;
         }
         if (data.fieldProfile && typeof data.fieldProfile === 'object') {
-            Object.assign(fieldProfile, data.fieldProfile);
+            const { preferences: _preferences, ...profileFields } = data.fieldProfile;
+            Object.assign(fieldProfile, profileFields);
         }
         if (data.utm && typeof data.utm === 'object') {
             Object.assign(utm, data.utm);
-        }
-        if (data.siteVisitChoice === 'yes' || data.siteVisitChoice === 'no') {
-            siteVisitChoice.value = data.siteVisitChoice;
         }
         if (data.tagLabelById && typeof data.tagLabelById === 'object') {
             tagLabelById.value = { ...data.tagLabelById };
@@ -1272,10 +1485,6 @@ const { clearDraft } = useQuestCreateDraft(
         maxReachedStep.value = Math.max(maxReachedStep.value, step.value, 1);
     },
 );
-
-watch(siteVisitChoice, (v) => {
-    form.site_visits_allowed = v === 'yes';
-});
 
 function onParentCategoryChange(value) {
     const next = Number(value);
@@ -1336,7 +1545,9 @@ watch(
         }
         try {
             const { data } = await axios.get(props.fieldProfileUrl, { params: { quest_category_id: id } });
-            Object.assign(fieldProfile, data);
+            const { preferences, ...profileFields } = data || {};
+            Object.assign(fieldProfile, profileFields);
+            preferenceProfile.value = preferences && typeof preferences === 'object' ? preferences : {};
             if (!fieldProfile.show_site_access) {
                 form.site_access_level = '';
                 form.pets_on_site = null;
@@ -1345,17 +1556,13 @@ watch(
             if (fieldProfile.remote_first || fieldProfile.show_location_pref === false) {
                 form.freelancer_location_pref = 'remote_friendly';
             }
-            if (!fieldProfile.show_site_visit) {
-                siteVisitChoice.value = 'no';
-                form.site_visits_allowed = false;
-            } else if (fieldProfile.default_site_visits) {
-                siteVisitChoice.value = 'yes';
-                form.site_visits_allowed = true;
-            }
             if (!fieldProfile.show_availability) {
                 form.availability_need = null;
             } else if (!form.availability_need) {
                 form.availability_need = 'as_needed';
+            }
+            if (!fieldProfile.show_required_skills) {
+                form.required_skills = [];
             }
         } catch {
             /* ignore */
@@ -1597,14 +1804,13 @@ function buildSubmitPayload(data) {
         max_offers: data.max_offers || null,
         traffic_source: data.traffic_source?.trim() || null,
         estimated_delivery_date: data.estimated_delivery_date || null,
+        delivery_deadline: data.delivery_deadline || null,
+        required_skills: data.required_skills || [],
+        preferences: data.preferences || {},
         scheduled_start_date: data.scheduled_start_date || null,
     };
 
-    if (fieldProfile.show_site_visit) {
-        payload.site_visits_allowed = !!data.site_visits_allowed;
-    } else {
-        delete payload.site_visits_allowed;
-    }
+    payload.site_visits_allowed = false;
 
     if (fieldProfile.show_site_access) {
         payload.site_access_level = data.site_access_level || null;

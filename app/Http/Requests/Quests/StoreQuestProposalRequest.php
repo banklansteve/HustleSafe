@@ -4,9 +4,11 @@ namespace App\Http\Requests\Quests;
 
 use App\Models\QuestOffer;
 use App\Rules\NoDirectContactInformation;
+use App\Services\Verification\VerificationEngineService;
 use App\Support\ProposalMoneyCalculator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Validator;
 
 class StoreQuestProposalRequest extends FormRequest
@@ -29,6 +31,9 @@ class StoreQuestProposalRequest extends FormRequest
         }
         if ($this->input('progress_report_frequency') === '') {
             $this->merge(['progress_report_frequency' => null]);
+        }
+        if ($this->input('progress_report_frequency') !== 'custom') {
+            $this->merge(['progress_report_frequency_note' => null]);
         }
 
         $pricing = $this->input('pricing');
@@ -65,6 +70,8 @@ class StoreQuestProposalRequest extends FormRequest
     public function rules(): array
     {
         $contact = [new NoDirectContactInformation];
+        $engine = app(VerificationEngineService::class);
+        $maxNgn = $engine->platformMaxProposalValueNgn();
 
         return [
             'pitch' => ['required', 'string', 'min:40', 'max:6000', ...$contact],
@@ -75,18 +82,23 @@ class StoreQuestProposalRequest extends FormRequest
             'estimated_duration_days' => ['nullable', 'integer', 'min:1', 'max:730'],
             'corrections_included' => ['sometimes', 'boolean'],
             'corrections_rounds' => ['nullable', 'integer', 'min:1', 'max:50', 'required_if:corrections_included,true'],
-            'progress_report_frequency' => ['nullable', 'string', Rule::in(['daily', 'twice_weekly', 'weekly', 'biweekly', 'milestone_based', 'on_request'])],
+            'progress_report_frequency' => ['nullable', 'string', Rule::in(['daily', 'twice_weekly', 'weekly', 'biweekly', 'milestone_based', 'on_request', 'custom'])],
+            'progress_report_frequency_note' => ['nullable', 'string', 'max:200', 'required_if:progress_report_frequency,custom'],
             'materials' => ['nullable', 'array', 'max:40'],
             'materials.*.label' => ['required', 'string', 'max:200'],
             'materials.*.quantity' => ['nullable', 'string', 'max:64'],
-            'materials.*.unit_price_ngn' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
-            'materials.*.cost_ngn' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
+            'materials.*.unit_price_ngn' => ['nullable', 'integer', 'min:0', 'max:'.$maxNgn],
+            'materials.*.cost_ngn' => ['nullable', 'integer', 'min:0', 'max:'.$maxNgn],
             'pricing' => ['required', 'array'],
-            'pricing.professional_fee_ngn' => ['required', 'integer', 'min:0', 'max:1000000000'],
-            'pricing.travel_cost_ngn' => ['nullable', 'integer', 'min:0', 'max:500000000'],
-            'pricing.discount_ngn' => ['nullable', 'integer', 'min:0', 'max:500000000'],
-            'pricing.grand_total_ngn' => ['required', 'integer', 'min:1', 'max:1000000000'],
+            'pricing.professional_fee_ngn' => ['required', 'integer', 'min:0', 'max:'.$maxNgn],
+            'pricing.travel_cost_ngn' => ['nullable', 'integer', 'min:0', 'max:'.$maxNgn],
+            'pricing.discount_ngn' => ['nullable', 'integer', 'min:0', 'max:'.$maxNgn],
+            'pricing.grand_total_ngn' => ['required', 'integer', 'min:1', 'max:'.$maxNgn],
             'accepted_terms' => ['accepted'],
+            'preference_responses' => ['nullable', 'array'],
+            'preference_responses.*' => ['array'],
+            'preference_responses.*.response_type' => ['required_with:preference_responses.*', 'string', Rule::in(['accept', 'propose_alternative', 'clarify', 'custom'])],
+            'preference_responses.*.response_text' => ['nullable', 'string', 'max:500'],
         ];
     }
 
@@ -143,6 +155,47 @@ class StoreQuestProposalRequest extends FormRequest
 
             if ($expectedNgn < 1) {
                 $v->errors()->add('pricing.grand_total_ngn', __('Grand total must reflect your quote, materials, travel, and discounts.'));
+            }
+        });
+
+        $validator->after(function (Validator $v): void {
+            if ($v->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $user = $this->user();
+            $quest = $this->route('quest');
+            if ($user === null || $quest === null) {
+                return;
+            }
+
+            $breakdown = ProposalMoneyCalculator::breakdown(
+                is_array($this->input('materials')) ? $this->input('materials') : [],
+                is_array($this->input('pricing')) ? $this->input('pricing') : [],
+            );
+            if ($breakdown === null) {
+                return;
+            }
+
+            $grandMinor = (int) ($breakdown['grand_minor'] ?? 0);
+            $engine = app(VerificationEngineService::class);
+
+            if ($grandMinor > $engine->platformMaxProposalValueMinor()) {
+                $v->errors()->add('pricing.grand_total_ngn', __('Proposal total cannot exceed the platform maximum of :amount.', [
+                    'amount' => $engine->formatMoneyMinor($engine->platformMaxProposalValueMinor()),
+                ]));
+
+                return;
+            }
+
+            try {
+                $engine->assertFreelancerCanPropose($user, $quest, $grandMinor);
+            } catch (ValidationException $exception) {
+                foreach ($exception->errors() as $field => $messages) {
+                    foreach ($messages as $message) {
+                        $v->errors()->add($field, $message);
+                    }
+                }
             }
         });
     }

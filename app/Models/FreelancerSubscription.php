@@ -25,6 +25,10 @@ class FreelancerSubscription extends Model
         'total_spent_minor',
         'cancelled_at',
         'cancellation_reason',
+        'admin_suspended_at',
+        'admin_suspended_by_id',
+        'admin_suspension_reason',
+        'manual_review_until',
     ];
 
     protected function casts(): array
@@ -35,6 +39,8 @@ class FreelancerSubscription extends Model
             'auto_renew' => 'boolean',
             'payment_method_snapshot' => 'array',
             'cancelled_at' => 'datetime',
+            'admin_suspended_at' => 'datetime',
+            'manual_review_until' => 'datetime',
         ];
     }
 

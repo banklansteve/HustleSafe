@@ -54,8 +54,10 @@
                             <tbody class="divide-y divide-slate-100 dark:divide-white/10">
                                 <tr v-for="item in activeQueue.data" :key="item.id" class="cursor-pointer hover:bg-primary-50/60 dark:hover:bg-white/[0.03]" @click="openCase(item)">
                                     <td class="px-3 py-4">
-                                        <p class="font-black">{{ item.title }}</p>
-                                        <p class="mt-1 max-w-md text-xs font-semibold text-slate-500">{{ item.excerpt }}</p>
+                                        <p class="font-black leading-snug">{{ plainContent(item.title) }}</p>
+                                        <p class="mt-1 max-w-md text-xs font-semibold leading-relaxed text-slate-600">
+                                            {{ plainContent(item.excerpt, 220) }}
+                                        </p>
                                     </td>
                                     <td class="px-3 py-4">
                                         <p class="font-bold">{{ item.subject?.name || '—' }}</p>
@@ -78,8 +80,10 @@
                         <button v-for="item in activeQueue.data" :key="item.id" type="button" class="rounded-3xl border p-4 text-left" :class="shell.card" @click="openCase(item)">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
-                                    <p class="font-black">{{ item.title }}</p>
-                                    <p class="mt-1 text-xs font-semibold text-slate-500">{{ item.excerpt }}</p>
+                                    <p class="font-black leading-snug">{{ plainContent(item.title) }}</p>
+                                    <p class="mt-1 text-xs font-semibold leading-relaxed text-slate-600">
+                                        {{ plainContent(item.excerpt, 180) }}
+                                    </p>
                                 </div>
                                 <span class="rounded-full px-2 py-1 text-[10px] font-black" :class="severityClass(item.severity)">{{ item.severity }}</span>
                             </div>
@@ -105,7 +109,7 @@
                             </thead>
                             <tbody class="divide-y divide-slate-100 dark:divide-white/10">
                                 <tr v-for="row in history.data" :key="row.id">
-                                    <td class="px-3 py-4 font-black">{{ row.content }}</td>
+                                    <td class="px-3 py-4 font-black leading-snug">{{ plainContent(row.content) }}</td>
                                     <td class="px-3 py-4 capitalize">{{ row.decision.replace(/_/g, ' ') }}</td>
                                     <td class="px-3 py-4">{{ row.admin }}</td>
                                     <td class="px-3 py-4">{{ row.time_to_decision }}</td>
@@ -165,8 +169,10 @@
             <div v-if="selectedCase" class="space-y-5">
                 <div class="rounded-3xl border p-4" :class="shell.card">
                     <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">Content preview</p>
-                    <h3 class="mt-2 text-xl font-black" :class="shell.title">{{ selectedCase.title }}</h3>
-                    <p class="mt-3 whitespace-pre-line text-sm font-semibold leading-6">{{ highlightedText }}</p>
+                    <h3 class="mt-2 text-xl font-black leading-snug" :class="shell.title">{{ plainContent(selectedCase.title) }}</h3>
+                    <p class="mt-3 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-700 dark:text-slate-200">
+                        {{ contentPreviewText }}
+                    </p>
                 </div>
 
                 <div class="rounded-3xl border p-4" :class="shell.card">
@@ -177,7 +183,7 @@
                                 <p class="font-black">{{ trigger.category || trigger.rule_type }}</p>
                                 <span class="rounded-full px-2 py-1 text-[10px] font-black" :class="severityClass(trigger.severity)">{{ trigger.confidence }}%</span>
                             </div>
-                            <p class="mt-1 text-xs font-semibold text-slate-500">{{ trigger.context }}</p>
+                            <p class="mt-1 text-xs font-semibold leading-relaxed text-slate-600">{{ plainContent(trigger.context, 280) }}</p>
                         </div>
                     </div>
                 </div>
@@ -218,6 +224,7 @@ import AdminTabbedPage from '@/Components/Admin/AdminTabbedPage.vue';
 import { useTabState } from '@/composables/useTabState';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
 import AdminShell from '@/Layouts/AdminShell.vue';
+import { plainText as plainContent } from '@/utils/plainText';
 import { router, useForm } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 
@@ -267,7 +274,17 @@ const decisionForm = reactive({
 
 let debounceTimer = null;
 
-const highlightedText = computed(() => selectedCase.value?.snapshot?.text || selectedCase.value?.excerpt || '');
+const contentPreviewText = computed(() => {
+    const snapshot = selectedCase.value?.snapshot ?? {};
+    const parts = [
+        snapshot.text,
+        snapshot.report_details,
+        selectedCase.value?.excerpt,
+    ].filter(Boolean);
+
+    return plainContent(parts.join('\n\n'));
+});
+
 const actionButtonClass = computed(() => decisionForm.action.includes('remove') ? 'bg-rose-600 text-white' : shell.btnPrimary);
 
 function queueTone(count) {
@@ -294,6 +311,10 @@ function debouncedApply() {
 async function openCase(item) {
     const { data } = await window.axios.get(route('admin.content-moderation.cases.show', item.id));
     selectedCase.value = data;
+    decisionForm.edited.title = plainContent(data.title);
+    decisionForm.edited.description = plainContent(data.snapshot?.text || data.excerpt || '');
+    decisionForm.edited.comment = plainContent(data.snapshot?.text || '');
+    decisionForm.edited.bio = plainContent(data.snapshot?.text || '');
     caseOpen.value = true;
 }
 

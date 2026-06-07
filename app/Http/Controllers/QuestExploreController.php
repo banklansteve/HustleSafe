@@ -97,12 +97,9 @@ class QuestExploreController extends Controller
             'freelancer_proposals' => $freelancerProposals,
             'workspace' => $workspace->toInertiaProps($user),
             'explore_mode' => $user->role?->slug === 'client' ? 'client' : 'freelancer',
-            'verification_access' => $verificationEngine ? [
-                'effective_level' => $verificationEngine->effectiveLevel($user),
-                'proposal_limit_minor' => $verificationEngine->freelancerProposalLimitMinor($user),
-                'missing_for_next_level' => $verificationEngine->missingForNextLevelPublic($user),
-                'verifications_url' => route('verifications.index'),
-            ] : null,
+            'verification_access' => $verificationEngine
+                ? $verificationEngine->freelancerVerificationAccessContext($user)
+                : null,
         ]);
     }
 }

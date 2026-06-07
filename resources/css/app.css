@@ -51,3 +51,16 @@
     background-color: #f1f5f9;
 }
 
+/* Quest rich description editor — ensure typed text stays readable on white backgrounds */
+@layer components {
+    .quest-rich-editor .ProseMirror,
+    .quest-rich-editor .quest-rich-prosemirror {
+        color: #4b5563 !important;
+        -webkit-text-fill-color: #4b5563;
+    }
+
+    .quest-rich-editor .ProseMirror :where(p, li, h2, h3, blockquote, span) {
+        color: inherit;
+    }
+}
+

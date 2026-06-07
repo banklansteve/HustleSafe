@@ -548,6 +548,20 @@ const SettingControl = defineComponent({
             if (setting.type === 'readonly') {
                 return h('div', { class: 'min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300' }, display(controlProps.modelValue));
             }
+            if (setting.type === 'money') {
+                return h('div', { class: 'flex min-h-11 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-400 dark:border-white/10 dark:bg-slate-950' }, [
+                    h('span', { class: 'flex items-center border-r border-slate-200 px-3 text-sm font-black text-slate-600 dark:border-white/10 dark:text-slate-300' }, '₦'),
+                    h('input', {
+                        class: 'min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm font-bold text-slate-950 focus:outline-none focus:ring-0 dark:text-white',
+                        type: 'number',
+                        min: 0,
+                        step: 1,
+                        value: controlProps.modelValue ?? '',
+                        placeholder: 'Amount in naira',
+                        onInput: (event) => emit('update:modelValue', event.target.value === '' ? 0 : event.target.valueAsNumber),
+                    }),
+                ]);
+            }
 
             return h('input', {
                 class: inputClass.value,

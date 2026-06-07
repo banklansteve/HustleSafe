@@ -11,9 +11,11 @@ use App\Enums\QuestVisibility;
 use App\Models\Quest;
 use App\Models\QuestCategory;
 use App\Models\User;
+use App\Services\Quest\QuestPreferenceService;
 use App\Services\QuestDescriptionSanitizer;
 use App\Services\QuestFormFieldProfileService;
 use App\Support\PlatformSettings;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -27,7 +29,8 @@ class StoreQuestRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $profiles = app(QuestFormFieldProfileService::class);
-        $profile = $profiles->profileForLeafCategoryId((int) $this->input('quest_category_id', 0));
+        $catId = (int) $this->input('quest_category_id', 0);
+        $profile = $profiles->profileForLeafCategoryId($catId);
 
         $data = $this->all();
 
@@ -35,7 +38,10 @@ class StoreQuestRequest extends FormRequest
             $data['description'] = app(QuestDescriptionSanitizer::class)->clean((string) $data['description']);
         }
 
-        $this->replace($profiles->normalizeSubmittedPayload($data, $profile));
+        $data = $profiles->normalizeSubmittedPayload($data, $profile);
+        $data = app(QuestPreferenceService::class)->normalizeSubmittedPayload($data, $catId > 0 ? $catId : null);
+
+        $this->replace($data);
     }
 
     /**
@@ -44,12 +50,19 @@ class StoreQuestRequest extends FormRequest
     public function rules(): array
     {
         $bounds = PlatformSettings::proposalDeadlineBounds();
+        $engine = app(VerificationEngineService::class);
+        $minBudget = $engine->minQuestBudgetMinor();
+        $maxBudget = $engine->platformMaxQuestBudgetMinor();
         $profiles = app(QuestFormFieldProfileService::class);
         $profile = $profiles->profileForLeafCategoryId((int) $this->input('quest_category_id', 0));
 
         $rules = [
-            'title' => ['required', 'string', 'max:200'],
+            'title' => ['required', 'string', 'max:100'],
             'description' => ['required', 'string', 'max:50000'],
+            'required_skills' => ['nullable', 'array', 'max:10'],
+            'required_skills.*' => ['string', 'max:80'],
+            'delivery_deadline' => ['nullable', 'date', 'after_or_equal:today'],
+            'preferences' => ['nullable', 'array'],
             'quest_category_id' => ['required', 'integer', Rule::exists('quest_categories', 'id')->whereNotNull('parent_id')->where('is_active', true)->where('status', 'active')],
             'visibility' => ['required', Rule::enum(QuestVisibility::class)],
             'freelancer_location_pref' => ['required', Rule::enum(QuestFreelancerLocationPref::class)],
@@ -60,7 +73,7 @@ class StoreQuestRequest extends FormRequest
                 Rule::exists('local_governments', 'id')->where('state_id', (int) $this->input('state_id', 0)),
             ],
             'city' => ['required', 'string', 'max:160'],
-            'budget_amount_minor' => ['required', 'integer', 'min:10000', 'max:500000000'],
+            'budget_amount_minor' => ['required', 'integer', 'min:'.$minBudget, 'max:'.$maxBudget],
             'start_timing' => ['required', Rule::enum(QuestStartTiming::class)],
             'scheduled_start_date' => ['nullable', 'date'],
             'estimated_completion_days' => ['required', 'integer', 'min:1', 'max:365'],
@@ -172,7 +185,7 @@ class StoreQuestRequest extends FormRequest
             }
 
             if (! empty($profile['show_team_size']) && ! $this->filled('team_size')) {
-                $v->errors()->add('team_size', __('Choose whether you need one freelancer or a small squad.'));
+                $v->errors()->add('team_size', __('Choose how many people should work on this quest.'));
             }
 
             if (! empty($profile['show_site_access']) && $this->boolean('pets_on_site') && strlen(trim((string) $this->input('pets_detail', ''))) > 255) {

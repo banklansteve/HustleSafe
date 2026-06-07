@@ -61,6 +61,9 @@ class QuestOfferController extends Controller
                 'corrections_included' => (bool) ($validated['corrections_included'] ?? false),
                 'corrections_rounds' => ($validated['corrections_included'] ?? false) ? ($validated['corrections_rounds'] ?? null) : null,
                 'progress_report_frequency' => $validated['progress_report_frequency'] ?? null,
+                'progress_report_frequency_note' => ($validated['progress_report_frequency'] ?? null) === 'custom'
+                    ? ($validated['progress_report_frequency_note'] ?? null)
+                    : null,
                 'materials' => $payload['materials'],
                 'pricing_snapshot' => $payload['pricing_snapshot'],
                 'quoted_amount_minor' => $grand,
@@ -78,6 +81,15 @@ class QuestOfferController extends Controller
         }
 
         $quest->increment('offers_count');
+
+        if (! empty($validated['preference_responses'])) {
+            app(\App\Services\Quest\ProposalPreferenceResponseService::class)->syncForOffer(
+                $offer,
+                $quest,
+                $validated['preference_responses'],
+            );
+        }
+
         app(\App\Services\Freelancer\ProposalQuotaService::class)->recordSubmission($user);
 
         defer(function () use ($quest): void {
@@ -95,7 +107,7 @@ class QuestOfferController extends Controller
             $verificationEngine->recordArbitrationAgreement($quest, $offer, $user, 'freelancer');
         }
 
-        if ($grand >= (int) config('quests.high_value_proposal_minor', 5_000_000)) {
+        if ($grand >= (int) ($verificationEngine->safeguards()['anomaly_high_value_minor'] ?? 0)) {
             $quest->loadMissing(['client', 'questCategory', 'stateModel']);
             app(AdminActivityFeedService::class)->record(
                 'financial',
@@ -162,6 +174,9 @@ class QuestOfferController extends Controller
             'corrections_included' => (bool) ($validated['corrections_included'] ?? false),
             'corrections_rounds' => ($validated['corrections_included'] ?? false) ? ($validated['corrections_rounds'] ?? null) : null,
             'progress_report_frequency' => $validated['progress_report_frequency'] ?? null,
+            'progress_report_frequency_note' => ($validated['progress_report_frequency'] ?? null) === 'custom'
+                ? ($validated['progress_report_frequency_note'] ?? null)
+                : null,
             'materials' => $payload['materials'],
             'pricing_snapshot' => $payload['pricing_snapshot'],
             'quoted_amount_minor' => $grand,

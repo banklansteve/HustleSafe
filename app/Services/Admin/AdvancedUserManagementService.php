@@ -191,10 +191,15 @@ class AdvancedUserManagementService
                 'metadata' => $verification->metadata ?? [],
             ])->values(),
             'verification_engine' => [
-                'earned_level' => $verificationEngine->storedLevel($user),
+                'earned_level' => $verificationEngine->earnedLevel($user),
                 'effective_level' => $verificationEngine->effectiveLevel($user),
+                'earned_label' => $verificationEngine->levelLabel($verificationEngine->earnedLevel($user), $user),
+                'effective_label' => $verificationEngine->levelLabel($verificationEngine->effectiveLevel($user), $user),
                 'client_posting_limit_minor' => $verificationEngine->clientPostingLimitMinor($user),
                 'freelancer_proposal_limit_minor' => $verificationEngine->freelancerProposalLimitMinor($user),
+                'client_posting_limit_formatted' => $verificationEngine->formatMoneyMinor($verificationEngine->clientPostingLimitMinor($user)),
+                'freelancer_proposal_limit_formatted' => $verificationEngine->formatMoneyMinor($verificationEngine->freelancerProposalLimitMinor($user)),
+                'tier_catalog' => $verificationEngine->tierCatalogForRole($verificationEngine->isFreelancer($user)),
                 'override' => [
                     'level' => $user->verification_level_override,
                     'reason' => $user->verification_level_override_reason,

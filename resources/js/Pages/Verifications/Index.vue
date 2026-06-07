@@ -69,9 +69,16 @@
                         {{ trust.limit_formatted || formatLimit(trust.limit_minor) }}
                     </p>
                     <p v-if="trust.limit_capped && trust.earned_limit_formatted" class="mt-2 text-xs font-semibold text-amber-900">
-                        Tier limit at {{ trust.current_label || ('L' + trust.current_level) }}:
-                        {{ trust.earned_limit_formatted }}.
-                        Your account has a lower custom cap.
+                        <template v-if="trust.limit_capped_by_age || trust.waiting_for_account_age">
+                            Still at {{ trust.current_label || ('L' + trust.current_level) }}.
+                            Next: {{ trust.next_level_label }}.
+                            {{ trust.next_hint || 'Complete the account-age wait before higher verification steps unlock.' }}
+                        </template>
+                        <template v-else>
+                            Tier limit at {{ trust.current_label || ('L' + trust.current_level) }}:
+                            {{ trust.earned_limit_formatted }}.
+                            Your account has a lower custom cap.
+                        </template>
                     </p>
                     <p v-else-if="trust.next_level_limit_formatted" class="mt-2 text-xs font-semibold text-primary-900">
                         {{ trust.next_level_label }} unlocks up to {{ trust.next_level_limit_formatted }}
@@ -79,14 +86,14 @@
                 </div>
             </div>
 
-            <div v-if="trust.current_level < 5" class="mb-8">
+            <div v-if="!trust.at_max_level" class="mb-8">
                 <div class="mb-2 flex justify-between text-[10px] font-black uppercase tracking-wide text-slate-500">
                     <span>Progress</span>
-                    <span>L{{ trust.current_level }} → L{{ trust.next_level ?? 5 }}</span>
+                    <span>L{{ trust.current_level }} → L{{ trust.next_level ?? maxLevel }}</span>
                 </div>
                 <div class="flex gap-1">
                     <div
-                        v-for="n in 6"
+                        v-for="n in progressSegments"
                         :key="n"
                         class="h-1.5 flex-1 rounded-full transition-colors"
                         :class="n - 1 <= trust.current_level ? 'bg-primary-600' : n - 1 === trust.next_level ? 'bg-primary-200' : 'bg-slate-200'"
@@ -160,9 +167,28 @@
                     </p>
                     </div>
 
-                    <div v-else-if="next_step.type === 'account_age'" class="mt-6 rounded-2xl bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-100">
-                    <span v-if="next_step.days_remaining > 0">No action needed right now — keep using HustleSafe while your account matures.</span>
-                    <span v-else>Your L5 upgrade should apply shortly.</span>
+                    <div v-else-if="next_step.type === 'account_age'" class="mt-6 space-y-4">
+                        <div v-if="next_step.completed_checks?.length" class="flex flex-wrap gap-2">
+                            <span
+                                v-for="check in next_step.completed_checks"
+                                :key="check"
+                                class="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-900 ring-1 ring-emerald-200"
+                            >
+                                {{ check }}
+                            </span>
+                        </div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-100">
+                            <p v-if="next_step.days_remaining > 0">
+                                {{ next_step.message }}
+                            </p>
+                            <p v-else>
+                                Your {{ next_step.target_level_label || ('L' + (trust.next_level ?? maxLevel)) }} upgrade should apply shortly.
+                            </p>
+                        </div>
+                        <p class="text-xs font-semibold text-slate-500">
+                            You stay at {{ trust.current_label || ('L' + trust.current_level) }} until this account-age requirement is met.
+                            Higher verification steps unlock after you reach {{ next_step.target_level_label || ('L' + (trust.next_level ?? '')) }}.
+                        </p>
                     </div>
 
                     <div v-else-if="next_step.type === 'nin_bvn'" class="mt-6 space-y-4">
@@ -606,6 +632,9 @@ const props = defineProps({
 });
 
 const resendForm = useForm({});
+
+const maxLevel = computed(() => props.trust.max_level ?? 0);
+const progressSegments = computed(() => (maxLevel.value > 0 ? maxLevel.value + 1 : 0));
 
 const activeSlot = computed(() => props.next_step?.slot ?? null);
 

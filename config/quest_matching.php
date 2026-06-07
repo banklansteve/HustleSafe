@@ -71,10 +71,16 @@ return [
 
     'client_follow_boost_points' => 8,
 
+    'freelancer_pro_bonus_points' => 8,
+
     'metrics_refresh_hours' => 6,
 
     'freelancer_feed_candidate_limit' => 300,
 
-    'client_recommendations_limit' => 10,
+    'client_recommendations_limit' => 5,
+
+    'client_recommendations_more_limit' => 25,
+
+    'quest_invite_freelancer_max' => 100,
 
 ];

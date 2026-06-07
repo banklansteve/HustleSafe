@@ -21,7 +21,7 @@ class SyncQuestInvitesRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'freelancer_ids' => ['present', 'array', 'max:20'],
+            'freelancer_ids' => ['present', 'array', 'max:'.(int) config('quest_matching.quest_invite_freelancer_max', 100)],
             'freelancer_ids.*' => ['integer', 'distinct', Rule::exists('users', 'id')],
         ];
     }

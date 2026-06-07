@@ -41,6 +41,26 @@
                 <p class="mt-2 leading-relaxed">{{ submitFeedback }}</p>
             </section>
 
+            <section
+                v-if="proposal_limits && !proposal_limits.can_propose_on_quest"
+                class="rounded-2xl border border-amber-200/90 bg-amber-50/90 px-4 py-4 text-sm font-semibold text-amber-950 ring-1 ring-amber-100 sm:px-5"
+            >
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-900">Verification limit</p>
+                <p class="mt-2 leading-relaxed">
+                    This quest budget ({{ proposal_limits.quest_budget_formatted }}) is above your current proposal limit of
+                    {{ proposal_limits.proposal_limit_formatted }} at {{ proposal_limits.current_label }}.
+                    <template v-if="proposal_limits.next_level_label && proposal_limits.next_level_limit_formatted">
+                        Reach {{ proposal_limits.next_level_label }} to propose on quests up to {{ proposal_limits.next_level_limit_formatted }}.
+                    </template>
+                </p>
+                <Link
+                    :href="proposal_limits.verifications_url || route('verifications.index')"
+                    class="mt-3 inline-flex font-black text-amber-900 underline decoration-amber-400 underline-offset-2"
+                >
+                    Open verifications
+                </Link>
+            </section>
+
             <section v-if="hintLine" class="rounded-xl border border-sky-200 bg-sky-50/90 px-4 py-3 text-sm font-semibold text-sky-950 ring-1 ring-sky-100">
                 {{ hintLine }}
             </section>
@@ -141,11 +161,17 @@
                     <div class="grid gap-2 sm:grid-cols-2">
                         <div class="space-y-2">
                             <InputLabel for="psd" value="Planned start" />
+                            <p v-if="clientHints.plannedStart" class="text-xs font-semibold leading-snug text-sky-900">
+                                {{ clientHints.plannedStart }}
+                            </p>
                             <PremiumDatePicker id="psd" v-model="form.planned_start_date" placeholder="Start date" />
                             <InputError :message="form.errors.planned_start_date" />
                         </div>
                         <div class="space-y-2">
                             <InputLabel for="pfd" value="Planned finish" />
+                            <p v-if="clientHints.plannedFinish" class="text-xs font-semibold leading-snug text-sky-900">
+                                {{ clientHints.plannedFinish }}
+                            </p>
                             <PremiumDatePicker
                                 id="pfd"
                                 v-model="form.planned_finish_date"
@@ -156,6 +182,9 @@
                         </div>
                         <div class="space-y-2 sm:col-span-2">
                             <InputLabel for="eddur" value="Estimated duration (days, optional)" />
+                            <p v-if="clientHints.duration" class="text-xs font-semibold leading-snug text-sky-900">
+                                {{ clientHints.duration }}
+                            </p>
                             <TextInput
                                 id="eddur"
                                 v-model.number="form.estimated_duration_days"
@@ -179,13 +208,19 @@
                         <input v-model="form.corrections_included" type="checkbox" class="mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
                         <span>Include correction / redo rounds in this quote</span>
                     </label>
+                    <p v-if="clientHints.revisions" class="text-xs font-semibold leading-snug text-sky-900">
+                        {{ clientHints.revisions }}
+                    </p>
                     <div v-if="form.corrections_included" class="space-y-2">
                         <InputLabel for="crc" value="How many rounds?" />
                         <TextInput id="crc" v-model.number="form.corrections_rounds" type="number" min="1" max="50" class="w-full max-w-xs" />
                         <InputError :message="form.errors.corrections_rounds" />
                     </div>
-                    <div class="space-y-2">
+                    <div v-if="showProgressReportField" class="space-y-2">
                         <InputLabel value="How often you will report progress" />
+                        <p v-if="clientHints.progressReports" class="text-xs font-semibold leading-snug text-sky-900">
+                            {{ clientHints.progressReports }}
+                        </p>
                         <UiSelect
                             v-model="form.progress_report_frequency"
                             class="w-full max-w-md"
@@ -193,6 +228,17 @@
                             placeholder="Select…"
                             :invalid="!!form.errors.progress_report_frequency"
                         />
+                        <div v-if="showCustomProgressNote" class="space-y-2">
+                            <InputLabel value="Describe your reporting cadence" />
+                            <TextInput
+                                v-model="form.progress_report_frequency_note"
+                                type="text"
+                                maxlength="200"
+                                class="w-full max-w-lg"
+                                placeholder="E.g. Every Monday and Thursday by 5pm"
+                            />
+                            <InputError :message="form.errors.progress_report_frequency_note" />
+                        </div>
                         <InputError :message="form.errors.progress_report_frequency" />
                     </div>
                 </section>
@@ -278,6 +324,9 @@
                     <div class="grid gap-2 sm:grid-cols-2">
                         <div class="space-y-2">
                             <InputLabel value="Professional fee" />
+                            <p v-if="clientHints.budget" class="text-xs font-semibold leading-snug text-sky-900">
+                                {{ clientHints.budget }}
+                            </p>
                             <TextInput v-model.number="form.pricing.professional_fee_ngn" type="number" min="0" step="1" class="w-full" />
                             <InputError :message="form.errors['pricing.professional_fee_ngn']" />
                         </div>
@@ -306,6 +355,12 @@
                     <InputError :message="form.errors.proposal" />
                     <InputError :message="form.errors.workspace" />
                 </section>
+
+                <ProposalPreferenceResponses
+                    v-if="!proposal_edit?.offer_id && quest.has_specified_preferences"
+                    v-model="form.preference_responses"
+                    :client-preferences="quest.preferences || []"
+                />
 
                 <section v-if="!proposal_edit?.offer_id" class="space-y-4 rounded-2xl border border-slate-200/90 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-6">
                     <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
@@ -393,6 +448,8 @@ import TextInput from '@/Components/TextInput.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
+import ProposalPreferenceResponses from '@/Components/Quests/ProposalPreferenceResponses.vue';
+import { buildQuestClientExpectationHints, clientSpecifiedRevisionRounds } from '@/utils/questClientExpectationHints';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, ref, watch } from 'vue';
 
@@ -407,11 +464,15 @@ const progressReportOptions = [
     { value: 'biweekly', label: 'Bi-weekly' },
     { value: 'milestone_based', label: 'At milestones only' },
     { value: 'on_request', label: 'On request' },
+    { value: 'custom', label: 'Other (describe)' },
 ];
+
+const showCustomProgressNote = computed(() => form.progress_report_frequency === 'custom');
 
 const props = defineProps({
     quest: { type: Object, required: true },
     workspace: { type: Object, default: () => ({}) },
+    proposal_limits: { type: Object, default: null },
     market_hints: { type: Object, default: () => ({}) },
     pricing_hints: {
         type: Object,
@@ -456,6 +517,7 @@ function buildInitialForm() {
             corrections_included: Boolean(e.corrections_included),
             corrections_rounds: e.corrections_rounds ?? 2,
             progress_report_frequency: e.progress_report_frequency || 'weekly',
+            progress_report_frequency_note: e.progress_report_frequency_note ?? '',
             materials: Array.isArray(e.materials) && e.materials.length ? e.materials : [],
             pricing: {
                 professional_fee_ngn: e.pricing?.professional_fee_ngn ?? 0,
@@ -478,6 +540,7 @@ function buildInitialForm() {
         corrections_included: false,
         corrections_rounds: 2,
         progress_report_frequency: 'weekly',
+        progress_report_frequency_note: '',
         materials: [],
         pricing: {
             professional_fee_ngn: Math.round((props.quest.budget_minor || 0) / 100 * 0.85),
@@ -487,10 +550,28 @@ function buildInitialForm() {
         },
         accepted_terms: false,
         confirm_revision: false,
+        preference_responses: {},
     };
 }
 
 const form = useForm(buildInitialForm());
+
+const clientHints = computed(() => buildQuestClientExpectationHints(props.quest));
+
+const showProgressReportField = computed(() => !clientSpecifiedRevisionRounds(props.quest));
+
+watch(
+    showProgressReportField,
+    (show) => {
+        if (!show) {
+            form.progress_report_frequency = null;
+            form.progress_report_frequency_note = '';
+        } else if (!form.progress_report_frequency) {
+            form.progress_report_frequency = 'weekly';
+        }
+    },
+    { immediate: true },
+);
 
 const page = usePage();
 
@@ -709,7 +790,7 @@ function submit() {
         onError: (errors) => {
             submitFeedback.value =
                 firstError(errors) ||
-                'Your proposal could not be saved. Review the highlighted fields below (pitch, scope, materials, pricing, and agreement).';
+                'Your proposal could not be saved. Review the highlighted fields below (executive pitch, scope, materials, pricing, and agreement).';
             scrollToErrorBanner();
         },
         onFinish: () => {

@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\AdminFinancialControlController;
 use App\Http\Controllers\Admin\AdminFinancialAuditController;
 use App\Http\Controllers\Admin\AdminFinancialReviewController;
 use App\Http\Controllers\Admin\AdminPlatformFeeLedgerController;
+use App\Http\Controllers\Admin\AdminPremiumPatrolController;
 use App\Http\Controllers\Admin\AdminQuestCompletionEventsController;
 use App\Http\Controllers\Admin\AdminQuestJourneySurveyController;
 use App\Http\Controllers\Admin\AdminQuestReleaseController;
@@ -46,6 +47,7 @@ use App\Http\Controllers\Admin\AdminResponseTemplatesController;
 use App\Http\Controllers\Admin\AdminQuestBoostController;
 use App\Http\Controllers\Admin\AdminPortfolioReviewController;
 use App\Http\Controllers\Admin\AdminProposalsController;
+use App\Http\Controllers\Admin\AdminPromotionsGrowthController;
 use App\Http\Controllers\Admin\AdminUserActivityController;
 use App\Http\Controllers\Admin\AdminReportsController;
 use App\Http\Controllers\Admin\AdminQuestsController;
@@ -379,6 +381,25 @@ Route::post('/quest-boosts/{questBoost}/end-early', [AdminQuestBoostController::
 Route::post('/quest-boosts/{questBoost}/cancel', [AdminQuestBoostController::class, 'cancel'])
     ->middleware('throttle:30,1')
     ->name('quest-boosts.cancel');
+
+Route::get('/premium-patrol', [AdminPremiumPatrolController::class, 'index'])->name('premium-patrol.index');
+Route::get('/api/premium-patrol/metrics', [AdminPremiumPatrolController::class, 'metrics'])->name('api.premium-patrol.metrics');
+Route::get('/api/premium-patrol/premium-users/{user}', [AdminPremiumPatrolController::class, 'premiumUserDetail'])->name('api.premium-patrol.premium-user');
+Route::get('/api/premium-patrol/boosts/{questBoost}', [AdminPremiumPatrolController::class, 'boostDetail'])->name('api.premium-patrol.boost');
+Route::get('/api/premium-patrol/users/search', [AdminPremiumPatrolController::class, 'searchUsers'])->middleware('throttle:60,1')->name('api.premium-patrol.users.search');
+Route::post('/api/premium-patrol/flags/{flag}/dismiss', [AdminPremiumPatrolController::class, 'dismissFlag'])->middleware('throttle:40,1')->name('api.premium-patrol.flags.dismiss');
+Route::post('/premium-patrol/premium-users/{user}/suspend', [AdminPremiumPatrolController::class, 'suspendPremium'])->middleware('throttle:30,1')->name('premium-patrol.premium-users.suspend');
+Route::post('/premium-patrol/premium-users/{user}/refund', [AdminPremiumPatrolController::class, 'refundPremium'])->middleware('throttle:30,1')->name('premium-patrol.premium-users.refund');
+Route::post('/premium-patrol/premium-users/{user}/grant', [AdminPremiumPatrolController::class, 'grantPremium'])->middleware('throttle:30,1')->name('premium-patrol.premium-users.grant');
+Route::post('/premium-patrol/premium-users/{user}/manual-review', [AdminPremiumPatrolController::class, 'flagManualReview'])->middleware('throttle:30,1')->name('premium-patrol.premium-users.manual-review');
+Route::post('/premium-patrol/premium-users/{user}/watchlist', [AdminPremiumPatrolController::class, 'addPremiumWatchlist'])->middleware('throttle:30,1')->name('premium-patrol.premium-users.watchlist');
+Route::post('/premium-patrol/premium-users/{user}/investigate', [AdminPremiumPatrolController::class, 'investigatePremium'])->middleware('throttle:30,1')->name('premium-patrol.premium-users.investigate');
+Route::post('/premium-patrol/boosts/grant', [AdminPremiumPatrolController::class, 'grantBoost'])->middleware('throttle:30,1')->name('premium-patrol.boosts.grant');
+Route::post('/premium-patrol/boosts/{questBoost}/demote', [AdminPremiumPatrolController::class, 'demoteBoost'])->middleware('throttle:30,1')->name('premium-patrol.boosts.demote');
+Route::post('/premium-patrol/boosts/{questBoost}/refund', [AdminPremiumPatrolController::class, 'refundBoost'])->middleware('throttle:30,1')->name('premium-patrol.boosts.refund');
+Route::post('/premium-patrol/boosts/{questBoost}/investigate', [AdminPremiumPatrolController::class, 'investigateBoost'])->middleware('throttle:30,1')->name('premium-patrol.boosts.investigate');
+Route::post('/premium-patrol/boosts/{questBoost}/request-verification', [AdminPremiumPatrolController::class, 'requestVerification'])->middleware('throttle:30,1')->name('premium-patrol.boosts.request-verification');
+Route::post('/premium-patrol/quests/{quest}/suspend', [AdminPremiumPatrolController::class, 'suspendQuest'])->middleware('throttle:30,1')->name('premium-patrol.quests.suspend');
 
 Route::get('/categories', [AdminCategoryManagementController::class, 'index'])->name('categories.index');
 Route::post('/categories', [AdminCategoryManagementController::class, 'store'])

@@ -18,6 +18,7 @@ use App\Models\SupportTicketHandoff;
 use App\Models\SupportTicketMessage;
 use App\Models\User;
 use App\Services\AdminActivityLogger;
+use App\Services\Freelancer\FreelancerProSubscriptionService;
 use App\Services\Operations\StaffNotificationCentreService;
 use App\Services\UserNotificationInboxService;
 use App\Support\MessagingViewPresence;
@@ -75,7 +76,7 @@ class CustomerSupportService
                 'customer_full_name' => $customer->name,
                 'subject' => $data['subject'],
                 'category' => $category,
-                'priority' => $meta['priority'] ?? 'medium',
+                'priority' => $this->priorityForCustomer($customer, (string) ($meta['priority'] ?? 'medium')),
                 'status' => 'open',
                 'chat_status' => 'queued',
                 'description' => $data['description'] ?? null,
@@ -95,6 +96,19 @@ class CustomerSupportService
 
             return $ticket->fresh(['customer', 'assignedAdmin']);
         });
+    }
+
+    protected function priorityForCustomer(User $customer, string $basePriority): string
+    {
+        if (! app(FreelancerProSubscriptionService::class)->isPro($customer)) {
+            return $basePriority;
+        }
+
+        return match ($basePriority) {
+            'medium' => 'high',
+            'high' => 'urgent',
+            default => $basePriority,
+        };
     }
 
     public function assignNextAvailableAdmin(SupportTicket $ticket): void

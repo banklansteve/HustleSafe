@@ -158,6 +158,21 @@ final class PlatformSettings
         return max(5, min(50, self::int('freelancer_pro.free_proposals_per_month', 10)));
     }
 
+    public static function freelancerProKycSlaHours(): int
+    {
+        return max(1, self::int('freelancer_pro.kyc_sla_hours', (int) config('freelancer_pro.kyc_sla_hours_pro', 24)));
+    }
+
+    public static function freelancerStandardKycSlaHours(): int
+    {
+        return max(1, self::int('freelancer_pro.standard_kyc_sla_hours', (int) config('freelancer_pro.kyc_sla_hours_standard', 72)));
+    }
+
+    public static function freelancerFreePortfolioItemLimit(): int
+    {
+        return max(1, self::int('freelancer_pro.free_portfolio_items', (int) config('freelancer_pro.free_portfolio_item_limit_default', 5)));
+    }
+
     /**
      * @return array<string, int>
      */

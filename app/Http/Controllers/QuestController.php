@@ -13,6 +13,7 @@ use App\Enums\QuestVisibility;
 use App\Enums\AdminQuestStatus;
 use App\Http\Requests\Quests\ExtendQuestListingRequest;
 use App\Http\Requests\Quests\StoreQuestRequest;
+use App\Http\Requests\Quests\UpdateQuestPreferencesRequest;
 use App\Http\Requests\Quests\UpdateQuestRequest;
 use App\Jobs\ScanContentForModerationJob;
 use App\Models\Quest;
@@ -96,15 +97,18 @@ class QuestController extends Controller
 
         $verificationEngine = app(VerificationEngineService::class);
         $clientLimit = $verificationEngine->clientPostingLimitMinor($user);
+        $postingLimits = $verificationEngine->clientPostingLimitContextForQuestCreate($user);
 
         return Inertia::render('Quests/Create', [
             'locations' => $this->locationsPayload(),
             'categoryTree' => $this->categoryTreePayload(),
             'startTimingOptions' => $this->startTimingOptions(),
-            'maxBudgetMinor' => max(10_000, min(500_000_000, $clientLimit > 0 ? $clientLimit : 500_000_000)),
-            'minBudgetMinor' => 10_000,
+            'maxBudgetMinor' => $postingLimits['platform_max_minor'],
+            'minBudgetMinor' => $postingLimits['min_quest_budget_minor'],
             'verificationLimit' => $clientLimit,
+            'posting_limits' => $postingLimits,
             'fieldProfileUrl' => route('quests.field-profile'),
+            'skillsSuggestUrl' => route('quests.skills.suggest'),
             'freelancersYouFollow' => $this->questCreateFreelancerNetworkFollowing($user),
             'freelancersFollowingYou' => $this->questCreateFreelancerNetworkFollowers($user),
             'quest_stats_hints' => $this->questCreateStatsHints(),
@@ -203,6 +207,8 @@ class QuestController extends Controller
                 'start_timing' => QuestStartTiming::from($data['start_timing']),
                 'estimated_completion_days' => $data['estimated_completion_days'],
                 'estimated_delivery_date' => $data['estimated_delivery_date'] ?? null,
+                'delivery_deadline' => $data['delivery_deadline'] ?? null,
+                'required_skills' => array_values(array_filter($data['required_skills'] ?? [])),
                 'site_visits_allowed' => $request->boolean('site_visits_allowed'),
                 'site_access_level' => $data['site_access_level'] ?? null,
                 'pets_on_site' => $request->has('pets_on_site') ? $request->boolean('pets_on_site') : null,
@@ -223,7 +229,13 @@ class QuestController extends Controller
                 $quest->invitedFreelancers()->syncWithoutDetaching($tagged);
             }
 
-            return $quest->fresh(['files']);
+            app(\App\Services\Quest\QuestPreferenceService::class)->syncForQuest(
+                $quest,
+                $data['preferences'] ?? [],
+                (int) $data['quest_category_id'],
+            );
+
+            return $quest->fresh(['files', 'preferences']);
         });
 
         $cover->sync($quest);
@@ -257,6 +269,9 @@ class QuestController extends Controller
                 $quest->local_government_id,
                 $quest->quest_category_id,
             );
+
+            app(\App\Services\Quest\ClientQuestBoostService::class)->notifyUpsell($quest, $user);
+            app(\App\Services\Quest\ClientQuestBoostService::class)->scheduleUpsellEmail($quest);
         }
 
         ScanContentForModerationJob::dispatch(Quest::class, (int) $quest->id)->afterResponse();
@@ -277,6 +292,7 @@ class QuestController extends Controller
 
         if ($publish && ! $requiresApproval) {
             $redirect->with('quest_submitted_next_steps', true);
+            $redirect->with('show_boost_upsell', true);
         }
 
         return $redirect;
@@ -301,9 +317,11 @@ class QuestController extends Controller
             'visibleAdminQuestNotices.creator:id,name',
             'invitedFreelancers:id,first_name,name,slug,avatar_url',
             'acceptedOffer',
+            'preferences',
         ]);
 
         $user = $request->user();
+        $user?->loadMissing('role:id,slug');
         if ($user && (int) $user->id !== (int) $quest->client_id && $user->role?->slug === 'freelancer') {
             $cacheKey = 'quest-view:'.$quest->id.':'.$user->id;
             if (Cache::add($cacheKey, 1, now()->addYear())) {
@@ -330,12 +348,6 @@ class QuestController extends Controller
             && $user->role?->slug === 'freelancer'
             && $verificationEngine->freelancerCanProposeForBudget($user, (int) $quest->budget_amount_minor);
 
-        $canOffer = $user
-            && $user->role?->slug === 'freelancer'
-            && ($summary['can_submit_proposals'] ?? false)
-            && $categoryMatch
-            && $verificationCanOffer;
-
         $myOffer = null;
         if ($user && $user->role?->slug === 'freelancer') {
             $myOffer = $quest->offers()
@@ -349,6 +361,16 @@ class QuestController extends Controller
                     ->latest('id')
                     ->first();
         }
+
+        $hasSubmittedProposal = $myOffer !== null
+            && in_array((string) $myOffer->status, ['submitted', 'shortlisted', 'pending_award', 'accepted'], true);
+
+        $canOffer = $user
+            && $user->role?->slug === 'freelancer'
+            && ($summary['can_submit_proposals'] ?? false)
+            && $categoryMatch
+            && $verificationCanOffer
+            && ! $hasSubmittedProposal;
 
         $isBookmarked = false;
         if ($user && $user->role?->slug === 'freelancer') {
@@ -372,13 +394,18 @@ class QuestController extends Controller
             ->get()
             ->map(fn (Quest $q) => $this->questCardPayload($q));
 
-        $matcher = app(\App\Services\Matching\QuestFreelancerMatcher::class);
-        $matchResult = $matcher->recommendationsForQuest(
-            $quest,
-            (int) config('quest_matching.client_recommendations_limit', 10),
-        );
-        $topFreelancers = $matchResult['recommendations'];
-        $freelancerMatchStats = $matchResult['stats'];
+        $isQuestOwner = $user && (int) $user->id === (int) $quest->client_id;
+
+        $topFreelancers = [];
+        $freelancerMatchStats = ['total' => 0, 'label' => null];
+        if ($isQuestOwner) {
+            $matchResult = app(\App\Services\Matching\QuestFreelancerMatcher::class)->recommendationsForQuest(
+                $quest,
+                (int) config('quest_matching.client_recommendations_limit', 5),
+            );
+            $topFreelancers = $matchResult['recommendations'];
+            $freelancerMatchStats = $matchResult['stats'];
+        }
 
         $fromClientQuests = Quest::query()
             ->where('id', '<>', $quest->id)
@@ -459,23 +486,23 @@ class QuestController extends Controller
             $questPayload['commerce'] = array_merge($commerce, QuestCommerceUi::partyExtras($quest, $user));
         }
 
+        $clientProposalSummaries = $isQuestOwner ? $this->clientProposalSummariesForQuest($quest) : [];
+
         return Inertia::render('Quests/Show', [
             'quest' => $questPayload,
             'is_quest_owner' => (bool) ($user && $user->id === $quest->client_id),
             'can_edit' => $user?->can('update', $quest) ?? false,
             'can_offer' => $canOffer,
+            'has_submitted_proposal' => $hasSubmittedProposal,
             'category_match' => $categoryMatch,
-            'verification_access' => $user && $user->role?->slug === 'freelancer' ? [
-                'earned_level' => $verificationEngine->storedLevel($user),
-                'effective_level' => $verificationEngine->effectiveLevel($user),
-                'proposal_limit_minor' => $freelancerLimit,
-                'earned_proposal_limit_minor' => $verificationEngine->limitAtLevel($user, $verificationEngine->storedLevel($user)),
-                'limit_capped' => $user->custom_freelancer_proposal_limit_minor !== null
-                    && $freelancerLimit < $verificationEngine->limitAtLevel($user, $verificationEngine->storedLevel($user)),
-                'can_submit_for_budget' => $verificationCanOffer,
-                'missing_for_next_level' => $verificationEngine->missingForNextLevelPublic($user),
-                'verifications_url' => route('verifications.index'),
-            ] : null,
+            'verification_access' => $user && $user->role?->slug === 'freelancer'
+                ? array_merge(
+                    $verificationEngine->freelancerVerificationAccessContext($user),
+                    [
+                        'can_submit_for_budget' => $verificationCanOffer,
+                    ],
+                )
+                : null,
             'workspace' => $summary ? array_merge(['enabled' => true], $summary) : ['enabled' => false],
             'my_offer' => $myOffer ? [
                 'id' => $myOffer->id,
@@ -502,8 +529,50 @@ class QuestController extends Controller
                     'category_tree' => $this->categoryTreePayload(),
                 ]
                 : null,
-            'client_proposals' => $isQuestOwner ? $this->clientProposalSummariesForQuest($quest) : [],
+            'client_proposals' => array_slice($clientProposalSummaries, 0, 5),
+            'client_proposals_total' => count($clientProposalSummaries),
             'client_proposals_hub_url' => $isQuestOwner ? route('quests.client.proposals.index', $quest) : null,
+            'quest_preferences' => app(\App\Services\Quest\QuestPreferenceService::class)->displayListForQuest($quest),
+            'quest_has_specified_preferences' => app(\App\Services\Quest\QuestPreferenceService::class)->hasSpecifiedPreferences($quest),
+            'preference_profile' => app(\App\Services\Quest\QuestPreferenceProfileService::class)->profileForLeafCategoryId((int) $quest->quest_category_id),
+            'preference_values' => app(\App\Services\Quest\QuestPreferenceService::class)->valuesMapForQuest($quest),
+            'can_edit_preferences' => ($user?->can('update', $quest) ?? false)
+                && $quest->status === QuestStatus::Open
+                && ! empty(app(\App\Services\Quest\QuestPreferenceProfileService::class)->profileForLeafCategoryId((int) $quest->quest_category_id)['show_preferences']),
+            'sponsor_insight' => ! $isQuestOwner && $quest->client
+                ? app(\App\Services\Quest\PartyInsightService::class)->sponsorInsightForQuest($quest)
+                : null,
+            'offers_count_display' => (int) $quest->offers_count,
+            'recommendations_more_url' => $isQuestOwner ? route('quests.recommendations', $quest) : null,
+            'can_manage_invites' => $user?->can('manageInvites', $quest) ?? false,
+            'boost_upsell' => $isQuestOwner && $user
+                ? app(\App\Services\Quest\ClientQuestBoostService::class)->upsellPayload(
+                    $quest,
+                    $user,
+                    (bool) session('show_boost_upsell'),
+                )
+                : null,
+            'show_boost_upsell_flash' => (bool) session('show_boost_upsell'),
+        ]);
+    }
+
+    public function recommendations(Request $request, Quest $quest): Response
+    {
+        $this->authorize('update', $quest);
+
+        $quest->loadMissing(['invitedFreelancers:id,first_name,name,slug,avatar_url']);
+
+        $limit = (int) config('quest_matching.client_recommendations_more_limit', 25);
+        $matchResult = app(\App\Services\Matching\QuestFreelancerMatcher::class)->recommendationsForQuest($quest, $limit);
+
+        return Inertia::render('Quests/Recommendations', [
+            'quest' => [
+                'title' => $quest->title,
+                'route_key' => $quest->getRouteKey(),
+            ],
+            'recommendations' => $matchResult['recommendations'],
+            'freelancer_match_stats' => $matchResult['stats'],
+            'invited_ids' => $quest->invitedFreelancers->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
         ]);
     }
 
@@ -558,6 +627,26 @@ class QuestController extends Controller
         }
 
         return back()->with('success', __('Quest updated.'));
+    }
+
+    public function updatePreferences(UpdateQuestPreferencesRequest $request, Quest $quest): RedirectResponse
+    {
+        $this->authorize('update', $quest);
+
+        if ($quest->status !== QuestStatus::Open) {
+            return back()->withErrors([
+                'preferences' => __('Preferences can only be edited while the quest is open.'),
+            ]);
+        }
+
+        app(\App\Services\Quest\QuestPreferenceService::class)->syncForQuest(
+            $quest,
+            $request->validated('preferences') ?? [],
+            null,
+            true,
+        );
+
+        return back()->with('success', __('Preferences updated.'));
     }
 
     public function destroy(Request $request, Quest $quest): RedirectResponse
@@ -876,6 +965,7 @@ class QuestController extends Controller
             'featured_boost' => $activeBoost ? [
                 'tier' => $activeBoost->tier,
                 'label' => __('Boosted'),
+                'badge_label' => __('Sponsored'),
                 'expires_at' => $activeBoost->ends_at?->timezone('Africa/Lagos')->toIso8601String(),
             ] : null,
             'auto_listing_expiry_days' => $quest->auto_listing_expiry_days,
@@ -891,6 +981,11 @@ class QuestController extends Controller
             'traffic_source' => $showInternalCodes ? $quest->traffic_source : null,
             'traffic_utm' => $showInternalCodes ? $quest->traffic_utm : null,
             'estimated_delivery_date' => $quest->estimated_delivery_date?->toDateString(),
+            'delivery_deadline' => $quest->delivery_deadline?->toDateString(),
+            'created_at' => $quest->created_at?->timezone('Africa/Lagos')->toIso8601String(),
+            'updated_at' => $quest->updated_at?->timezone('Africa/Lagos')->toIso8601String(),
+            'required_skills' => $quest->required_skills ?? [],
+            'preferences_last_updated' => $quest->preferences_last_updated?->timezone('Africa/Lagos')->toIso8601String(),
             'uuid' => $quest->uuid,
             'route_key' => $quest->getRouteKey(),
             'reference_code' => $quest->reference_code,

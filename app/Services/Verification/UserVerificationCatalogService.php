@@ -21,6 +21,14 @@ final class UserVerificationCatalogService
     {
         $user->loadMissing(['role:id,slug', 'stateModel:id,name']);
 
+        if ($user->verification_level_override === null) {
+            $resolved = $this->engine->resolvedVerificationLevel($user);
+            if ($resolved !== $this->engine->storedLevel($user)) {
+                $this->engine->recalculate($user, null, 'Verification catalog sync.');
+                $user->refresh();
+            }
+        }
+
         $isFreelancer = $this->isFreelancer($user);
         $verifications = $user->userVerifications()->latest('submitted_at')->get();
         $trust = $this->engine->trustSummaryFor($user, $isFreelancer);
@@ -29,7 +37,7 @@ final class UserVerificationCatalogService
         return [
             'is_freelancer' => $isFreelancer,
             'trust' => array_merge($trust, [
-                'next_hint' => $nextStep['info_bar'] ?? $this->defaultNextHint($user, $trust),
+                'next_hint' => $this->resolveNextHint($user, $nextStep, $trust),
             ]),
             'next_step' => $nextStep,
             'prefilled_address' => $this->prefilledAddress($user),
@@ -142,10 +150,19 @@ final class UserVerificationCatalogService
      */
     private function buildClientNextStep(User $user, Collection $verifications, array $trust, array $completed, int $currentLevel): array
     {
+        $ageWait = $this->engine->levelAdvanceAgeWaitContext($user);
+        if ($ageWait !== null) {
+            return $this->withProgressNotice(
+                $this->buildAccountAgeWaitStep($user, $currentLevel, $ageWait),
+                $trust,
+                true,
+            );
+        }
+
         $ladder = [
-            ['key' => 'identity_address', 'level' => 2, 'requirement' => 'identity_address'],
-            ['key' => 'nin', 'level' => 3, 'requirement' => 'nin'],
-            ['key' => 'bvn', 'level' => 4, 'requirement' => 'bvn'],
+            ['key' => 'identity_address', 'requirement' => 'identity_address'],
+            ['key' => 'nin', 'requirement' => 'nin'],
+            ['key' => 'bvn', 'requirement' => 'bvn'],
         ];
 
         foreach ($ladder as $step) {
@@ -158,36 +175,18 @@ final class UserVerificationCatalogService
                 continue;
             }
 
-            $content = $this->engine->stageContentFor($user, $step['level']);
-            $info = $content['info_bar'] ?? $this->unlockHint($user, $step['level'], $trust);
+            $meta = $this->ladderStepMeta($user, $step['requirement'], $trust, false);
+            if (! $this->shouldOfferLadderStep($user, $meta['target_level'], $currentLevel)) {
+                continue;
+            }
 
             return $this->withProgressNotice(
-                $this->stepFromSlot($slot, $currentLevel, $step['level'], $this->engine->levelLabel($step['level'], $user), $info, 'verification_ladder', $content),
+                $this->stepFromSlot($slot, $currentLevel, $meta['target_level'], $meta['target_label'], $meta['info'], 'verification_ladder', $meta['content']),
                 $trust,
             );
         }
 
-        if ($currentLevel < 5 && in_array('bvn', $completed, true)) {
-            $daysRemaining = $this->engine->accountAgeDaysRemaining($user, 180);
-            $content = $this->engine->stageContentFor($user, 5);
-
-            return $this->withProgressNotice(
-                $this->stageStep($user, 5, [
-                    'type' => 'account_age',
-                    'key' => 'account_age',
-                    'status' => $daysRemaining > 0 ? 'waiting' : 'available',
-                    'title' => $content['title'] ?? __('Established account (L5)'),
-                    'message' => $daysRemaining > 0
-                        ? __('Your account needs to be at least 180 days old to reach L5. Approximately :days days remaining.', ['days' => $daysRemaining])
-                        : __('Your account age requirement is satisfied. Your level will update automatically after our systems refresh.'),
-                    'info_bar' => $content['info_bar'] ?? __('You have completed all document checks for L4. :level unlocks automatically after 180 days on HustleSafe.', ['level' => $this->engine->levelLabel(5, $user)]),
-                    'days_remaining' => $daysRemaining,
-                ], $currentLevel),
-                $trust,
-            );
-        }
-
-        return $this->completeStep($user, $currentLevel, true);
+        return $this->completeStep($user, $currentLevel, false);
     }
 
     /**
@@ -197,126 +196,158 @@ final class UserVerificationCatalogService
      */
     private function buildFreelancerNextStep(User $user, Collection $verifications, array $trust, array $completed, int $currentLevel): array
     {
+        $ageWait = $this->engine->levelAdvanceAgeWaitContext($user);
+        if ($ageWait !== null) {
+            return $this->withProgressNotice(
+                $this->buildAccountAgeWaitStep($user, $currentLevel, $ageWait),
+                $trust,
+                true,
+            );
+        }
+
         if (! in_array('identity_address', $completed, true)) {
             $slot = $this->slotFor($user, 'identity_address', $verifications, true);
             if ($slot['status'] !== 'hidden') {
-                $content = $this->engine->stageContentFor($user, 2);
-                $info = $content['info_bar'] ?? $this->freelancerUnlockHint($user, 2, $trust);
-
-                return $this->withProgressNotice(
-                    $this->stepFromSlot($slot, $currentLevel, 2, $this->engine->levelLabel(2, $user), $info, 'verification_ladder', $content),
-                    $trust,
-                );
+                $meta = $this->ladderStepMeta($user, 'identity_address', $trust, true);
+                if ($this->shouldOfferLadderStep($user, $meta['target_level'], $currentLevel)) {
+                    return $this->withProgressNotice(
+                        $this->stepFromSlot($slot, $currentLevel, $meta['target_level'], $meta['target_label'], $meta['info'], 'verification_ladder', $meta['content']),
+                        $trust,
+                    );
+                }
             }
         }
 
-        $ninBvnStep = $this->buildFreelancerNinBvnStage($user, $verifications, $trust, $completed, $currentLevel);
-        if ($ninBvnStep !== null) {
-            return $ninBvnStep;
+        if (! in_array('nin', $completed, true)) {
+            $slot = $this->slotFor($user, 'nin', $verifications, true);
+            if ($slot['status'] !== 'hidden') {
+                $meta = $this->ladderStepMeta($user, 'nin', $trust, true);
+                if ($this->shouldOfferLadderStep($user, $meta['target_level'], $currentLevel)) {
+                    return $this->withProgressNotice(
+                        $this->stepFromSlot($slot, $currentLevel, $meta['target_level'], $meta['target_label'], $meta['info'], 'verification_ladder', $meta['content']),
+                        $trust,
+                    );
+                }
+            }
+        }
+
+        if (! in_array('bvn', $completed, true)) {
+            $slot = $this->slotFor($user, 'bvn', $verifications, true);
+            if ($slot['status'] !== 'hidden') {
+                $meta = $this->ladderStepMeta($user, 'bvn', $trust, true);
+                if ($this->shouldOfferLadderStep($user, $meta['target_level'], $currentLevel)) {
+                    return $this->withProgressNotice(
+                        $this->stepFromSlot($slot, $currentLevel, $meta['target_level'], $meta['target_label'], $meta['info'], 'verification_ladder', $meta['content']),
+                        $trust,
+                    );
+                }
+            }
         }
 
         if (! in_array('cac', $completed, true) && ! in_array('tin', $completed, true)) {
             $slot = $this->slotFor($user, 'cac_tin', $verifications, true);
             if ($slot['status'] !== 'hidden') {
-                $content = $this->engine->stageContentFor($user, 4);
-                $info = $content['info_bar'] ?? $this->freelancerUnlockHint($user, 4, $trust);
-
-                return $this->withProgressNotice(
-                    $this->stepFromSlot($slot, $currentLevel, 4, $this->engine->levelLabel(4, $user), $info, 'verification_ladder', $content),
-                    $trust,
-                );
+                $targetLevel = $this->engine->targetLevelForRequirement($user, 'cac')
+                    ?? $this->engine->targetLevelForRequirement($user, 'tin')
+                    ?? (int) ($trust['next_level'] ?? $this->engine->maxLevelFor($user));
+                $meta = $this->ladderStepMeta($user, 'cac', $trust, true, $targetLevel);
+                if ($this->shouldOfferLadderStep($user, $meta['target_level'], $currentLevel)) {
+                    return $this->withProgressNotice(
+                        $this->stepFromSlot($slot, $currentLevel, $meta['target_level'], $meta['target_label'], $meta['info'], 'verification_ladder', $meta['content']),
+                        $trust,
+                    );
+                }
             }
         }
 
-        $businessOk = in_array('cac', $completed, true) || in_array('tin', $completed, true);
-        $daysRemaining = $this->engine->accountAgeDaysRemaining($user, 90);
         $liveApproved = $this->hasApproved($verifications, \App\Enums\UserVerificationCategory::LivePresence);
 
         if (! $liveApproved) {
             $slot = $this->slotFor($user, 'live_presence', $verifications, true);
-            if ($slot['status'] !== 'hidden' && ! ($slot['status'] === 'locked' && $daysRemaining > 0)) {
-                $content = $this->engine->stageContentFor($user, 5);
-                $info = $content['info_bar'] ?? $this->freelancerUnlockHint($user, 5, $trust);
+            if ($slot['status'] !== 'hidden') {
+                $targetLevel = $this->engine->targetLevelForRequirement($user, 'live_presence')
+                    ?? $this->engine->maxLevelFor($user);
+                $meta = $this->ladderStepMeta($user, 'live_presence', $trust, true, $targetLevel);
+                if ($this->shouldOfferLadderStep($user, $meta['target_level'], $currentLevel)) {
+                    if ($slot['status'] === 'locked') {
+                        return $this->withProgressNotice(
+                            $this->stageStep($user, $meta['target_level'], [
+                                'type' => 'verification_form',
+                                'kind' => 'verification_ladder',
+                                'key' => 'live_presence',
+                                'status' => 'locked',
+                                'status_label' => $slot['status_label'] ?? __('Requirements not met'),
+                                'title' => $meta['content']['title'] ?? $slot['title'],
+                                'message' => $slot['description'] ?? ($meta['content']['message'] ?? ''),
+                                'info_bar' => $meta['info'],
+                                'slot' => $slot,
+                            ], $currentLevel),
+                            $trust,
+                        );
+                    }
 
-                if ($slot['status'] === 'locked') {
                     return $this->withProgressNotice(
-                        $this->stageStep($user, 5, [
-                            'type' => 'verification_form',
-                            'kind' => 'verification_ladder',
-                            'key' => 'live_presence',
-                            'status' => 'locked',
-                            'status_label' => $slot['status_label'] ?? __('Requirements not met'),
-                            'title' => $content['title'] ?? $slot['title'],
-                            'message' => $slot['description'] ?? ($content['message'] ?? ''),
-                            'info_bar' => $info,
-                            'slot' => $slot,
-                        ], $currentLevel),
+                        $this->stepFromSlot($slot, $currentLevel, $meta['target_level'], $meta['target_label'], $meta['info'], 'verification_ladder', $meta['content']),
                         $trust,
                     );
                 }
-
-                return $this->withProgressNotice(
-                    $this->stepFromSlot($slot, $currentLevel, 5, $this->engine->levelLabel(5, $user), $info, 'verification_ladder', $content),
-                    $trust,
-                );
             }
-        }
-
-        if ($currentLevel < 5 && $businessOk && $liveApproved && $daysRemaining > 0) {
-            $content = $this->engine->stageContentFor($user, 5);
-
-            return $this->withProgressNotice(
-                $this->stageStep($user, 5, [
-                    'type' => 'account_age',
-                    'key' => 'account_age',
-                    'status' => 'waiting',
-                    'title' => $content['title'] ?? __('Account age for L5'),
-                    'message' => __('Your selfie + ID is approved. Your account must be at least 90 days old to reach L5. Approximately :days days remaining.', ['days' => $daysRemaining]),
-                    'info_bar' => $content['info_bar'] ?? __('L5 unlocks after 90 days on HustleSafe with an approved selfie + ID.'),
-                    'days_remaining' => $daysRemaining,
-                ], $currentLevel),
-                $trust,
-            );
         }
 
         return $this->completeStep($user, $currentLevel, true);
     }
 
     /**
-     * @param  list<string>  $completed
-     * @return array<string, mixed>|null
+     * @param  array{target_level: int, target_level_label: string, required_days: int, days_remaining: int, completed_checks?: list<string>}  $wait
+     * @return array<string, mixed>
      */
-    private function buildFreelancerNinBvnStage(User $user, Collection $verifications, array $trust, array $completed, int $currentLevel): ?array
+    private function buildAccountAgeWaitStep(User $user, int $currentLevel, array $wait): array
     {
-        if (in_array('nin', $completed, true) && in_array('bvn', $completed, true)) {
-            return null;
+        $targetLevel = (int) $wait['target_level'];
+        $requiredDays = (int) $wait['required_days'];
+        $daysRemaining = (int) $wait['days_remaining'];
+        $completedChecks = array_values(array_filter($wait['completed_checks'] ?? []));
+        $content = $this->engine->stageContentFor($user, $targetLevel);
+        $checksLine = $completedChecks !== []
+            ? implode(', ', $completedChecks)
+            : null;
+
+        return $this->stageStep($user, $targetLevel, [
+            'type' => 'account_age',
+            'key' => 'account_age',
+            'status' => $daysRemaining > 0 ? 'waiting' : 'available',
+            'title' => __('Waiting for :level', ['level' => $wait['target_level_label']]),
+            'message' => $daysRemaining > 0
+                ? ($checksLine
+                    ? __(':checks. Your account still needs :days more days on HustleSafe before you move to :level.', [
+                        'checks' => $checksLine,
+                        'days' => $daysRemaining,
+                        'level' => $wait['target_level_label'],
+                    ])
+                    : __('Your account needs :days more days on HustleSafe before you move to :level.', [
+                        'days' => $daysRemaining,
+                        'level' => $wait['target_level_label'],
+                    ]))
+                : __('Your account age requirement is satisfied. :level should apply automatically after our systems refresh.', [
+                    'level' => $wait['target_level_label'],
+                ]),
+            'info_bar' => $content['info_bar'] ?? __('Complete the checks for :level first, then wait :required days on HustleSafe to advance.', [
+                'level' => $wait['target_level_label'],
+                'required' => $requiredDays,
+            ]),
+            'days_remaining' => $daysRemaining,
+            'required_account_age_days' => $requiredDays,
+            'completed_checks' => $completedChecks,
+        ], $currentLevel);
+    }
+
+    private function shouldOfferLadderStep(User $user, int $targetLevel, int $currentLevel): bool
+    {
+        if ($user->verification_level_override !== null) {
+            return true;
         }
 
-        $ninSlot = $this->slotFor($user, 'nin', $verifications, true);
-        $bvnSlot = $this->slotFor($user, 'bvn', $verifications, true);
-        $ninSlot = $ninSlot['status'] === 'hidden' ? null : $ninSlot;
-        $bvnSlot = $bvnSlot['status'] === 'hidden' ? null : $bvnSlot;
-
-        if ($ninSlot === null && $bvnSlot === null) {
-            return null;
-        }
-
-        $content = $this->engine->stageContentFor($user, 3);
-        $limit = $trust['next_level_limit_formatted'] ?? $this->engine->formatMoneyMinor($this->engine->limitAtLevel($user, 3));
-
-        return $this->withProgressNotice([
-            'type' => 'nin_bvn',
-            'key' => 'nin_bvn',
-            'status' => 'available',
-            'current_level' => $currentLevel,
-            'target_level' => 3,
-            'target_level_label' => $this->engine->levelLabel(3, $user),
-            'title' => $content['title'] ?? __('NIN & BVN verification'),
-            'message' => $content['message'] ?? __('Submit your NIN and BVN in separate steps. Both must be approved to unlock L3 (proposal limit up to :limit).', ['limit' => $limit]),
-            'info_bar' => $content['info_bar'] ?? __('Add your NIN and BVN to unlock L3. You can submit one now and the other later.'),
-            'nin_slot' => $ninSlot,
-            'bvn_slot' => $bvnSlot,
-        ], $trust);
+        return $targetLevel <= ($currentLevel + 1);
     }
 
     /**
@@ -324,9 +355,11 @@ final class UserVerificationCatalogService
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    private function withProgressNotice(array $payload, array $trust): array
+    private function withProgressNotice(array $payload, array $trust, bool $waitingForAge = false): array
     {
-        $payload['progress_notice'] = __('Move to the next verification level');
+        $payload['progress_notice'] = $waitingForAge
+            ? __('Waiting for account age before the next level')
+            : __('Move to the next verification level');
 
         if (! isset($payload['target_level_limit_formatted']) && isset($trust['next_level_limit_formatted'])) {
             $payload['target_level_limit_formatted'] = $trust['next_level_limit_formatted'];
@@ -355,18 +388,22 @@ final class UserVerificationCatalogService
      */
     private function completeStep(User $user, int $currentLevel, bool $isFreelancer): array
     {
+        $displayLevel = $this->engine->resolvedVerificationLevel($user);
+
         return [
             'type' => 'complete',
             'key' => 'complete',
             'status' => 'complete',
-            'current_level' => $currentLevel,
-            'target_level' => $currentLevel,
-            'target_level_label' => $this->engine->levelLabel($currentLevel, $user),
+            'current_level' => $displayLevel,
+            'target_level' => $displayLevel,
+            'target_level_label' => $this->engine->levelLabel($displayLevel, $user),
             'title' => __('You are fully verified'),
             'message' => $isFreelancer
                 ? __('You have completed all required verification steps. Your proposal limit reflects your current level.')
                 : __('You have completed all required verification steps for your client account.'),
-            'info_bar' => __('You are at :level — the highest verification level for your account type.', ['level' => $this->engine->levelLabel($currentLevel, $user)]),
+            'info_bar' => __('You are at :level — the highest verification level for your account type.', [
+                'level' => $this->engine->levelLabel($displayLevel, $user),
+            ]),
         ];
     }
 
@@ -391,11 +428,13 @@ final class UserVerificationCatalogService
         $limit = $trust['next_level_limit_formatted'] ?? $this->engine->formatMoneyMinor($this->engine->limitAtLevel($user, $targetLevel));
 
         return match ($targetLevel) {
-            3 => $doc === 'nin'
-                ? __('Add your NIN to progress toward L3. At L3 you can propose on quests up to :limit.', ['limit' => $limit])
-                : __('Add your BVN to unlock L3 and propose on quests up to :limit.', ['limit' => $limit]),
-            4 => __('Complete CAC or TIN verification to unlock L4 and propose on quests up to :limit.', ['limit' => $limit]),
-            5 => __('Upload a selfie + ID (with 90 days account age) to unlock L5 and propose on high-value quests up to :limit.', ['limit' => $limit]),
+            3 => __('Submit your NIN to unlock L3 and propose on quests up to :limit.', ['limit' => $limit]),
+            4 => __('Submit your BVN to unlock L4 and propose on quests up to :limit.', ['limit' => $limit]),
+            5 => __('Complete CAC or TIN verification to unlock L5 and propose on quests up to :limit.', ['limit' => $limit]),
+            6 => __('Upload a selfie + ID (with :days days account age) to unlock L6 and propose on high-value quests up to :limit.', [
+                'days' => $this->engine->accountAgeRequirementDaysForLevel($user, 6) ?? 0,
+                'limit' => $limit,
+            ]),
             default => __('Complete this step to unlock :level and propose on quests up to :limit.', [
                 'level' => $this->engine->levelLabel($targetLevel, $user),
                 'limit' => $limit,
@@ -428,7 +467,54 @@ final class UserVerificationCatalogService
 
     /**
      * @param  array<string, mixed>  $trust
+     * @return array{target_level: int, target_label: string, content: array<string, string>, info: string}
      */
+    private function ladderStepMeta(User $user, string $requirement, array $trust, bool $isFreelancer, ?int $targetLevel = null): array
+    {
+        $targetLevel ??= $this->engine->targetLevelForRequirement($user, $requirement)
+            ?? (int) ($trust['next_level'] ?? 1);
+        $content = $this->engine->stageContentFor($user, $targetLevel);
+        $info = $content['info_bar'] ?? ($isFreelancer
+            ? $this->freelancerUnlockHint($user, $targetLevel, $trust)
+            : $this->unlockHint($user, $targetLevel, $trust));
+
+        return [
+            'target_level' => $targetLevel,
+            'target_label' => $this->engine->levelLabel($targetLevel, $user),
+            'content' => $content,
+            'info' => $info,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $nextStep
+     * @param  array<string, mixed>  $trust
+     */
+    private function resolveNextHint(User $user, array $nextStep, array $trust): string
+    {
+        if (($nextStep['type'] ?? '') === 'account_age') {
+            if (! empty($nextStep['message'])) {
+                return (string) $nextStep['message'];
+            }
+        }
+
+        $nextLevel = isset($trust['next_level']) ? (int) $trust['next_level'] : null;
+        $stepLevel = isset($nextStep['target_level']) ? (int) $nextStep['target_level'] : null;
+
+        if ($nextLevel !== null && $nextLevel > 0 && ($stepLevel === null || $stepLevel !== $nextLevel)) {
+            $aligned = $this->engine->stageContentFor($user, $nextLevel);
+            if (! empty($aligned['info_bar'])) {
+                return (string) $aligned['info_bar'];
+            }
+        }
+
+        if (! empty($nextStep['info_bar'])) {
+            return (string) $nextStep['info_bar'];
+        }
+
+        return $this->defaultNextHint($user, $trust);
+    }
+
     /**
      * @param  array<string, mixed>  $trust
      */
@@ -572,25 +658,13 @@ final class UserVerificationCatalogService
             return ['key' => 'live_presence', 'status' => 'hidden'];
         }
 
-        $daysRemaining = $this->engine->accountAgeDaysRemaining($user, 90);
-
         if (! $businessOk) {
             return [
                 'key' => 'live_presence',
-                'title' => __('Selfie + ID (L5)'),
-                'description' => __('Complete CAC or TIN verification first, then return here once your account is at least 90 days old.'),
+                'title' => __('Selfie + ID (L6)'),
+                'description' => __('Complete CAC or TIN verification first, then return here for your selfie + ID check.'),
                 'status' => 'locked',
                 'status_label' => __('Complete CAC or TIN first'),
-            ];
-        }
-
-        if ($daysRemaining > 0) {
-            return [
-                'key' => 'live_presence',
-                'title' => __('Selfie + ID (L5)'),
-                'description' => __('Your account must be at least 90 days old before you can submit a selfie + ID. Approximately :days days remaining.', ['days' => $daysRemaining]),
-                'status' => 'locked',
-                'status_label' => __('90-day account age required'),
             ];
         }
 

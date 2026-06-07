@@ -66,6 +66,8 @@ class UserVerificationController extends Controller
             ? 'duplicate_identity'
             : $this->queueReasonFor($category, $user);
 
+        $metadata['premium_priority'] = app(\App\Services\Freelancer\FreelancerProSubscriptionService::class)->isPro($user);
+
         $verification = UserVerification::query()->create([
             'user_id' => $userId,
             'submitted_by' => $userId,
@@ -111,7 +113,7 @@ class UserVerificationController extends Controller
         return redirect()
             ->route('verifications.index')
             ->with('success', __('Submission received — our team will review shortly. You will be notified in-app and by email when a decision is made.'))
-            ->with('sla_expectation', app(\App\Services\Platform\PlatformSlaService::class)->userExpectationMessage('kyc_verification'));
+            ->with('sla_expectation', app(\App\Services\Platform\PlatformSlaService::class)->userExpectationMessageForUser('kyc_verification', $user));
     }
 
     /**

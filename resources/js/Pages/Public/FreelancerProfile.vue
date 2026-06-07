@@ -73,6 +73,12 @@
                                         {{ profile.name }}
                                     </h1>
                                     <span
+                                        v-if="profile.is_pro"
+                                        class="inline-flex items-center rounded-full bg-gradient-to-r from-amber-300 to-amber-400 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-amber-950 shadow-md ring-1 ring-amber-600/30"
+                                    >
+                                        Pro member
+                                    </span>
+                                    <span
                                         v-if="presence.show_indicator"
                                         class="inline-flex items-center gap-1.5 rounded-full bg-emerald-400/95 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-950 shadow-md ring-1 ring-emerald-700/20"
                                     >
@@ -473,6 +479,59 @@
                 </p>
             </section>
 
+            <section
+                v-if="profile.is_pro && profile.pro_sections && hasProSections"
+                class="space-y-6 rounded-2xl border border-amber-100 bg-amber-50/40 p-8 shadow-sm ring-1 ring-amber-100"
+            >
+                <div>
+                    <p class="text-xs font-black uppercase tracking-wide text-amber-800">Pro member highlights</p>
+                    <h2 class="font-display mt-2 text-2xl font-bold text-slate-900">Featured on profile</h2>
+                </div>
+                <div v-if="profile.pro_sections.testimonials?.length" class="space-y-4">
+                    <h3 class="text-sm font-black uppercase tracking-wide text-slate-500">Testimonials</h3>
+                    <blockquote
+                        v-for="(t, i) in profile.pro_sections.testimonials"
+                        :key="'t-' + i"
+                        class="rounded-2xl border border-white bg-white p-5 text-sm font-semibold leading-relaxed text-slate-700 shadow-sm"
+                    >
+                        “{{ t.quote }}”
+                        <footer v-if="t.author" class="mt-3 text-xs font-black text-slate-900">
+                            — {{ t.author }}<span v-if="t.role" class="font-semibold text-slate-500"> · {{ t.role }}</span>
+                        </footer>
+                    </blockquote>
+                </div>
+                <div v-if="profile.pro_sections.external_links?.length" class="space-y-3">
+                    <h3 class="text-sm font-black uppercase tracking-wide text-slate-500">Links</h3>
+                    <ul class="flex flex-wrap gap-2">
+                        <li v-for="(link, i) in profile.pro_sections.external_links" :key="'e-' + i">
+                            <a
+                                :href="link.url"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="inline-flex rounded-full bg-white px-4 py-2 text-sm font-bold text-primary-800 ring-1 ring-primary-100 hover:bg-primary-50"
+                            >
+                                {{ link.label }}
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <div v-if="profile.pro_sections.media_links?.length" class="space-y-3">
+                    <h3 class="text-sm font-black uppercase tracking-wide text-slate-500">Media</h3>
+                    <ul class="space-y-2">
+                        <li v-for="(link, i) in profile.pro_sections.media_links" :key="'m-' + i">
+                            <a
+                                :href="link.url"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="text-sm font-bold text-primary-800 underline-offset-4 hover:underline"
+                            >
+                                {{ link.label }}
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </section>
+
             <!-- Credentials -->
             <section v-if="profile.credentials && profile.credentials.length" class="space-y-4">
                 <div>
@@ -546,6 +605,7 @@ const props = defineProps({
     links: { type: Object, required: true },
     social: { type: Object, required: true },
     is_authenticated: { type: Boolean, default: false },
+    viewer_role_slug: { type: String, default: '' },
     presence: {
         type: Object,
         default: () => ({
@@ -558,6 +618,19 @@ const props = defineProps({
 const show_freelancer_join_cta = computed(
     () => !props.is_authenticated || props.viewer_role_slug === 'freelancer',
 );
+
+const hasProSections = computed(() => {
+    const sections = props.profile.pro_sections;
+    if (!sections) {
+        return false;
+    }
+
+    return (
+        (sections.testimonials?.length ?? 0) > 0
+        || (sections.external_links?.length ?? 0) > 0
+        || (sections.media_links?.length ?? 0) > 0
+    );
+});
 
 const initials = computed(() => {
     const n = props.profile.name || '';

@@ -237,7 +237,7 @@ class KycCentreService
             'thresholds' => KycSetting::value('thresholds', ['nin' => 85, 'bvn' => 85, 'face_similarity' => 85]),
             'feature_gates' => KycSetting::value('feature_gates', []),
             'resubmission_limit' => KycSetting::value('resubmission_limit', 3),
-            'verification_fees' => KycSetting::value('verification_fees', ['enabled' => false, 'cac_fee_minor' => 0]),
+            'verification_fees' => $this->verificationFeesForAdmin(),
             'limits' => KycSetting::value('limits', []),
             'api_health' => ['status' => 'manual_provider', 'label' => 'Manual/API adapter pending live provider credentials'],
         ];
@@ -245,9 +245,24 @@ class KycCentreService
 
     public function updateSettings(array $data): void
     {
+        if (isset($data['verification_fees']['cac_fee_minor']) && is_numeric($data['verification_fees']['cac_fee_minor'])) {
+            $data['verification_fees']['cac_fee_minor'] = max(0, (int) round(((float) $data['verification_fees']['cac_fee_minor']) * 100));
+        }
+
         foreach ($data as $key => $value) {
             KycSetting::query()->updateOrCreate(['key' => $key], ['value' => $value]);
         }
+    }
+
+    /**
+     * @return array{enabled: bool, cac_fee_minor: float|int}
+     */
+    private function verificationFeesForAdmin(): array
+    {
+        $fees = KycSetting::value('verification_fees', ['enabled' => false, 'cac_fee_minor' => 0]);
+        $fees['cac_fee_minor'] = round(((int) ($fees['cac_fee_minor'] ?? 0)) / 100, 2);
+
+        return $fees;
     }
 
     private function queueRow(KycReviewCase $case): array

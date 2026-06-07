@@ -8,6 +8,7 @@ enum FreelancerSubscriptionStatus: string
     case Cancelled = 'cancelled';
     case Expired = 'expired';
     case PendingRenewal = 'pending_renewal';
+    case AdminSuspended = 'admin_suspended';
 
     public function label(): string
     {
@@ -16,6 +17,7 @@ enum FreelancerSubscriptionStatus: string
             self::Cancelled => 'Cancelled',
             self::Expired => 'Expired',
             self::PendingRenewal => 'Pending Renewal',
+            self::AdminSuspended => 'Suspended by Admin',
         };
     }
 }

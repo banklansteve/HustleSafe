@@ -10,19 +10,6 @@ use App\Models\QuestCategory;
 class QuestFormFieldProfileService
 {
     /**
-     * Parent slugs where on-site visits are commonly relevant.
-     *
-     * @var list<string>
-     */
-    protected const SITE_VISIT_PARENTS = [
-        'trades-field',
-        'real-estate',
-        'agriculture-supply',
-        'media-events',
-        'engineering-stem',
-    ];
-
-    /**
      * Parent slugs where availability (FT/PT/as-needed) is surfaced.
      *
      * @var list<string>
@@ -36,6 +23,31 @@ class QuestFormFieldProfileService
         'healthcare-wellness',
         'sales-bd',
         'ecommerce-retail',
+    ];
+
+    /**
+     * Parent slugs where required-skills tagging helps matching.
+     *
+     * @var list<string>
+     */
+    protected const SKILLS_PARENTS = [
+        'technology-software',
+        'design-creative',
+        'writing-content',
+        'marketing-growth',
+        'business-operations',
+        'finance-accounting',
+        'legal-compliance',
+        'engineering-stem',
+        'trades-field',
+        'education-training',
+        'healthcare-wellness',
+        'media-events',
+        'sales-bd',
+        'ecommerce-retail',
+        'gaming-interactive',
+        'agriculture-supply',
+        'real-estate',
     ];
 
     /**
@@ -59,6 +71,7 @@ class QuestFormFieldProfileService
      *   show_hourly_fields: bool,
      *   show_team_size: bool,
      *   show_location_pref: bool,
+     *   show_required_skills: bool,
      *   remote_first: bool,
      *   default_site_visits: bool,
      *   parent_slug: ?string,
@@ -83,8 +96,8 @@ class QuestFormFieldProfileService
         $leafSlug = $leaf->slug;
 
         $remoteFirst = $parentSlug !== null && in_array($parentSlug, self::REMOTE_FIRST_PARENTS, true);
-        $showSiteVisit = ! $remoteFirst && $parentSlug !== null && in_array($parentSlug, self::SITE_VISIT_PARENTS, true);
         $showAvailability = $parentSlug !== null && in_array($parentSlug, self::AVAILABILITY_PARENTS, true);
+        $showRequiredSkills = $parentSlug !== null && in_array($parentSlug, self::SKILLS_PARENTS, true);
 
         $digitalParents = ['technology-software', 'design-creative', 'writing-content', 'gaming-interactive'];
         $showHourlyFields = $parentSlug !== null && ! in_array($parentSlug, ['legal-compliance'], true);
@@ -93,15 +106,16 @@ class QuestFormFieldProfileService
         $showSiteAccess = ! $remoteFirst && $this->siteAccessContextApplies($parentSlug, $leafSlug);
 
         return [
-            'show_site_visit' => $showSiteVisit,
+            'show_site_visit' => false,
             'show_site_access' => $showSiteAccess,
             'show_pets_question' => $showSiteAccess,
             'show_availability' => $showAvailability,
             'show_hourly_fields' => $showHourlyFields,
             'show_team_size' => $showTeamSize,
             'show_location_pref' => ! $remoteFirst,
+            'show_required_skills' => $showRequiredSkills,
             'remote_first' => $remoteFirst,
-            'default_site_visits' => $showSiteVisit,
+            'default_site_visits' => false,
             'parent_slug' => $parentSlug,
             'leaf_slug' => $leafSlug,
         ];
@@ -148,6 +162,7 @@ class QuestFormFieldProfileService
             'show_hourly_fields' => true,
             'show_team_size' => true,
             'show_location_pref' => true,
+            'show_required_skills' => false,
             'remote_first' => false,
             'default_site_visits' => false,
             'parent_slug' => null,

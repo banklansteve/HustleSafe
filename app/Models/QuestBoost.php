@@ -17,6 +17,8 @@ class QuestBoost extends Model
         'quest_title_snapshot',
         'client_id',
         'granted_by_admin_id',
+        'purchased_by_client_id',
+        'quest_boost_payment_id',
         'tier',
         'planned_cost_minor',
         'status',

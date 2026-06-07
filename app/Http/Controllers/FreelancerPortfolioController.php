@@ -14,11 +14,13 @@ use App\Models\QuestCategory;
 use App\Models\Review;
 use App\Models\User;
 use App\Notifications\PortfolioFavoritedNotification;
+use App\Services\Freelancer\FreelancerProSubscriptionService;
 use App\Services\PortfolioService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -129,6 +131,7 @@ class FreelancerPortfolioController extends Controller
     {
         $user = $request->user();
         $this->authorize('create', Portfolio::class);
+        $this->assertPortfolioCapacity($user);
 
         $data = $request->validated();
         $status = $request->enum('status', PortfolioStatus::class);
@@ -496,5 +499,23 @@ class FreelancerPortfolioController extends Controller
         $naira = $minorUnits / 100;
 
         return '₦'.number_format($naira, 0);
+    }
+
+    protected function assertPortfolioCapacity(User $user): void
+    {
+        $max = app(FreelancerProSubscriptionService::class)->maxPortfolioItems($user);
+        if ($max === null) {
+            return;
+        }
+
+        $count = Portfolio::query()->where('user_id', $user->id)->count();
+        if ($count >= $max) {
+            throw ValidationException::withMessages([
+                'portfolio' => [__(
+                    'Free accounts can create up to :count portfolio items. Upgrade to Pro for unlimited uploads.',
+                    ['count' => $max],
+                )],
+            ]);
+        }
     }
 }

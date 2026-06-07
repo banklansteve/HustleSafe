@@ -7,12 +7,21 @@ use App\Models\ProposalQuotaAuditLog;
 use App\Models\ProposalQuotaUsage;
 use App\Models\Quest;
 use App\Models\User;
-use App\Support\PlatformSettings;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Validation\ValidationException;
 
 final class ProposalQuotaService
 {
-    public function __construct(private readonly FreelancerProSubscriptionService $subscriptions) {}
+    /**
+     * Monthly proposal submission quota only (per verification tier).
+     *
+     * Orthogonal to VerificationEngineService job value limits — Pro removes
+     * the monthly count cap but never bypasses tier, age, or budget gates.
+     */
+    public function __construct(
+        private readonly FreelancerProSubscriptionService $subscriptions,
+        private readonly VerificationEngineService $verificationEngine,
+    ) {}
 
     public function currentMonth(): string
     {
@@ -24,6 +33,11 @@ final class ProposalQuotaService
         return $this->subscriptions->isPro($user);
     }
 
+    public function monthlyLimitFor(User $user): int
+    {
+        return $this->verificationEngine->freelancerMonthlyProposalLimit($user);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -32,15 +46,19 @@ final class ProposalQuotaService
         $isPro = $this->isPro($user);
         $month = $this->currentMonth();
         $usage = $this->usageRecord($user, $month);
-        $limit = PlatformSettings::freelancerFreeProposalQuota();
+        $limit = $this->monthlyLimitFor($user);
+        $used = (int) $usage->proposals_count;
+        $level = $this->verificationEngine->limitLevel($user);
 
         return [
             'month' => $month,
             'is_pro' => $isPro,
             'limit' => $isPro ? null : $limit,
-            'used' => (int) $usage->proposals_count,
-            'remaining' => $isPro ? null : max(0, $limit - (int) $usage->proposals_count),
-            'percent_used' => $isPro ? 0 : ($limit > 0 ? min(100, round(((int) $usage->proposals_count / $limit) * 100)) : 0),
+            'used' => $used,
+            'remaining' => $isPro ? null : max(0, $limit - $used),
+            'percent_used' => $isPro ? 0 : ($limit > 0 ? min(100, round(($used / $limit) * 100)) : 0),
+            'verification_level' => $level,
+            'limit_source' => $isPro ? 'pro_unlimited' : 'verification_tier',
         ];
     }
 
@@ -52,7 +70,7 @@ final class ProposalQuotaService
         $isPro = $this->isPro($user);
         $month = $this->currentMonth();
         $usage = $this->usageRecord($user, $month);
-        $limit = PlatformSettings::freelancerFreeProposalQuota();
+        $limit = $this->monthlyLimitFor($user);
         $used = (int) $usage->proposals_count;
         $tier = $isPro ? FreelancerSubscriptionTier::Pro->value : FreelancerSubscriptionTier::Free->value;
 
@@ -62,11 +80,27 @@ final class ProposalQuotaService
             return;
         }
 
-        if ($used >= $limit) {
+        if ($limit <= 0) {
             $this->audit($user, $month, $tier, $used, $limit, 'blocked', $quest?->id);
 
             throw ValidationException::withMessages([
-                'proposal' => [__('You\'ve used your :limit monthly proposals. Upgrade to Pro for unlimited proposals.', ['limit' => $limit])],
+                'proposal' => [__('Your verification level does not allow proposal submissions yet.')],
+                'quota_exceeded' => [true],
+            ]);
+        }
+
+        if ($used >= $limit) {
+            $this->audit($user, $month, $tier, $used, $limit, 'blocked', $quest?->id);
+            $levelLabel = $this->verificationEngine->levelLabel(
+                $this->verificationEngine->limitLevel($user),
+                $user,
+            );
+
+            throw ValidationException::withMessages([
+                'proposal' => [__(
+                    'You\'ve used your :limit monthly proposals at :level. Upgrade to Pro for unlimited submissions (job value limits still apply).',
+                    ['limit' => $limit, 'level' => $levelLabel],
+                )],
                 'quota_exceeded' => [true],
             ]);
         }

@@ -415,12 +415,15 @@ function verificationLimitMessage(questBudgetMinor) {
         return 'This quest is above your current verification limit.';
     }
 
-    const limitLabel = formatBudget(access.proposal_limit_minor);
+    const limitLabel = access.proposal_limit_formatted || formatBudget(access.proposal_limit_minor);
+    const level = access.current_level ?? access.effective_level;
     const missing = (access.missing_for_next_level || []).filter(Boolean).join(', ');
-    let message = `Budget ${formatBudget(questBudgetMinor)} exceeds your L${access.effective_level} limit (${limitLabel}).`;
+    let message = `Budget ${formatBudget(questBudgetMinor)} exceeds your L${level} limit (${limitLabel}).`;
 
     if (missing) {
         message += ` Complete ${missing} to unlock higher-value quests.`;
+    } else if (access.next_level_label && access.next_level_limit_formatted) {
+        message += ` Reach ${access.next_level_label} for up to ${access.next_level_limit_formatted}.`;
     } else {
         message += ' Complete more verification to unlock higher-value quests.';
     }

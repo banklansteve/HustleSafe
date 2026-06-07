@@ -12,6 +12,7 @@ use App\Models\QuestCategory;
 use App\Services\QuestDescriptionSanitizer;
 use App\Services\QuestFormFieldProfileService;
 use App\Support\PlatformSettings;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -110,6 +111,9 @@ class UpdateQuestRequest extends FormRequest
     public function rules(): array
     {
         $quest = $this->route('quest');
+        $engine = app(VerificationEngineService::class);
+        $minBudget = $engine->minQuestBudgetMinor();
+        $maxBudget = $engine->platformMaxQuestBudgetMinor();
 
         return [
             'title' => ['sometimes', 'string', 'max:200'],
@@ -122,7 +126,7 @@ class UpdateQuestRequest extends FormRequest
                 Rule::exists('local_governments', 'id')->where('state_id', (int) $this->input('state_id', $quest?->state_id ?? 0)),
             ],
             'city' => ['sometimes', 'string', 'max:160'],
-            'budget_amount_minor' => ['sometimes', 'integer', 'min:10000', 'max:500000000'],
+            'budget_amount_minor' => ['sometimes', 'integer', 'min:'.$minBudget, 'max:'.$maxBudget],
             'start_timing' => ['sometimes', Rule::enum(QuestStartTiming::class)],
             'scheduled_start_date' => ['nullable', 'date'],
             'estimated_completion_days' => ['sometimes', 'integer', 'min:1', 'max:365'],

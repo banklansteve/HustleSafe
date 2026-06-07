@@ -130,7 +130,7 @@ export function validateQuestCreateStep(step, deps) {
             }
         }
         if (fieldProfile.show_team_size && !form.team_size) {
-            errors.team_size = 'Choose solo or small team.';
+            errors.team_size = 'Choose how many people should work on this quest.';
         }
     }
 

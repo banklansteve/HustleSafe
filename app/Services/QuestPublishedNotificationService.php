@@ -6,11 +6,16 @@ use App\Enums\QuestVisibility;
 use App\Models\Quest;
 use App\Models\User;
 use App\Models\UserFollow;
+use App\Services\Freelancer\FreelancerProSubscriptionService;
 use App\Notifications\QuestAudienceNotification;
 use Illuminate\Support\Collection;
 
 class QuestPublishedNotificationService
 {
+    public function __construct(
+        private readonly FreelancerProSubscriptionService $proMembership,
+    ) {}
+
     /**
      * @param  list<int>  $explicitFreelancerIds
      */
@@ -57,7 +62,9 @@ class QuestPublishedNotificationService
                         }
                     });
                 })
-                ->get();
+                ->get()
+                ->sortByDesc(fn (User $user) => $this->proMembership->isPro($user) ? 1 : 0)
+                ->values();
 
             foreach ($matchers as $user) {
                 if (isset($notified[$user->id])) {

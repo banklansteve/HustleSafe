@@ -156,6 +156,12 @@
                                 {{ [quest.location.city, quest.location.lga, quest.location.state].filter(Boolean).join(' · ') }}
                             </span>
                             <span
+                                v-if="quest.featured_boost"
+                                class="rounded-full bg-amber-500 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-white shadow-sm ring-1 ring-amber-300/50"
+                            >
+                                {{ quest.featured_boost.badge_label || 'Boosted' }}
+                            </span>
+                            <span
                                 v-if="quest.visibility"
                                 class="rounded-full bg-white/10 px-3 py-1 text-white/95 ring-1 ring-white/15"
                             >
@@ -173,7 +179,19 @@
                             >
                                 {{ quest.saves_count }} saves
                             </span>
+                            <span
+                                v-if="quest.delivery_deadline"
+                                class="rounded-full bg-white/10 px-3 py-1 text-white/95 ring-1 ring-white/15"
+                            >
+                                Deadline {{ quest.delivery_deadline }}
+                            </span>
                         </div>
+                        <p
+                            v-if="questListingMeta.length"
+                            class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold text-white/80 sm:text-xs"
+                        >
+                            <span v-for="(meta, mi) in questListingMeta" :key="mi">{{ meta }}</span>
+                        </p>
                     </div>
                     <div class="space-y-6 border-t border-slate-100 p-5 sm:p-6">
                         <div
@@ -215,7 +233,118 @@
                             <p v-else class="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-4 py-6 text-sm font-semibold text-slate-500">
                                 The client has not added a written description yet — use the gallery and budget as your guide, or ask in chat once you connect.
                             </p>
+                            <div v-if="quest.required_skills?.length" class="mt-4 flex flex-wrap gap-2">
+                                <span
+                                    v-for="skill in quest.required_skills"
+                                    :key="skill"
+                                    class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-800 ring-1 ring-slate-200"
+                                >
+                                    {{ skill }}
+                                </span>
+                            </div>
                         </div>
+
+                        <section
+                            v-if="!is_quest_owner"
+                            class="rounded-xl border border-slate-100 bg-white p-5 shadow-sm ring-1 ring-slate-100"
+                        >
+                            <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
+                                Client's preferences
+                                <span class="font-semibold normal-case text-slate-400">(optional)</span>
+                            </h2>
+                            <p class="mt-1 text-xs font-semibold text-slate-500">
+                                You can accept, propose alternatives, or clarify when you send a proposal.
+                            </p>
+                            <ul v-if="quest_has_specified_preferences" class="mt-4 space-y-2 text-sm font-semibold text-slate-700">
+                                <li v-for="pref in quest_preferences" :key="pref.key" class="flex gap-2">
+                                    <span :class="pref.is_specified ? 'text-emerald-600' : 'text-slate-400'">
+                                        {{ pref.is_specified ? '✓' : '○' }}
+                                    </span>
+                                    <span>
+                                        <span class="font-black text-slate-900">{{ pref.label }}:</span>
+                                        {{ pref.display_value }}
+                                    </span>
+                                </li>
+                            </ul>
+                            <p v-else class="mt-3 text-sm font-semibold text-slate-600">
+                                Client didn't specify preferences — you can propose your approach in your proposal.
+                            </p>
+                            <p v-if="quest.preferences_last_updated" class="mt-3 text-xs font-semibold text-slate-500">
+                                Preferences last updated {{ formatWhen(quest.preferences_last_updated) }}
+                            </p>
+                        </section>
+
+                        <section
+                            v-if="is_quest_owner && can_edit_preferences"
+                            class="rounded-xl border border-slate-100 bg-white p-5 shadow-sm ring-1 ring-slate-100"
+                        >
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
+                                        Your preferences
+                                    </h2>
+                                    <p class="mt-1 text-xs font-semibold text-slate-500">
+                                        Optional details freelancers see before they propose.
+                                    </p>
+                                </div>
+                                <button
+                                    v-if="!showEditPreferencesForm"
+                                    type="button"
+                                    class="rounded-full border border-primary-200 bg-primary-50 px-4 py-2 text-xs font-black text-primary-900 hover:bg-primary-100"
+                                    @click="openEditPreferences"
+                                >
+                                    Edit preferences
+                                </button>
+                                <button
+                                    v-else
+                                    type="button"
+                                    class="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-800 hover:bg-slate-50"
+                                    @click="closeEditPreferences"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                            <ul v-if="!showEditPreferencesForm && quest_has_specified_preferences" class="mt-4 space-y-2 text-sm font-semibold text-slate-700">
+                                <li v-for="pref in quest_preferences" :key="pref.key" class="flex gap-2">
+                                    <span :class="pref.is_specified ? 'text-emerald-600' : 'text-slate-400'">
+                                        {{ pref.is_specified ? '✓' : '○' }}
+                                    </span>
+                                    <span>
+                                        <span class="font-black text-slate-900">{{ pref.label }}:</span>
+                                        {{ pref.display_value }}
+                                    </span>
+                                </li>
+                            </ul>
+                            <p v-else-if="!showEditPreferencesForm" class="mt-3 text-sm font-semibold text-slate-600">
+                                No preferences specified yet — add them to guide freelancers.
+                            </p>
+                            <p v-if="quest.preferences_last_updated && !showEditPreferencesForm" class="mt-3 text-xs font-semibold text-slate-500">
+                                Last updated {{ formatWhen(quest.preferences_last_updated) }}
+                            </p>
+                            <form v-if="showEditPreferencesForm" class="mt-4 space-y-4" @submit.prevent="submitPreferencesEdit">
+                                <div
+                                    v-if="offersCountDisplay > 0"
+                                    class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950 ring-1 ring-amber-100"
+                                    role="alert"
+                                >
+                                    You have {{ offersCountDisplay }} {{ offersCountDisplay === 1 ? 'proposal' : 'proposals' }}.
+                                    Changes may affect how freelancers interpreted your brief — they are not notified automatically.
+                                </div>
+                                <QuestPreferenceFields
+                                    v-model="preferencesEditForm.preferences"
+                                    :profile="preference_profile"
+                                />
+                                <InputError :message="preferencesEditForm.errors.preferences" />
+                                <button
+                                    type="submit"
+                                    class="inline-flex items-center rounded-full bg-primary-600 px-6 py-2.5 text-xs font-black text-white shadow-sm hover:bg-primary-700 disabled:opacity-60"
+                                    :disabled="preferencesEditForm.processing"
+                                >
+                                    <ReLoader4Line v-if="preferencesEditForm.processing" class="mr-2 h-4 w-4 animate-spin" />
+                                    Save preferences
+                                </button>
+                            </form>
+                        </section>
 
                         <div v-if="can_edit && form_options" id="edit-listing-panel" class="rounded-xl border border-slate-200/90 bg-slate-50/60 p-4 ring-1 ring-slate-100">
                             <div class="flex flex-wrap items-center justify-between gap-3">
@@ -352,10 +481,6 @@
                                         class="mt-1 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm"
                                     />
                                 </div>
-                                <label class="flex items-center gap-2 text-sm font-bold text-slate-800">
-                                    <input v-model="editForm.site_visits_allowed" type="checkbox" class="rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
-                                    Site visits allowed
-                                </label>
                                 <button
                                     type="submit"
                                     class="w-full rounded-full bg-slate-900 py-3 text-sm font-black text-white shadow-md hover:bg-slate-800 disabled:opacity-50"
@@ -389,14 +514,6 @@
                                 </div>
                                 <div class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
                                     <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
-                                        Site visits
-                                    </dt>
-                                    <dd class="mt-1 text-sm font-bold text-slate-900">
-                                        {{ quest.site_visits_allowed ? 'Allowed before proposals' : 'Not requested' }}
-                                    </dd>
-                                </div>
-                                <div class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
-                                    <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
                                         Due target
                                     </dt>
                                     <dd class="mt-1 text-sm font-bold text-slate-900">
@@ -413,7 +530,7 @@
                                 </div>
                                 <div v-if="quest.team_size" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
                                     <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
-                                        Team size
+                                        People for the job
                                     </dt>
                                     <dd class="mt-1 text-sm font-bold text-slate-900">
                                         {{ teamSizeLabel(quest.team_size) }}
@@ -535,126 +652,17 @@
                     </div>
                 </section>
 
-                <section v-if="similar_quests.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-6">
-                    <h2 class="font-display text-lg font-bold text-slate-900">
-                        Similar quests nearby
-                    </h2>
-                    <ul class="mt-4 space-y-2">
-                        <li v-for="s in similar_quests" :key="s.uuid">
-                            <Link
-                                :href="route('quests.show', s.slug || s.uuid)"
-                                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-900 ring-1 ring-slate-100 transition hover:border-primary-200 hover:bg-white"
-                            >
-                                <span class="min-w-0 flex-1 truncate">{{ s.title }}</span>
-                                <span class="text-xs font-semibold text-primary-800">{{ formatBudget(s.budget_minor) }}</span>
-                            </Link>
-                        </li>
-                    </ul>
-                </section>
-
-                <section v-if="from_client_quests.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-6">
-                    <h2 class="font-display text-lg font-bold text-slate-900">
-                        More from this client
-                    </h2>
-                    <ul class="mt-4 space-y-2">
-                        <li v-for="s in from_client_quests" :key="s.uuid">
-                            <Link
-                                :href="route('quests.show', s.slug || s.uuid)"
-                                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-900 ring-1 ring-slate-100 transition hover:border-primary-200 hover:bg-white"
-                            >
-                                <span class="min-w-0 flex-1 truncate">{{ s.title }}</span>
-                                <span class="text-xs font-semibold text-primary-800">{{ formatBudget(s.budget_minor) }}</span>
-                            </Link>
-                        </li>
-                    </ul>
-                </section>
-
-                <section v-if="category_quests_other_areas.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-6">
-                    <h2 class="font-display text-lg font-bold text-slate-900">
-                        Same category, other states
-                    </h2>
-                    <ul class="mt-4 space-y-2">
-                        <li v-for="s in category_quests_other_areas" :key="s.uuid">
-                            <Link
-                                :href="route('quests.show', s.slug || s.uuid)"
-                                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-900 ring-1 ring-slate-100 transition hover:border-primary-200 hover:bg-white"
-                            >
-                                <span class="min-w-0 flex-1 truncate">{{ s.title }}</span>
-                                <span class="text-xs font-semibold text-slate-600">{{ s.state }}</span>
-                            </Link>
-                        </li>
-                    </ul>
-                </section>
-            </div>
-
-            <aside class="space-y-2 lg:col-span-4">
-                <section class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
-                    <h2 class="font-display text-sm font-bold uppercase tracking-wide text-slate-500">
-                        Client
-                    </h2>
-                    <div class="mt-4 flex items-center gap-3">
-                        <UserProfileAvatar
-                            :href="clientProfileHref"
-                            :src="quest.client.avatar_url"
-                            :name="quest.client.name"
-                            :alt="quest.client.name"
-                            frame-class="h-12 w-12 text-sm shadow-md"
-                        />
-                        <div class="min-w-0 text-left">
-                            <Link
-                                v-if="clientProfileHref"
-                                :href="clientProfileHref"
-                                prefetch="false"
-                                preserve-scroll
-                                class="block truncate font-bold text-slate-900 underline decoration-primary-300 decoration-2 underline-offset-2 hover:text-primary-800"
-                            >
-                                {{ quest.client.name }}
-                            </Link>
-                            <p v-else class="truncate font-bold text-slate-900">
-                                {{ quest.client.name }}
-                            </p>
-                            <p v-if="quest.client.username" class="truncate text-xs font-semibold text-slate-500">
-                                @{{ quest.client.username }}
-                            </p>
-                        </div>
-                    </div>
-                </section>
-
-                <section
-                    v-if="is_quest_owner && quest_message_threads.length"
-                    class="rounded-xl border border-primary-100 bg-gradient-to-br from-primary-50/90 via-white to-teal-50/80 p-5 shadow-md ring-1 ring-primary-100"
-                >
-                    <h2 class="font-display text-lg font-bold text-slate-900">
-                        Quest messages
-                    </h2>
-                    <p class="mt-1 text-xs font-semibold text-slate-600">
-                        Secure in-app chat — no phone numbers or email.
-                    </p>
-                    <ul class="mt-4 space-y-2">
-                        <li v-for="t in quest_message_threads" :key="t.slug" class="flex items-center gap-2 rounded-xl border border-white/80 bg-white/90 py-1 pl-1 pr-2 shadow-sm ring-1 ring-slate-100">
-                            <UserProfileAvatar
-                                :href="route('freelancers.public', t.slug)"
-                                :src="t.avatar_url"
-                                :name="t.name"
-                                :alt="t.name"
-                                frame-class="h-10 w-10 text-[10px]"
-                            />
-                            <Link
-                                :href="t.messages_url"
-                                prefetch="false"
-                                preserve-scroll
-                                class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-sm font-bold text-slate-900 transition hover:bg-primary-50/60"
-                            >
-                                <span class="min-w-0 flex-1 truncate">{{ t.first_name || t.name }}</span>
-                                <ChatBubbleLeftRightIcon class="h-5 w-5 shrink-0 text-primary-700" aria-hidden="true" />
-                            </Link>
-                        </li>
-                    </ul>
-                </section>
+                <QuestBoostUpsellPanel
+                    v-if="is_quest_owner && boost_upsell && (boost_upsell.can_purchase || boost_upsell.has_active_boost)"
+                    :upsell="boost_upsell"
+                    :quest="quest"
+                    :checkout-url="route('quests.boost.checkout', quest.route_key)"
+                    :dismiss-url="route('quests.boost.dismiss-upsell', quest.route_key)"
+                />
 
                 <section
                     v-if="quest.commerce"
-                    class="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/70 p-5 shadow-md ring-1 ring-emerald-100"
+                    class="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/70 p-5 shadow-md ring-1 ring-emerald-100 sm:p-6"
                 >
                     <h2 class="font-display text-lg font-bold text-slate-900">
                         Escrow & disputes
@@ -718,8 +726,184 @@
                     </p>
                 </section>
 
+                <section v-if="similar_quests.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-6">
+                    <h2 class="font-display text-lg font-bold text-slate-900">
+                        Similar quests nearby
+                    </h2>
+                    <ul class="mt-4 space-y-2">
+                        <li v-for="s in similar_quests" :key="s.uuid">
+                            <Link
+                                :href="route('quests.show', s.slug || s.uuid)"
+                                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-900 ring-1 ring-slate-100 transition hover:border-primary-200 hover:bg-white"
+                            >
+                                <span class="min-w-0 flex-1 truncate">{{ s.title }}</span>
+                                <span class="text-xs font-semibold text-primary-800">{{ formatBudget(s.budget_minor) }}</span>
+                            </Link>
+                        </li>
+                    </ul>
+                </section>
+
+                <section v-if="from_client_quests.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-6">
+                    <h2 class="font-display text-lg font-bold text-slate-900">
+                        More from this client
+                    </h2>
+                    <ul class="mt-4 space-y-2">
+                        <li v-for="s in from_client_quests" :key="s.uuid">
+                            <Link
+                                :href="route('quests.show', s.slug || s.uuid)"
+                                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-900 ring-1 ring-slate-100 transition hover:border-primary-200 hover:bg-white"
+                            >
+                                <span class="min-w-0 flex-1 truncate">{{ s.title }}</span>
+                                <span class="text-xs font-semibold text-primary-800">{{ formatBudget(s.budget_minor) }}</span>
+                            </Link>
+                        </li>
+                    </ul>
+                </section>
+
+                <section v-if="category_quests_other_areas.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100 sm:p-6">
+                    <h2 class="font-display text-lg font-bold text-slate-900">
+                        Same category, other states
+                    </h2>
+                    <ul class="mt-4 space-y-2">
+                        <li v-for="s in category_quests_other_areas" :key="s.uuid">
+                            <Link
+                                :href="route('quests.show', s.slug || s.uuid)"
+                                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-900 ring-1 ring-slate-100 transition hover:border-primary-200 hover:bg-white"
+                            >
+                                <span class="min-w-0 flex-1 truncate">{{ s.title }}</span>
+                                <span class="text-xs font-semibold text-slate-600">{{ s.state }}</span>
+                            </Link>
+                        </li>
+                    </ul>
+                </section>
+            </div>
+
+            <aside class="space-y-2 lg:col-span-4">
+                <PartyInsightCard
+                    v-if="showSponsorInsightCard"
+                    heading="Client profile"
+                    :insight="sponsor_insight"
+                />
                 <section
-                    v-if="is_quest_owner && client_proposals.length"
+                    v-else-if="!is_quest_owner && quest.client?.name"
+                    class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100"
+                >
+                    <h2 class="font-display text-sm font-bold uppercase tracking-wide text-slate-500">
+                        Client
+                    </h2>
+                    <div class="mt-4 flex items-center gap-3">
+                        <UserProfileAvatar
+                            :href="clientProfileHref"
+                            :src="quest.client.avatar_url"
+                            :name="quest.client.name"
+                            :alt="quest.client.name"
+                            frame-class="h-12 w-12 text-sm shadow-md"
+                        />
+                        <div class="min-w-0 text-left">
+                            <Link
+                                v-if="clientProfileHref"
+                                :href="clientProfileHref"
+                                prefetch="false"
+                                preserve-scroll
+                                class="block truncate font-bold text-slate-900 underline decoration-primary-300 decoration-2 underline-offset-2 hover:text-primary-800"
+                            >
+                                {{ quest.client.name }}
+                            </Link>
+                            <p v-else class="truncate font-bold text-slate-900">
+                                {{ quest.client.name }}
+                            </p>
+                            <p v-if="quest.client.username" class="truncate text-xs font-semibold text-slate-500">
+                                @{{ quest.client.username }}
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                <section
+                    v-if="is_quest_owner && boost_upsell?.can_purchase && !boost_upsell?.has_active_boost"
+                    class="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50/90 via-white to-orange-50/70 p-4 shadow-md ring-1 ring-amber-100"
+                >
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-900">
+                        Optional
+                    </p>
+                    <p class="mt-1 text-sm font-bold text-slate-900">
+                        Boost this quest
+                    </p>
+                    <p class="mt-1 text-xs font-semibold text-slate-600">
+                        Reach matching pros faster with a paid visibility boost.
+                    </p>
+                    <a
+                        href="#boost-quest"
+                        class="mt-3 inline-flex w-full items-center justify-center rounded-full bg-amber-600 px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-amber-700"
+                    >
+                        View boost options
+                    </a>
+                </section>
+
+                <section
+                    v-if="is_quest_owner && messageThreadCount"
+                    class="rounded-xl border border-primary-100 bg-gradient-to-br from-primary-50/90 via-white to-teal-50/80 p-5 shadow-md ring-1 ring-primary-100"
+                >
+                    <h2 class="font-display text-lg font-bold text-slate-900">
+                        Quest messages
+                    </h2>
+                    <p class="mt-1 text-xs font-semibold text-slate-600">
+                        Secure in-app chat — no phone numbers or email.
+                    </p>
+                    <ul v-if="showMessageThreadList" class="mt-4 space-y-2">
+                        <li v-for="t in quest_message_threads" :key="t.slug" class="flex items-center gap-2 rounded-xl border border-white/80 bg-white/90 py-1 pl-1 pr-2 shadow-sm ring-1 ring-slate-100">
+                            <UserProfileAvatar
+                                :href="route('freelancers.public', t.slug)"
+                                :src="t.avatar_url"
+                                :name="t.name"
+                                :alt="t.name"
+                                frame-class="h-10 w-10 text-[10px]"
+                            />
+                            <Link
+                                :href="t.messages_url"
+                                prefetch="false"
+                                preserve-scroll
+                                class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-sm font-bold text-slate-900 transition hover:bg-primary-50/60"
+                            >
+                                <span class="min-w-0 flex-1 truncate">{{ t.first_name || t.name }}</span>
+                                <ChatBubbleLeftRightIcon class="h-5 w-5 shrink-0 text-primary-700" aria-hidden="true" />
+                            </Link>
+                        </li>
+                    </ul>
+                    <div v-else-if="showMessageThreadPicker" class="mt-4 space-y-3">
+                        <div>
+                            <InputLabel value="Choose freelancer" />
+                            <UiSelect
+                                v-model="selectedMessageThreadSlug"
+                                class="mt-1"
+                                :options="messageThreadOptions"
+                                placeholder="Select a freelancer…"
+                            />
+                        </div>
+                        <Link
+                            v-if="selectedMessageThread"
+                            :href="selectedMessageThread.messages_url"
+                            prefetch="false"
+                            preserve-scroll
+                            class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary-600 px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-primary-700"
+                        >
+                            <UserProfileAvatar
+                                :src="selectedMessageThread.avatar_url"
+                                :name="selectedMessageThread.name"
+                                :alt="selectedMessageThread.name"
+                                frame-class="h-8 w-8 text-[10px]"
+                            />
+                            Message {{ selectedMessageThread.first_name || selectedMessageThread.name }}
+                            <ChatBubbleLeftRightIcon class="h-5 w-5 shrink-0" aria-hidden="true" />
+                        </Link>
+                        <p class="text-center text-[11px] font-semibold text-slate-500">
+                            {{ messageThreadCount }} freelancers available — pick one to open chat.
+                        </p>
+                    </div>
+                </section>
+
+                <section
+                    v-if="is_quest_owner && client_proposals_total"
                     class="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50/90 via-white to-fuchsia-50/70 p-5 shadow-md ring-1 ring-violet-100"
                 >
                     <div class="flex flex-wrap items-start justify-between gap-2">
@@ -728,7 +912,7 @@
                                 Proposals inbox
                             </h2>
                             <p class="mt-1 text-xs font-semibold text-violet-900/90">
-                                {{ client_proposals.length }} {{ client_proposals.length === 1 ? 'response' : 'responses' }} on this quest
+                                {{ client_proposals_total }} {{ client_proposals_total === 1 ? 'response' : 'responses' }} on this quest
                             </p>
                         </div>
                         <Link
@@ -736,11 +920,11 @@
                             :href="client_proposals_hub_url"
                             class="shrink-0 rounded-full bg-violet-700 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white shadow-sm hover:bg-violet-800"
                         >
-                            Manage all
+                            All proposals
                         </Link>
                     </div>
                     <ul class="mt-4 space-y-2">
-                        <li v-for="p in client_proposals.slice(0, 6)" :key="p.id">
+                        <li v-for="p in client_proposals" :key="p.id">
                             <article class="flex items-center gap-3 rounded-xl border border-white/80 bg-white/90 px-3 py-2.5 shadow-sm ring-1 ring-violet-100/80">
                                 <Link :href="p.show_url" class="flex min-w-0 flex-1 items-center gap-3 transition hover:opacity-90">
                                     <UserProfileAvatar
@@ -769,9 +953,9 @@
                             </article>
                         </li>
                     </ul>
-                    <p v-if="client_proposals.length > 6 && client_proposals_hub_url" class="mt-3 text-center text-[11px] font-bold text-violet-900">
+                    <p v-if="client_proposals_total > 5 && client_proposals_hub_url" class="mt-3 text-center text-[11px] font-bold text-violet-900">
                         <Link :href="client_proposals_hub_url" class="underline decoration-violet-400 underline-offset-2 hover:text-violet-950">
-                            Search, sort & open every proposal →
+                            View all {{ client_proposals_total }} proposals →
                         </Link>
                     </p>
                 </section>
@@ -780,7 +964,7 @@
                     <h2 class="font-display text-lg font-bold text-slate-900">
                         Proposals
                     </h2>
-                    <div v-if="my_offer" class="mt-4 rounded-xl border border-emerald-100 bg-white/90 p-4 text-sm font-semibold text-slate-800 ring-1 ring-emerald-50">
+                    <div v-if="hasSubmittedProposal" class="mt-4 rounded-xl border border-emerald-100 bg-white/90 p-4 text-sm font-semibold text-slate-800 ring-1 ring-emerald-50">
                         <div class="flex flex-wrap items-center justify-between gap-2">
                             <p class="text-xs font-black uppercase tracking-wide text-emerald-700">
                                 Your proposal · {{ my_offer.status }}
@@ -956,10 +1140,16 @@
                     </button>
                 </section>
 
-                <section v-if="top_freelancers.length" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
+                <section
+                    v-if="is_quest_owner && topFreelancersDisplay.length"
+                    class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100"
+                >
                     <h2 class="font-display text-lg font-bold text-slate-900">
                         Recommended for this job
                     </h2>
+                    <p class="mt-1 text-xs font-semibold text-slate-500">
+                        Top {{ topFreelancersDisplay.length }} match{{ topFreelancersDisplay.length === 1 ? '' : 'es' }} for your brief.
+                    </p>
                     <p
                         v-if="freelancer_match_stats?.label"
                         class="mt-2 text-xs font-semibold leading-relaxed text-slate-600"
@@ -967,8 +1157,11 @@
                         {{ freelancer_match_stats.total }} freelancers match this category.
                         {{ freelancer_match_stats.label }}
                     </p>
+                    <p v-if="can_manage_invites" class="mt-2 text-xs font-semibold text-slate-500">
+                        Tag freelancers to notify them — they can open your quest and propose.
+                    </p>
                     <ul class="mt-3 space-y-3">
-                        <li v-for="f in top_freelancers" :key="f.id">
+                        <li v-for="f in topFreelancersDisplay" :key="f.id">
                             <div class="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-3 ring-1 ring-slate-100">
                                 <div class="flex items-start justify-between gap-2">
                                     <Link
@@ -1008,9 +1201,35 @@
                                 >
                                     {{ f.why_recommended }}
                                 </p>
+                                <div v-if="can_manage_invites" class="mt-3">
+                                    <button
+                                        v-if="isRecommendedTagged(f.id)"
+                                        type="button"
+                                        disabled
+                                        class="w-full rounded-full border border-emerald-200 bg-emerald-50 py-2 text-[10px] font-black uppercase tracking-wide text-emerald-800"
+                                    >
+                                        Tagged
+                                    </button>
+                                    <button
+                                        v-else
+                                        type="button"
+                                        class="w-full rounded-full bg-primary-600 py-2 text-[10px] font-black uppercase tracking-wide text-white shadow-sm hover:bg-primary-700 disabled:opacity-60"
+                                        :disabled="recommendationTagBusy === f.id"
+                                        @click="tagRecommendedFreelancer(f)"
+                                    >
+                                        {{ recommendationTagBusy === f.id ? 'Tagging…' : 'Tag & notify' }}
+                                    </button>
+                                </div>
                             </div>
                         </li>
                     </ul>
+                    <Link
+                        v-if="recommendations_more_url && (freelancer_match_stats?.total > topFreelancersDisplay.length || topFreelancersDisplay.length >= 5)"
+                        :href="recommendations_more_url"
+                        class="mt-4 inline-flex w-full items-center justify-center rounded-full border border-primary-200 bg-primary-50 py-2.5 text-xs font-black uppercase tracking-wide text-primary-900 hover:bg-primary-100"
+                    >
+                        View more matches
+                    </Link>
                 </section>
 
                 <ReportConcernSheet
@@ -1045,12 +1264,15 @@
 </template>
 
 <script setup>
+import QuestBoostUpsellPanel from '@/Components/Quests/QuestBoostUpsellPanel.vue';
 import EscrowTransparencyTimeline from '@/Components/Quests/EscrowTransparencyTimeline.vue';
 import DisputePreventionPrompts from '@/Components/Quests/DisputePreventionPrompts.vue';
 import ReportConcernSheet from '@/Components/Quests/ReportConcernSheet.vue';
 import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
 import QuestFileGallery from '@/Components/Quests/QuestFileGallery.vue';
+import PartyInsightCard from '@/Components/Quests/PartyInsightCard.vue';
+import QuestPreferenceFields from '@/Components/Quests/QuestPreferenceFields.vue';
 import QuestRichDescriptionEditor from '@/Components/Quests/QuestRichDescriptionEditor.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
@@ -1068,6 +1290,7 @@ const props = defineProps({
     is_quest_owner: { type: Boolean, default: false },
     can_edit: { type: Boolean, default: false },
     can_offer: { type: Boolean, default: false },
+    has_submitted_proposal: { type: Boolean, default: false },
     category_match: { type: Boolean, default: false },
     verification_access: { type: Object, default: null },
     workspace: { type: Object, required: true },
@@ -1078,13 +1301,25 @@ const props = defineProps({
     category_quests_other_areas: { type: Array, default: () => [] },
     top_freelancers: { type: Array, default: () => [] },
     freelancer_match_stats: { type: Object, default: () => ({}) },
+    quest_preferences: { type: Array, default: () => [] },
+    quest_has_specified_preferences: { type: Boolean, default: false },
+    preference_profile: { type: Object, default: () => ({}) },
+    preference_values: { type: Object, default: () => ({}) },
+    can_edit_preferences: { type: Boolean, default: false },
+    offers_count_display: { type: Number, default: 0 },
+    sponsor_insight: { type: Object, default: () => ({}) },
     can_use_quest_messaging: { type: Boolean, default: false },
     messages_url: { type: String, default: null },
     quest_message_threads: { type: Array, default: () => [] },
     start_timing_options: { type: Array, default: () => [] },
     form_options: { type: Object, default: null },
     client_proposals: { type: Array, default: () => [] },
+    client_proposals_total: { type: Number, default: 0 },
     client_proposals_hub_url: { type: String, default: null },
+    recommendations_more_url: { type: String, default: null },
+    can_manage_invites: { type: Boolean, default: false },
+    boost_upsell: { type: Object, default: null },
+    show_boost_upsell_flash: { type: Boolean, default: false },
 });
 
 const page = usePage();
@@ -1169,12 +1404,13 @@ const verificationLimitBlocker = computed(() => {
         return null;
     }
 
-    const limitLabel = formatBudget(access.proposal_limit_minor);
+    const limitLabel = access.proposal_limit_formatted || formatBudget(access.proposal_limit_minor);
+    const level = access.current_level ?? access.effective_level;
     const missing = (access.missing_for_next_level || []).filter(Boolean).join(', ');
-    let message = `This quest’s budget is above your current verification limit (L${access.effective_level}, up to ${limitLabel}).`;
+    let message = `This quest’s budget is above your current verification limit (L${level}, up to ${limitLabel}).`;
 
-    if (access.limit_capped && access.earned_proposal_limit_minor) {
-        message += ` Your earned tier allows up to ${formatBudget(access.earned_proposal_limit_minor)}; an admin custom cap applies.`;
+    if (access.limit_capped && (access.earned_proposal_limit_formatted || access.earned_proposal_limit_minor)) {
+        message += ` Your earned tier allows up to ${access.earned_proposal_limit_formatted || formatBudget(access.earned_proposal_limit_minor)}; an admin custom cap applies.`;
     } else if (missing) {
         message += ` Complete ${missing} to unlock a higher limit.`;
     } else {
@@ -1188,8 +1424,12 @@ const verificationLimitBlocker = computed(() => {
     };
 });
 
+const hasSubmittedProposal = computed(
+    () => props.has_submitted_proposal === true || Boolean(props.my_offer?.id),
+);
+
 const proposalBlocker = computed(() => {
-    if (!isFreelancer.value || props.my_offer || props.can_offer) {
+    if (!isFreelancer.value || hasSubmittedProposal.value || props.can_offer) {
         return null;
     }
 
@@ -1223,6 +1463,61 @@ const proposalBlocker = computed(() => {
     };
 });
 
+const showSponsorInsightCard = computed(
+    () => !props.is_quest_owner && Boolean(props.sponsor_insight?.name),
+);
+
+const messageThreadCount = computed(() => props.quest_message_threads.length);
+
+const showMessageThreadList = computed(() => messageThreadCount.value > 0 && messageThreadCount.value <= 3);
+
+const showMessageThreadPicker = computed(() => messageThreadCount.value > 3);
+
+const topFreelancersDisplay = computed(() => props.top_freelancers.slice(0, 5));
+
+const messageThreadOptions = computed(() =>
+    props.quest_message_threads.map((t) => ({
+        value: t.slug,
+        label: `${t.first_name || t.name}${t.slug ? '' : ''}`,
+    })),
+);
+
+const selectedMessageThread = computed(
+    () => props.quest_message_threads.find((t) => t.slug === selectedMessageThreadSlug.value) ?? null,
+);
+
+watch(
+    () => props.quest_message_threads,
+    (threads) => {
+        if (!threads?.length) {
+            selectedMessageThreadSlug.value = '';
+
+            return;
+        }
+        if (!threads.some((t) => t.slug === selectedMessageThreadSlug.value)) {
+            selectedMessageThreadSlug.value = threads[0].slug;
+        }
+    },
+    { immediate: true },
+);
+
+const questListingMeta = computed(() => {
+    const lines = [];
+    if (props.quest.created_at) {
+        lines.push(`Posted ${formatWhen(props.quest.created_at)}`);
+    }
+    if (props.quest.updated_at && props.quest.updated_at !== props.quest.created_at) {
+        lines.push(`Updated ${formatWhen(props.quest.updated_at)}`);
+    }
+    const offers = props.offers_count_display ?? props.quest.offers_count ?? 0;
+    lines.push(`${offers} ${offers === 1 ? 'proposal' : 'proposals'} received`);
+    if (!props.quest.delivery_deadline) {
+        lines.push('Deadline not specified');
+    }
+
+    return lines;
+});
+
 const viewerInsightLines = computed(() => {
     const lines = [];
     if (props.is_quest_owner) {
@@ -1231,13 +1526,12 @@ const viewerInsightLines = computed(() => {
             lines.push('You can still adjust title, description, and budget until the editing window closes.');
         }
     } else if (isFreelancer.value) {
-        if (props.can_offer) {
+        if (props.my_offer) {
+            lines.push('You already submitted a proposal — follow up in thread if the client has questions.');
+        } else if (props.can_offer) {
             lines.push('You can send a proposal on this quest — highlight outcomes, timeline, and how you de-risk delivery.');
         } else if (proposalBlocker.value) {
             lines.push(proposalBlocker.value.message);
-        }
-        if (props.my_offer) {
-            lines.push('You already submitted a proposal — follow up in thread if the client has questions.');
         }
         if (localBookmarked.value) {
             lines.push('You saved this quest for later — it stays in your saved list.');
@@ -1256,10 +1550,50 @@ const csrfToken = computed(() => {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 });
 const showEditQuestForm = ref(false);
+const showEditPreferencesForm = ref(false);
+const offersCountDisplay = computed(() => props.offers_count_display ?? props.quest?.offers_count ?? 0);
+
+const preferencesEditForm = useForm({
+    preferences: { ...props.preference_values },
+});
+
+function openEditPreferences() {
+    preferencesEditForm.preferences = { ...props.preference_values };
+    preferencesEditForm.clearErrors();
+    showEditPreferencesForm.value = true;
+}
+
+function closeEditPreferences() {
+    showEditPreferencesForm.value = false;
+    preferencesEditForm.clearErrors();
+}
+
+function submitPreferencesEdit() {
+    preferencesEditForm.patch(route('quests.preferences.update', questRouteKey.value), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showEditPreferencesForm.value = false;
+            router.reload({ only: ['quest_preferences', 'quest_has_specified_preferences', 'preference_values', 'quest'], preserveScroll: true });
+        },
+    });
+}
+
+watch(
+    () => props.preference_values,
+    (v) => {
+        if (!showEditPreferencesForm.value) {
+            preferencesEditForm.preferences = { ...(v || {}) };
+        }
+    },
+    { deep: true },
+);
+
 const inviteQuery = ref('');
 const inviteHits = ref([]);
 const inviteIds = ref([]);
 const inviteLabels = ref({});
+const recommendationTagBusy = ref(null);
+const selectedMessageThreadSlug = ref('');
 let inviteTimer = null;
 let proposalPollTimer = null;
 let proposalEchoChannel = null;
@@ -1331,7 +1665,7 @@ onMounted(() => {
         if (qid > 0) {
             const reloadProposals = () => {
                 router.reload({
-                    only: ['client_proposals', 'quest'],
+                    only: ['client_proposals', 'client_proposals_total', 'quest'],
                     preserveScroll: true,
                 });
             };
@@ -1536,7 +1870,13 @@ function projectTypeLabel(v) {
 }
 
 function teamSizeLabel(v) {
-    const map = { solo: 'Solo freelancer', small_team: 'Small team (2–5)' };
+    const map = {
+        solo: 'Solo freelancer',
+        small_team: 'Small team (2–5)',
+        flexible_crew: 'Pro decides crew size',
+        client_assists: 'Client or family will assist',
+        freelancer_arranges: 'Freelancer arranges extra help',
+    };
 
     return map[v] || v;
 }
@@ -1670,6 +2010,34 @@ function addInvite(u) {
 
 function removeInvite(id) {
     inviteIds.value = inviteIds.value.filter((x) => x !== id);
+}
+
+function isRecommendedTagged(id) {
+    return inviteIds.value.includes(Number(id));
+}
+
+function tagRecommendedFreelancer(f) {
+    if (!props.can_manage_invites || isRecommendedTagged(f.id)) {
+        return;
+    }
+
+    const id = Number(f.id);
+    const nextIds = [...inviteIds.value, id];
+    recommendationTagBusy.value = id;
+    router.post(
+        route('quests.invites.store', questRouteKey.value),
+        { freelancer_ids: nextIds },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                inviteIds.value = nextIds;
+                inviteLabels.value = { ...inviteLabels.value, [id]: f.name };
+            },
+            onFinish: () => {
+                recommendationTagBusy.value = null;
+            },
+        },
+    );
 }
 
 function syncInvites() {

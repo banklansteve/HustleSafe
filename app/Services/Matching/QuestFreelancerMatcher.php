@@ -5,6 +5,7 @@ namespace App\Services\Matching;
 use App\Models\FreelancerMetric;
 use App\Models\Quest;
 use App\Models\User;
+use App\Services\Freelancer\FreelancerProSubscriptionService;
 use App\Services\Verification\VerificationEngineService;
 use Illuminate\Support\Collection;
 
@@ -14,6 +15,7 @@ class QuestFreelancerMatcher
         protected QuestMatchScoreCalculator $calculator,
         protected FreelancerMetricsService $metricsService,
         protected VerificationEngineService $verificationEngine,
+        protected FreelancerProSubscriptionService $proMembership,
     ) {}
 
     /**
@@ -80,8 +82,12 @@ class QuestFreelancerMatcher
                 'match_breakdown' => $breakdown['breakdown_lines'],
                 'why_recommended' => $this->whyRecommendedLine($freelancer, $quest, $breakdown),
                 'location_tier' => $tier,
+                'is_pro' => $this->proMembership->isPro($freelancer),
             ];
-        })->filter()->sortByDesc('match_score')->values();
+        })->filter()->sortByDesc(fn (array $row) => [
+            $row['match_score'],
+            ($row['is_pro'] ?? false) ? 1 : 0,
+        ])->values();
 
         $total = $scored->count();
         $label = $this->statsLabel($quest, $lgaCount, $stateCount, $nationalCount);
@@ -107,6 +113,7 @@ class QuestFreelancerMatcher
                 'match_quality' => $row['match_quality'],
                 'match_breakdown' => $row['match_breakdown'],
                 'why_recommended' => $row['why_recommended'],
+                'is_pro' => (bool) ($row['is_pro'] ?? false),
                 'profile_url' => $u->slug ? route('freelancers.public', $u->slug) : null,
             ];
         })->all();

@@ -423,7 +423,22 @@ class StaffVerificationService
             $column = 'reviewed_at';
         }
 
+        if ($column === 'submitted_at' && $direction === 'asc') {
+            $this->applyPremiumPrioritySort($query);
+        }
+
         $query->orderBy($column, $direction);
+    }
+
+    private function applyPremiumPrioritySort(Builder $query): void
+    {
+        if ($query->getConnection()->getDriverName() !== 'mysql') {
+            return;
+        }
+
+        $query->orderByRaw(
+            "CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.premium_priority')) IN ('true', '1') THEN 0 ELSE 1 END ASC"
+        );
     }
 
     private function hasAssignmentColumns(): bool

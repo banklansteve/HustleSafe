@@ -109,6 +109,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('hr:generate-alerts')->hourly();
         $schedule->command('financial:reconcile')->hourly();
         $schedule->command('quest-boosts:expire')->everyFiveMinutes();
+        $schedule->command('premium-patrol:scan-anomalies')->hourly();
         $schedule->command('freelancer-metrics:refresh')->everySixHours();
         $schedule->command('financial:generate-monthly-reports')->monthlyOn(1, '02:00');
     })

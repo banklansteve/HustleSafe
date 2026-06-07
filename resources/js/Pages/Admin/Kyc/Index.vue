@@ -197,8 +197,8 @@
                                 <span>Charge verification fees</span>
                             </label>
                             <label class="block">
-                                <span class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">CAC fee (minor units)</span>
-                                <input v-model.number="settingsForm.verification_fees.cac_fee_minor" type="number" min="0" class="mt-1 w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
+                                <span class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">CAC fee (₦)</span>
+                                <input v-model.number="settingsForm.verification_fees.cac_fee_minor" type="number" min="0" step="1" class="mt-1 w-full rounded-2xl border px-4 py-3 text-sm font-semibold" :class="shell.input" />
                             </label>
                             <button type="submit" class="w-full rounded-2xl px-4 py-3 text-sm font-black uppercase" :class="shell.btnPrimary">Save settings</button>
                         </div>

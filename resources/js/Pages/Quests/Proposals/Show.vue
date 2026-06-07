@@ -361,11 +361,19 @@
                     </section>
                 </div>
                 <aside class="space-y-2">
-                    <section class="space-y-2 rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm ring-1 ring-slate-100">
+                    <PartyInsightCard
+                        v-if="showFreelancerInsight"
+                        heading="Freelancer profile"
+                        :insight="freelancer_insight"
+                    />
+                    <section
+                        v-else-if="!is_author && offer.freelancer"
+                        class="space-y-2 rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm ring-1 ring-slate-100"
+                    >
                         <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
                             Freelancer
                         </h2>
-                        <div v-if="offer.freelancer" class="flex items-center gap-3">
+                        <div class="flex items-center gap-3">
                             <UserProfileAvatar
                                 :href="offer.freelancer.slug ? route('freelancers.public', offer.freelancer.slug) : null"
                                 :src="offer.freelancer.avatar_url"
@@ -435,6 +443,11 @@
                     </section>
                 </aside>
             </div>
+
+            <ClientProposalPreferenceResponses
+                v-if="!observer_mode && is_client && preference_responses.length"
+                :responses="preference_responses"
+            />
 
             <section v-if="!observer_mode" class="space-y-2 rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-6">
                 <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
@@ -719,6 +732,8 @@
 
 <script setup>
 import PlatformFeeDisclosureNote from '@/Components/Billing/PlatformFeeDisclosureNote.vue';
+import ClientProposalPreferenceResponses from '@/Components/Quests/ClientProposalPreferenceResponses.vue';
+import PartyInsightCard from '@/Components/Quests/PartyInsightCard.vue';
 import ReportConcernSheet from '@/Components/Quests/ReportConcernSheet.vue';
 import EscrowTransparencyTimeline from '@/Components/Quests/EscrowTransparencyTimeline.vue';
 import DisputePreventionPrompts from '@/Components/Quests/DisputePreventionPrompts.vue';
@@ -737,6 +752,8 @@ const props = defineProps({
     is_client: { type: Boolean, default: false },
     is_author: { type: Boolean, default: false },
     observer_mode: { type: Boolean, default: false },
+    preference_responses: { type: Array, default: () => [] },
+    freelancer_insight: { type: Object, default: () => ({}) },
     can_download_pdf: { type: Boolean, default: true },
     client_proposals_hub_url: { type: String, default: null },
     conversation_with_freelancer_url: { type: String, default: null },
@@ -746,6 +763,10 @@ const props = defineProps({
 });
 
 const page = usePage();
+
+const showFreelancerInsight = computed(
+    () => !props.is_author && Boolean(props.freelancer_insight?.name),
+);
 
 const isStaffRole = computed(() => ['admin', 'super_admin'].includes(page.props.auth?.user?.role?.slug ?? ''));
 const canReportProposal = computed(() => Boolean(page.props.auth?.user) && !props.is_author && !props.observer_mode && !isStaffRole.value);
@@ -1186,9 +1207,14 @@ const progressLabels = {
     biweekly: 'Bi-weekly',
     milestone_based: 'At milestones',
     on_request: 'On request',
+    custom: 'Custom',
 };
 
 function progressLabel(key) {
+    if (key === 'custom' && props.offer.progress_report_frequency_note) {
+        return props.offer.progress_report_frequency_note;
+    }
+
     return progressLabels[key] || key || '—';
 }
 

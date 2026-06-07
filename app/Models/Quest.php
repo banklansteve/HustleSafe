@@ -70,6 +70,8 @@ class Quest extends Model
         'start_timing',
         'estimated_completion_days',
         'estimated_delivery_date',
+        'delivery_deadline',
+        'preferences_last_updated',
         'site_visits_allowed',
         'site_access_level',
         'pets_on_site',
@@ -218,6 +220,8 @@ class Quest extends Model
             'pets_on_site' => 'boolean',
             'scheduled_start_date' => 'date',
             'estimated_delivery_date' => 'date',
+            'delivery_deadline' => 'date',
+            'preferences_last_updated' => 'datetime',
             'listing_expires_at' => 'datetime',
             'listing_extended_at' => 'datetime',
             'listing_expiry_warning_sent_at' => 'datetime',
@@ -264,6 +268,14 @@ class Quest extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(User::class, 'client_id');
+    }
+
+    /**
+     * @return HasMany<QuestPreference, $this>
+     */
+    public function preferences(): HasMany
+    {
+        return $this->hasMany(QuestPreference::class);
     }
 
     /**

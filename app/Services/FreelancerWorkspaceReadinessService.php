@@ -397,7 +397,7 @@ class FreelancerWorkspaceReadinessService
 
         $engine = app(VerificationEngineService::class);
 
-        return $engine->accountAgeDaysRemaining($user, 90) <= 0;
+        return $engine->accountAgeDaysRemainingForLevel($user, $engine->maxLevelFor($user)) <= 0;
     }
 
     /**
@@ -483,9 +483,11 @@ class FreelancerWorkspaceReadinessService
         }
 
         if (in_array($next['key'] ?? '', ['live_presence', 'account_age'], true)
-            && in_array($next['status'] ?? '', ['locked', 'waiting'], true)
-            && app(VerificationEngineService::class)->accountAgeDaysRemaining($user, 90) > 0) {
-            return null;
+            && in_array($next['status'] ?? '', ['locked', 'waiting'], true)) {
+            $requiredDays = (int) ($next['required_account_age_days'] ?? 0);
+            if ($requiredDays > 0 && (int) ($next['days_remaining'] ?? 0) > 0) {
+                return null;
+            }
         }
 
         $title = (string) ($next['title'] ?? __('Trust & verifications'));

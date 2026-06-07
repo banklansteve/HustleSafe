@@ -11,6 +11,7 @@ use App\Models\AdminFinancialLedgerEntry;
 use App\Models\Quest;
 use App\Models\QuestBoost;
 use App\Models\QuestBoostAuditLog;
+use App\Models\QuestBoostPayment;
 use App\Models\User;
 use App\Notifications\QuestBoostEndedNotification;
 use App\Notifications\QuestBoostGrantedNotification;
@@ -73,6 +74,74 @@ final class QuestBoostService
                 'occurred_at' => $log->occurred_at?->toIso8601String(),
             ])->values()->all(),
         ];
+    }
+
+    public function activateFromPayment(QuestBoostPayment $payment, array $paystackPayload = []): QuestBoost
+    {
+        if ($payment->status === 'paid' && $payment->quest_boost_id) {
+            return QuestBoost::query()->findOrFail($payment->quest_boost_id);
+        }
+
+        $quest = Quest::query()->with('client')->findOrFail($payment->quest_id);
+        $client = $payment->client ?? User::query()->findOrFail($payment->client_id);
+        $tier = QuestBoostTier::from($payment->tier);
+        $clientBoosts = app(\App\Services\Quest\ClientQuestBoostService::class);
+
+        if ($clientBoosts->hasActiveBoost($quest)) {
+            throw ValidationException::withMessages([
+                'quest' => [__('This quest already has an active boost.')],
+            ]);
+        }
+
+        $clientBoosts->assertTierAllowed($quest, $tier);
+
+        return DB::transaction(function () use ($payment, $quest, $client, $tier, $clientBoosts, $paystackPayload): QuestBoost {
+            $startsAt = now();
+            $endsAt = $clientBoosts->resolveBoostEndsAt($quest, $tier);
+            $costMinor = (int) $payment->amount_minor;
+
+            $boost = QuestBoost::query()->create([
+                'quest_id' => $quest->id,
+                'quest_title_snapshot' => $quest->title,
+                'client_id' => $quest->client_id,
+                'granted_by_admin_id' => null,
+                'purchased_by_client_id' => $client->id,
+                'quest_boost_payment_id' => $payment->id,
+                'tier' => $tier->value,
+                'planned_cost_minor' => $costMinor,
+                'status' => QuestBoostStatus::Active->value,
+                'starts_at' => $startsAt,
+                'ends_at' => $endsAt,
+                'grant_reason' => __('Client purchased :tier boost.', ['tier' => $tier->label()]),
+                'granted_at' => now(),
+                'visibility_tier' => 'tier_1',
+            ]);
+
+            $payment->forceFill([
+                'status' => 'paid',
+                'paid_at' => now(),
+                'quest_boost_id' => $boost->id,
+                'meta' => array_merge($payment->meta ?? [], [
+                    'paystack' => $paystackPayload,
+                ]),
+            ])->save();
+
+            $this->audit($boost, 'purchased', $client->id, null, [
+                'tier' => $tier->value,
+                'starts_at' => $startsAt->toIso8601String(),
+                'ends_at' => $endsAt->toIso8601String(),
+                'planned_cost_minor' => $costMinor,
+                'payment_reference' => $payment->paystack_reference,
+            ], __('Paid boost via Paystack.'));
+
+            $clientBoosts->recordClientRevenue($boost, $client);
+            $client->notify(new QuestBoostGrantedNotification($boost, purchasedByClient: true));
+            $clientBoosts->notifyAdminsOfPurchase($boost, $client);
+
+            app(\App\Services\Admin\PremiumPatrol\PremiumPatrolAnomalyService::class)->scanAfterBoostActivated($boost);
+
+            return $boost;
+        });
     }
 
     /**

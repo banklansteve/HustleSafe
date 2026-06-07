@@ -8,6 +8,7 @@ use App\Enums\QuestProjectType;
 use App\Enums\QuestStartTiming;
 use App\Enums\QuestTeamSize;
 use App\Enums\QuestVisibility;
+use App\Services\Verification\VerificationEngineService;
 use App\Support\PlatformSettings;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -102,6 +103,7 @@ class QuestWizardStepValidator
     protected function step4Rules(array $payload): array
     {
         $timing = $payload['start_timing'] ?? null;
+        $engine = app(VerificationEngineService::class);
 
         return [
             'start_timing' => ['required', Rule::enum(QuestStartTiming::class)],
@@ -112,7 +114,12 @@ class QuestWizardStepValidator
             ],
             'estimated_completion_days' => ['required', 'integer', 'min:1', 'max:365'],
             'estimated_delivery_date' => ['nullable', 'date', 'after_or_equal:today'],
-            'budget_amount_minor' => ['required', 'integer', 'min:10000', 'max:500000000'],
+            'budget_amount_minor' => [
+                'required',
+                'integer',
+                'min:'.$engine->minQuestBudgetMinor(),
+                'max:'.$engine->platformMaxQuestBudgetMinor(),
+            ],
         ];
     }
 

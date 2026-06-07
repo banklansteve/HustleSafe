@@ -30,6 +30,7 @@ class QuestOffer extends Model
         'corrections_included',
         'corrections_rounds',
         'progress_report_frequency',
+        'progress_report_frequency_note',
         'materials',
         'pricing_snapshot',
         'quoted_amount_minor',
@@ -79,6 +80,14 @@ class QuestOffer extends Model
     public function quest(): BelongsTo
     {
         return $this->belongsTo(Quest::class);
+    }
+
+    /**
+     * @return HasMany<ProposalPreferenceResponse, $this>
+     */
+    public function preferenceResponses(): HasMany
+    {
+        return $this->hasMany(ProposalPreferenceResponse::class);
     }
 
     /**
