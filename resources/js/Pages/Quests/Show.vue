@@ -902,6 +902,14 @@
                     </div>
                 </section>
 
+                <ProposalClarificationInboxPanel
+                    v-if="clarification_alerts?.length"
+                    :items="clarification_alerts"
+                    :variant="is_quest_owner ? 'violet' : 'sky'"
+                    :title="is_quest_owner ? 'Clarifying questions on this quest' : 'Your clarifying questions'"
+                    :show-proposal-link="is_quest_owner"
+                />
+
                 <section
                     v-if="is_quest_owner && client_proposals_total"
                     class="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50/90 via-white to-fuchsia-50/70 p-5 shadow-md ring-1 ring-violet-100"
@@ -941,15 +949,37 @@
                                         <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-violet-900">
                                             <span>{{ p.status.replace(/_/g, ' ') }}</span>
                                             <span class="font-bold text-slate-600">{{ formatBudget(p.quoted_amount_minor) }}</span>
+                                            <span
+                                                v-if="p.clarification?.action_required"
+                                                class="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-black text-rose-800 ring-1 ring-rose-200"
+                                            >
+                                                Clarification
+                                            </span>
+                                            <span
+                                                v-else-if="p.clarification?.message_count"
+                                                class="rounded-full bg-sky-100 px-2 py-0.5 text-[9px] font-black text-sky-800 ring-1 ring-sky-200"
+                                            >
+                                                {{ p.clarification.message_count }} clarify msg{{ p.clarification.message_count === 1 ? '' : 's' }}
+                                            </span>
                                         </div>
                                     </div>
                                 </Link>
-                                <Link
-                                    :href="p.show_url"
-                                    class="shrink-0 rounded-full bg-violet-700 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white shadow-sm hover:bg-violet-800"
-                                >
-                                    View
-                                </Link>
+                                <div class="flex shrink-0 flex-col gap-1.5">
+                                    <Link
+                                        v-if="p.clarification?.clarify_url"
+                                        :href="p.clarification.clarify_url"
+                                        class="rounded-full px-3 py-1.5 text-center text-[10px] font-black uppercase tracking-wide text-white shadow-sm"
+                                        :class="p.clarification.action_required ? 'bg-rose-600 hover:bg-rose-700' : 'bg-sky-600 hover:bg-sky-700'"
+                                    >
+                                        {{ p.clarification.action_required ? 'Open clarify' : 'Clarify' }}
+                                    </Link>
+                                    <Link
+                                        :href="p.show_url"
+                                        class="shrink-0 rounded-full bg-violet-700 px-3 py-1.5 text-center text-[10px] font-black uppercase tracking-wide text-white shadow-sm hover:bg-violet-800"
+                                    >
+                                        View
+                                    </Link>
+                                </div>
                             </article>
                         </li>
                     </ul>
@@ -983,6 +1013,26 @@
                         <p v-if="my_offer.quoted_amount_minor" class="mt-2 text-xs font-bold text-slate-600">
                             Quoted {{ formatBudget(my_offer.quoted_amount_minor) }}
                         </p>
+                        <div
+                            v-if="my_offer.clarification_alert"
+                            class="mt-3 rounded-xl border px-3 py-3 text-xs font-semibold leading-relaxed"
+                            :class="my_offer.clarification_alert.action_required ? 'border-rose-200 bg-rose-50 text-rose-950' : 'border-sky-200 bg-sky-50 text-sky-950'"
+                        >
+                            <p class="font-black uppercase tracking-wide">
+                                {{ my_offer.clarification_alert.headline }}
+                            </p>
+                            <p v-if="my_offer.clarification_alert.preview" class="mt-1">
+                                “{{ my_offer.clarification_alert.preview }}”
+                            </p>
+                            <Link
+                                v-if="my_offer.clarification_url"
+                                :href="my_offer.clarification_url"
+                                class="mt-2 inline-flex rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white"
+                                :class="my_offer.clarification_alert.action_required ? 'bg-rose-600 hover:bg-rose-700' : 'bg-sky-600 hover:bg-sky-700'"
+                            >
+                                {{ my_offer.clarification_alert.action_required ? 'Answer now' : 'Open thread' }}
+                            </Link>
+                        </div>
                     </div>
                     <template v-else>
                         <button
@@ -1092,12 +1142,12 @@
                     </form>
                 </section>
 
-                <section v-if="can_edit" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
+                <section v-if="can_manage_invites" class="rounded-xl border border-slate-100 bg-white p-5 shadow-md shadow-slate-900/5 ring-1 ring-slate-100">
                     <h2 class="font-display text-lg font-bold text-slate-900">
-                        Tag freelancers
+                        Know a pro for this job?
                     </h2>
-                    <p class="mt-1 text-xs font-semibold text-slate-500">
-                        They get a spotlight ping with your quest link (deduped against category alerts).
+                    <p class="mt-1 text-sm font-semibold leading-relaxed text-slate-600">
+                        Tag a freelancer you’d like on this quest — we’ll email them and send an in-app alert with your brief. If they’re eligible, they can submit a proposal.
                     </p>
                     <div class="mt-3 flex flex-wrap gap-2">
                         <span
@@ -1106,20 +1156,22 @@
                             class="inline-flex items-center gap-2 rounded-full bg-secondary-50 px-3 py-1 text-xs font-bold text-secondary-950 ring-1 ring-secondary-100"
                         >
                             {{ inviteLabel(id) }}
-                            <button type="button" class="font-black text-secondary-700 hover:text-secondary-900" @click="removeInvite(id)">
+                            <button type="button" class="font-black text-secondary-700 hover:text-secondary-900" :disabled="inviteBusy" @click="removeInvite(id)">
                                 ✕
                             </button>
                         </span>
+                        <span v-if="!inviteIds.length" class="text-xs font-semibold text-slate-500">No invites yet — search below or pick from your recommended matches.</span>
                     </div>
                     <TextInput
                         v-model="inviteQuery"
                         type="search"
                         class="mt-4 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm"
-                        placeholder="Search freelancers…"
+                        placeholder="Search by name or username…"
+                        :disabled="inviteBusy"
                     />
                     <ul v-if="inviteHits.length" class="mt-2 max-h-40 overflow-auto rounded-xl border border-slate-100 bg-white shadow-md">
                         <li v-for="u in inviteHits" :key="u.id">
-                            <button type="button" class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm font-semibold hover:bg-primary-50" @click="addInvite(u)">
+                            <button type="button" class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm font-semibold hover:bg-primary-50 disabled:opacity-50" :disabled="inviteBusy" @click="addInvite(u)">
                                 <UserProfileAvatar
                                     :href="u.slug ? route('freelancers.public', u.slug) : null"
                                     :src="u.avatar_url"
@@ -1128,16 +1180,12 @@
                                     frame-class="h-9 w-9 text-[10px]"
                                 />
                                 <span class="min-w-0 flex-1 truncate">{{ u.name }}</span>
+                                <span class="text-[10px] font-black uppercase text-primary-700">Invite</span>
                             </button>
                         </li>
                     </ul>
-                    <button
-                        type="button"
-                        class="mt-4 w-full rounded-full border border-primary-200 bg-primary-50 py-2.5 text-xs font-black uppercase tracking-wide text-primary-900 hover:bg-primary-100"
-                        @click="syncInvites"
-                    >
-                        Sync tags
-                    </button>
+                    <p v-if="inviteBusy" class="mt-3 text-xs font-semibold text-primary-700">Sending invite…</p>
+                    <p v-if="inviteError" class="mt-3 text-xs font-semibold text-rose-700">{{ inviteError }}</p>
                 </section>
 
                 <section
@@ -1158,7 +1206,7 @@
                         {{ freelancer_match_stats.label }}
                     </p>
                     <p v-if="can_manage_invites" class="mt-2 text-xs font-semibold text-slate-500">
-                        Tag freelancers to notify them — they can open your quest and propose.
+                        See someone you want? Invite them — they’ll get your quest link straight away.
                     </p>
                     <ul class="mt-3 space-y-3">
                         <li v-for="f in topFreelancersDisplay" :key="f.id">
@@ -1217,7 +1265,7 @@
                                         :disabled="recommendationTagBusy === f.id"
                                         @click="tagRecommendedFreelancer(f)"
                                     >
-                                        {{ recommendationTagBusy === f.id ? 'Tagging…' : 'Tag & notify' }}
+                                        {{ recommendationTagBusy === f.id ? 'Inviting…' : 'Invite' }}
                                     </button>
                                 </div>
                             </div>
@@ -1278,6 +1326,7 @@ import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
+import ProposalClarificationInboxPanel from '@/Components/Quests/ProposalClarificationInboxPanel.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
@@ -1318,6 +1367,7 @@ const props = defineProps({
     client_proposals_hub_url: { type: String, default: null },
     recommendations_more_url: { type: String, default: null },
     can_manage_invites: { type: Boolean, default: false },
+    clarification_alerts: { type: Array, default: () => [] },
     boost_upsell: { type: Object, default: null },
     show_boost_upsell_flash: { type: Boolean, default: false },
 });
@@ -1469,6 +1519,8 @@ const showSponsorInsightCard = computed(
 
 const messageThreadCount = computed(() => props.quest_message_threads.length);
 
+const selectedMessageThreadSlug = ref('');
+
 const showMessageThreadList = computed(() => messageThreadCount.value > 0 && messageThreadCount.value <= 3);
 
 const showMessageThreadPicker = computed(() => messageThreadCount.value > 3);
@@ -1593,7 +1645,8 @@ const inviteHits = ref([]);
 const inviteIds = ref([]);
 const inviteLabels = ref({});
 const recommendationTagBusy = ref(null);
-const selectedMessageThreadSlug = ref('');
+const inviteBusy = ref(false);
+const inviteError = ref('');
 let inviteTimer = null;
 let proposalPollTimer = null;
 let proposalEchoChannel = null;
@@ -1618,7 +1671,7 @@ const editBudgetNgn = ref(Math.round(props.quest.budget_minor / 100));
 watch(
     () => props.quest,
     (q) => {
-        inviteIds.value = (q.invited || []).map((u) => u.id);
+        inviteIds.value = (q.invited || []).map((u) => Number(u.id));
         inviteLabels.value = Object.fromEntries((q.invited || []).map((u) => [u.id, u.name]));
         applyQuestToEditForm(q);
     },
@@ -1665,7 +1718,7 @@ onMounted(() => {
         if (qid > 0) {
             const reloadProposals = () => {
                 router.reload({
-                    only: ['client_proposals', 'client_proposals_total', 'quest'],
+                    only: ['client_proposals', 'client_proposals_total', 'quest', 'clarification_alerts', 'my_offer'],
                     preserveScroll: true,
                 });
             };
@@ -1732,7 +1785,7 @@ const editLgaUiOptions = computed(() =>
 
 watch(inviteQuery, (q) => {
     window.clearTimeout(inviteTimer);
-    if (!props.can_edit || !q || q.trim().length < 2) {
+    if (!props.can_manage_invites || !q || q.trim().length < 2) {
         inviteHits.value = [];
 
         return;
@@ -1740,7 +1793,7 @@ watch(inviteQuery, (q) => {
     inviteTimer = window.setTimeout(async () => {
         try {
             const { data } = await axios.get(route('quests.freelancers.search', questRouteKey.value), { params: { q: q.trim() } });
-            inviteHits.value = (data.users || []).filter((u) => !inviteIds.value.includes(u.id));
+            inviteHits.value = (data.users || []).filter((u) => !inviteIds.value.includes(Number(u.id)));
         } catch {
             inviteHits.value = [];
         }
@@ -1999,17 +2052,54 @@ function inviteLabel(id) {
 }
 
 function addInvite(u) {
-    if (inviteIds.value.includes(u.id)) {
+    const id = Number(u.id);
+    if (!id || inviteIds.value.includes(id) || inviteBusy.value) {
         return;
     }
-    inviteIds.value = [...inviteIds.value, u.id];
-    inviteLabels.value = { ...inviteLabels.value, [u.id]: u.name };
-    inviteHits.value = inviteHits.value.filter((x) => x.id !== u.id);
-    inviteQuery.value = '';
+
+    persistInvites([...inviteIds.value, id], {
+        onSuccess: () => {
+            inviteLabels.value = { ...inviteLabels.value, [id]: u.name };
+            inviteHits.value = inviteHits.value.filter((x) => Number(x.id) !== id);
+            inviteQuery.value = '';
+        },
+    });
 }
 
 function removeInvite(id) {
-    inviteIds.value = inviteIds.value.filter((x) => x !== id);
+    if (inviteBusy.value) {
+        return;
+    }
+
+    persistInvites(inviteIds.value.filter((x) => Number(x) !== Number(id)));
+}
+
+function persistInvites(nextIds, { onSuccess } = {}) {
+    if (!props.can_manage_invites) {
+        return;
+    }
+
+    inviteError.value = '';
+    inviteBusy.value = true;
+    router.post(
+        route('quests.invites.store', questRouteKey.value),
+        { freelancer_ids: nextIds.map((id) => Number(id)) },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                inviteIds.value = nextIds.map((id) => Number(id));
+                onSuccess?.();
+            },
+            onError: (errors) => {
+                const message = errors.freelancer_ids ?? errors.message;
+                inviteError.value = Array.isArray(message) ? message[0] : (message || 'Could not send invite. Please try again.');
+            },
+            onFinish: () => {
+                inviteBusy.value = false;
+                recommendationTagBusy.value = null;
+            },
+        },
+    );
 }
 
 function isRecommendedTagged(id) {
@@ -2017,35 +2107,21 @@ function isRecommendedTagged(id) {
 }
 
 function tagRecommendedFreelancer(f) {
-    if (!props.can_manage_invites || isRecommendedTagged(f.id)) {
+    if (!props.can_manage_invites || isRecommendedTagged(f.id) || inviteBusy.value) {
         return;
     }
 
     const id = Number(f.id);
-    const nextIds = [...inviteIds.value, id];
     recommendationTagBusy.value = id;
-    router.post(
-        route('quests.invites.store', questRouteKey.value),
-        { freelancer_ids: nextIds },
-        {
-            preserveScroll: true,
-            onSuccess: () => {
-                inviteIds.value = nextIds;
-                inviteLabels.value = { ...inviteLabels.value, [id]: f.name };
-            },
-            onFinish: () => {
-                recommendationTagBusy.value = null;
-            },
+    persistInvites([...inviteIds.value, id], {
+        onSuccess: () => {
+            inviteLabels.value = { ...inviteLabels.value, [id]: f.name };
         },
-    );
+    });
 }
 
 function syncInvites() {
-    router.post(
-        route('quests.invites.store', questRouteKey.value),
-        { freelancer_ids: inviteIds.value },
-        { preserveScroll: true },
-    );
+    persistInvites(inviteIds.value);
 }
 
 function goToProposalComposer() {

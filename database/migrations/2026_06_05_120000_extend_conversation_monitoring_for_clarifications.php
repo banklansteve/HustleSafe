@@ -25,6 +25,21 @@ return new class extends Migration
         }
 
         Schema::table('conversation_message_flags', function (Blueprint $table): void {
+            if ($this->foreignKeyExists('conversation_message_flags', 'conversation_message_flags_quest_conversation_thread_id_foreign')) {
+                $table->dropForeign('conversation_message_flags_quest_conversation_thread_id_foreign');
+            }
+
+            if ($this->foreignKeyExists('conversation_message_flags', 'conversation_message_flags_quest_conversation_message_id_foreign')) {
+                $table->dropForeign('conversation_message_flags_quest_conversation_message_id_foreign');
+            }
+        });
+
+        Schema::table('conversation_message_flags', function (Blueprint $table): void {
+            $table->unsignedBigInteger('quest_conversation_thread_id')->nullable()->change();
+            $table->unsignedBigInteger('quest_conversation_message_id')->nullable()->change();
+        });
+
+        Schema::table('conversation_message_flags', function (Blueprint $table): void {
             if (! $this->foreignKeyExists('conversation_message_flags', 'conv_msg_flags_clarify_thread_fk')) {
                 $table->foreign('proposal_clarification_thread_id', 'conv_msg_flags_clarify_thread_fk')
                     ->references('id')

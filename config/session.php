@@ -32,10 +32,11 @@ return [
     |
     */
 
-    // Default idle timeout for regular users (7 days). Staff admin (5h) and super admin lifetimes
-    // are applied per authenticated request via ApplyRoleSessionLifetime / EnsureSuperAdmin.
-    // Override super admin with SUPER_ADMIN_SESSION_LIFETIME (minutes) in .env.
+    // Default idle timeout for regular users (7 days). Staff admin (5h) and super admin (14 days)
+    // lifetimes are applied per authenticated request via ApplyRoleSessionLifetime / EnsureSuperAdmin.
     'lifetime' => (int) env('SESSION_LIFETIME', 10080),
+
+    'super_admin_lifetime' => (int) env('SUPER_ADMIN_SESSION_LIFETIME', 20160),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 

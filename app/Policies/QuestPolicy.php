@@ -8,6 +8,7 @@ use App\Enums\AdminQuestStatus;
 use App\Models\Quest;
 use App\Models\QuestConversationThread;
 use App\Models\User;
+use App\Services\Quest\QuestListingExpiryService;
 
 class QuestPolicy
 {
@@ -96,6 +97,20 @@ class QuestPolicy
 
     public function manageInvites(User $user, Quest $quest): bool
     {
-        return $quest->client_id === $user->id && $this->update($user, $quest);
+        if ($quest->client_id !== $user->id) {
+            return false;
+        }
+
+        return app(QuestListingExpiryService::class)->acceptsFreelancerInvites($quest);
+    }
+
+    public function extendListing(User $user, Quest $quest): bool
+    {
+        return app(QuestListingExpiryService::class)->canExtend($quest, $user);
+    }
+
+    public function repost(User $user, Quest $quest): bool
+    {
+        return app(QuestListingExpiryService::class)->canRepost($quest, $user);
     }
 }

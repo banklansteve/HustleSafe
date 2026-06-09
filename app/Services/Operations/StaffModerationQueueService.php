@@ -7,6 +7,8 @@ use App\Models\State;
 use App\Models\User;
 use App\Services\Admin\AdminProposalModerationService;
 use App\Services\Admin\AdminQuestModerationService;
+use App\Services\Admin\QuestPatrol\QuestPatrolAnomalyService;
+use App\Services\Admin\QuestPatrol\QuestPatrolInvestigationService;
 use App\Services\Admin\ProposalManagementEngineService;
 use App\Services\Admin\QuestManagementEngineService;
 use App\Support\Operations\StaffCapabilities;
@@ -18,6 +20,8 @@ class StaffModerationQueueService
     public function __construct(
         private readonly QuestManagementEngineService $quests,
         private readonly ProposalManagementEngineService $proposals,
+        private readonly QuestPatrolAnomalyService $patrolAnomalies,
+        private readonly QuestPatrolInvestigationService $investigations,
     ) {}
 
     /**
@@ -64,9 +68,16 @@ class StaffModerationQueueService
         }
 
         $paginator = $this->quests->listing($request);
+        $items = collect($paginator->items())->values();
+        $summaries = $this->patrolAnomalies->questSummaries($items->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $items = $items->map(function (array $row) use ($summaries) {
+            $row['anomaly'] = $summaries[(int) $row['id']] ?? null;
+
+            return $row;
+        });
 
         return [
-            'items' => collect($paginator->items())->values()->all(),
+            'items' => $items->all(),
             'meta' => [
                 'total' => $paginator->total(),
                 'per_page' => $paginator->perPage(),
@@ -80,9 +91,16 @@ class StaffModerationQueueService
         $request->merge(['per_page' => min(250, max(25, $request->integer('per_page', 100)))]);
 
         $paginator = $this->proposals->listing($request);
+        $items = collect($paginator->items())->values();
+        $summaries = $this->patrolAnomalies->proposalSummaries($items->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $items = $items->map(function (array $row) use ($summaries) {
+            $row['anomaly'] = $summaries[(int) $row['id']] ?? null;
+
+            return $row;
+        });
 
         return [
-            'items' => collect($paginator->items())->values()->all(),
+            'items' => $items->all(),
             'meta' => [
                 'total' => $paginator->total(),
                 'per_page' => $paginator->perPage(),
@@ -94,15 +112,22 @@ class StaffModerationQueueService
     public function questDetail(int $questId): array
     {
         $quest = \App\Models\Quest::query()->findOrFail($questId);
+        $detail = $this->quests->detail($quest);
+        $detail['patrol_flags'] = $this->patrolAnomalies->openFlagsForQuest($questId);
+        $detail['collusion_preview'] = $this->patrolAnomalies->collusionReport($quest);
+        $detail['investigation'] = $this->investigations->forSubject('quest', $questId);
 
-        return $this->quests->detail($quest);
+        return $detail;
     }
 
     public function proposalDetail(int $proposalId): array
     {
         $proposal = \App\Models\QuestOffer::query()->findOrFail($proposalId);
+        $detail = $this->proposals->detail($proposal);
+        $detail['patrol_flags'] = $this->patrolAnomalies->openFlagsForProposal($proposalId);
+        $detail['investigation'] = $this->investigations->forSubject('proposal', $proposalId);
 
-        return $this->proposals->detail($proposal);
+        return $detail;
     }
 
     /**

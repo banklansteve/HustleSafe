@@ -64,6 +64,26 @@ class QuestListingExpiryTest extends TestCase
             ->assertSessionHasErrors('reason');
     }
 
+    public function test_client_can_extend_after_edit_window_and_past_proposal_deadline(): void
+    {
+        Notification::fake();
+
+        $client = $this->makeClient();
+        $quest = $this->openQuest($client, now()->subHours(2), now()->subDay());
+
+        $this->actingAs($client)
+            ->post(route('quests.extend-listing', $quest), [
+                'additional_days' => 5,
+                'reason' => 'Still reviewing proposals and need a few more days.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $quest->refresh();
+        $this->assertSame(1, (int) $quest->listing_extension_count);
+        $this->assertTrue($quest->listing_expires_at->greaterThan(now()));
+    }
+
     public function test_expire_command_closes_unawarded_quests(): void
     {
         $client = $this->makeClient();
@@ -131,7 +151,7 @@ class QuestListingExpiryTest extends TestCase
         ]);
     }
 
-    private function openQuest(User $client, \DateTimeInterface $listingExpiresAt): Quest
+    private function openQuest(User $client, \DateTimeInterface $listingExpiresAt, ?\DateTimeInterface $clientEditUntil = null): Quest
     {
         $leaf = QuestCategory::query()->whereNotNull('parent_id')->first();
         $this->assertNotNull($leaf);
@@ -149,6 +169,7 @@ class QuestListingExpiryTest extends TestCase
             'budget_amount_minor' => 500_000,
             'auto_listing_expiry_days' => 14,
             'listing_expires_at' => $listingExpiresAt,
+            'client_edit_until' => $clientEditUntil,
             'listing_extension_count' => 0,
             'estimated_completion_days' => 14,
             'due_at' => now()->addDays(14),

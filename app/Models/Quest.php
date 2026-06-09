@@ -497,6 +497,18 @@ class Quest extends Model
         return $this->invitedFreelancers()->whereKey($user->id)->exists();
     }
 
+    /**
+     * @return list<int>
+     */
+    public function invitedFreelancerIds(): array
+    {
+        return $this->invitedFreelancers()
+            ->pluck('users.id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
     public function isParty(User $user): bool
     {
         return $user->id === $this->client_id || $user->id === $this->freelancer_id;

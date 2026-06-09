@@ -54,53 +54,7 @@ final class PremiumPatrolService
      */
     public function premiumUserDetail(User $user): array
     {
-        $subscription = FreelancerSubscription::query()->where('user_id', $user->id)->first();
-        $payments = FreelancerSubscriptionPayment::query()
-            ->where('user_id', $user->id)
-            ->orderByDesc('paid_at')
-            ->limit(20)
-            ->get();
-        $flags = $this->flagsFor(PremiumPatrolSubjectType::PremiumUser, $user->id);
-        $actions = PremiumPatrolAction::query()
-            ->where('subject_type', PremiumPatrolSubjectType::PremiumUser->value)
-            ->where('subject_id', $user->id)
-            ->orderByDesc('occurred_at')
-            ->limit(30)
-            ->with('actor:id,name,email')
-            ->get();
-        $latestPayment = $payments->first();
-        $accountAgeAtPurchase = $latestPayment?->paid_at
-            ? $user->created_at->diffInDays($latestPayment->paid_at)
-            : null;
-
-        return [
-            'user' => $this->userRow($user, $subscription, $flags, $accountAgeAtPurchase),
-            'subscription' => $subscription ? [
-                'tier' => $subscription->tier,
-                'status' => $subscription->status,
-                'billing_cycle' => $subscription->billing_cycle,
-                'started_at' => $subscription->started_at?->toIso8601String(),
-                'renewal_date' => $subscription->renewal_date?->toIso8601String(),
-                'total_spent_display' => NgnMoney::format((int) $subscription->total_spent_minor),
-            ] : null,
-            'payments' => $payments->map(fn ($p) => [
-                'id' => $p->id,
-                'amount_display' => NgnMoney::format((int) $p->amount_minor),
-                'billing_cycle' => $p->billing_cycle,
-                'paid_at' => $p->paid_at?->toIso8601String(),
-                'reference' => $p->paystack_reference,
-            ])->values()->all(),
-            'flags' => $flags,
-            'actions' => $actions->map(fn ($a) => [
-                'id' => $a->id,
-                'action_type' => $a->action_type,
-                'actor' => $a->actor?->only(['id', 'name', 'email']),
-                'reason_code' => $a->reason_code,
-                'reason_notes' => $a->reason_notes,
-                'occurred_at' => $a->occurred_at?->toIso8601String(),
-            ])->values()->all(),
-            'proposal_count_30d' => QuestOffer::query()->where('freelancer_id', $user->id)->where('created_at', '>=', now()->subDays(30))->count(),
-        ];
+        return app(PremiumPatrolUserDetailService::class)->build($user);
     }
 
     /**
@@ -360,6 +314,7 @@ final class PremiumPatrolService
             'account_age_at_purchase' => $accountAgeAtPurchase !== null ? "{$accountAgeAtPurchase} days old" : '—',
             'account_age_flag' => $accountAgeAtPurchase !== null && $accountAgeAtPurchase < 7,
             'risk_score' => $riskScore,
+            'trust_score' => (int) ($user?->trust_score ?? 0),
             'patrol_status' => $patrolStatus,
             'location' => trim(($user?->city ?? '').($user?->stateModel?->name ? ', '.$user->stateModel->name : '')) ?: '—',
             'flags' => $flags,

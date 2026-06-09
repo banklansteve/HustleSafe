@@ -8,6 +8,7 @@ use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Notifications\ProposalViewedMilestoneNotification;
 use App\Services\FreelancerWorkspaceReadinessService;
+use App\Services\Proposals\ProposalClarificationInboxService;
 use App\Services\Proposals\ProposalClarificationService;
 use App\Services\QuestProposalPricingHintService;
 use App\Services\Verification\VerificationEngineService;
@@ -225,6 +226,9 @@ class QuestProposalController extends Controller
                 ? route('quests.proposals.clarify', [$quest, $offer])
                 : null,
             'clarification_summary' => app(ProposalClarificationService::class)->threadForOffer($offer)->messages()->count(),
+            'clarification_alert' => $user
+                ? app(ProposalClarificationInboxService::class)->forOffer($offer, $user)
+                : null,
             'commerce' => $commerce,
         ]);
     }

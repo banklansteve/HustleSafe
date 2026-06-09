@@ -14,6 +14,51 @@
             <span class="rounded-full bg-rose-600 px-4 py-2 text-xs font-black uppercase text-white">Open queue</span>
         </Link>
 
+        <section v-if="localPatrolTrends" class="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Patrol intelligence (7 days)</p>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div class="rounded-xl bg-slate-50 p-3"><p class="text-[10px] font-bold uppercase text-slate-500">Flags this week</p><p class="text-2xl font-black">{{ localPatrolTrends.flags_this_week }}</p></div>
+                <div class="rounded-xl bg-rose-50 p-3"><p class="text-[10px] font-bold uppercase text-rose-700">Open high severity</p><p class="text-2xl font-black text-rose-800">{{ localPatrolTrends.open_high_severity }}</p></div>
+                <div class="rounded-xl bg-indigo-50 p-3"><p class="text-[10px] font-bold uppercase text-indigo-700">Open investigations</p><p class="text-2xl font-black text-indigo-900">{{ localPatrolTrends.open_investigations ?? localOpenInvestigations.length }}</p></div>
+                <div class="rounded-xl bg-amber-50 p-3"><p class="text-[10px] font-bold uppercase text-amber-800">False positive rate</p><p class="text-2xl font-black">{{ localPatrolTrends.false_positive_rate_percent }}%</p></div>
+                <div class="rounded-xl bg-emerald-50 p-3"><p class="text-[10px] font-bold uppercase text-emerald-800">Action rate</p><p class="text-2xl font-black">{{ localPatrolTrends.action_rate_percent }}%</p></div>
+            </div>
+            <div v-if="localPatrolTrends.top_anomaly_types?.length" class="mt-3 flex flex-wrap gap-2">
+                <span v-for="item in localPatrolTrends.top_anomaly_types.slice(0, 5)" :key="item.type" class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase text-slate-700">{{ item.label }} · {{ item.count }}</span>
+            </div>
+        </section>
+
+        <section v-if="localOpenInvestigations?.length" class="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4">
+            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-800">Open investigations</p>
+            <ul class="mt-3 space-y-2">
+                <li v-for="inv in localOpenInvestigations.slice(0, 8)" :key="inv.id" class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-white px-3 py-2 text-xs">
+                    <div>
+                        <p class="font-black text-slate-900">{{ inv.case_reference }} · {{ inv.title }}</p>
+                        <p class="mt-0.5 font-semibold text-slate-600">{{ inv.subject_type }} #{{ inv.subject_id }} · {{ inv.severity }}</p>
+                        <p class="text-[10px] text-slate-500">Opened {{ formatDateTime(inv.created_at) }} by {{ inv.opened_by?.name || '—' }}</p>
+                    </div>
+                    <button type="button" class="rounded-lg bg-indigo-700 px-3 py-1.5 text-[10px] font-black uppercase text-white" @click="openInvestigationSubject(inv)">Open subject</button>
+                </li>
+            </ul>
+        </section>
+
+        <section v-if="localPendingApprovals?.length" class="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
+            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-800">Pending staff approval requests</p>
+            <ul class="mt-3 space-y-2">
+                <li v-for="req in localPendingApprovals" :key="req.id" class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-white px-3 py-2 text-xs">
+                    <div>
+                        <p class="font-black text-slate-900">{{ req.request_type }} · {{ req.subject_type }} #{{ req.subject_id }}</p>
+                        <p class="mt-0.5 font-semibold text-slate-600">{{ req.reason }}</p>
+                        <p class="text-[10px] text-slate-500">By {{ req.requester?.name }} · {{ formatDateTime(req.created_at) }}</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="button" class="rounded-lg bg-emerald-700 px-3 py-1.5 text-[10px] font-black uppercase text-white" @click="reviewApproval(req.id, 'approved')">Approve</button>
+                        <button type="button" class="rounded-lg border px-3 py-1.5 text-[10px] font-black uppercase" @click="reviewApproval(req.id, 'rejected')">Reject</button>
+                    </div>
+                </li>
+            </ul>
+        </section>
+
         <div class="mb-4 flex flex-wrap gap-2">
             <button
                 v-for="mod in modules"
@@ -76,6 +121,12 @@
                 </span>
                 <span v-else class="text-xs font-semibold text-slate-400">—</span>
             </template>
+            <template #cell-anomaly="{ row }">
+                <span v-if="row.anomaly?.signal" class="rounded-full px-2 py-1 text-[10px] font-black uppercase" :class="anomalyClass(row.anomaly.risk_level)">
+                    {{ row.anomaly.signal }}
+                </span>
+                <span v-else class="text-xs font-semibold text-slate-400">—</span>
+            </template>
             <template #actions="{ row }">
                 <div class="inline-flex gap-1">
                     <button type="button" class="rounded-lg bg-primary-700 px-2 py-1 text-[10px] font-black uppercase text-white" @click.stop="openDetail(row)">Open</button>
@@ -86,6 +137,52 @@
         <OperationsSlideOver :open="slideOpen" :title="slideTitle" :subtitle="slideSubtitle" eyebrow="Moderation panel" @close="slideOpen = false">
             <div v-if="detailLoading" class="py-10 text-center text-sm font-semibold text-slate-500">Loading detail…</div>
             <div v-else-if="detail" class="space-y-4">
+                <section
+                    v-if="detail.patrol_flags?.length"
+                    class="rounded-xl border border-amber-300 bg-amber-50/90 p-4 dark:border-amber-700 dark:bg-amber-950/30"
+                >
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-800">Anomaly alert</p>
+                    <div v-for="flag in detail.patrol_flags" :key="flag.id" class="mt-3 border-t border-amber-200/80 pt-3 first:mt-0 first:border-0 first:pt-0">
+                        <p class="text-sm font-black text-slate-900">{{ flag.label }} <span class="ml-2 rounded-full px-2 py-0.5 text-[10px] uppercase" :class="anomalyClass(flag.severity)">{{ flag.severity }}</span></p>
+                        <p class="mt-1 text-xs font-semibold text-slate-600">{{ flag.recommendation }}</p>
+                        <p class="mt-1 text-[10px] font-bold uppercase text-slate-500">Detected {{ formatDateTime(flag.detected_at) }}</p>
+                        <div v-if="patrol_capabilities?.quests?.dismiss_anomaly" class="mt-2 flex flex-wrap gap-2">
+                            <button type="button" class="rounded-lg bg-slate-900 px-3 py-1.5 text-[10px] font-black uppercase text-white" @click="openDismissFlag(flag)">Close alert</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section
+                    v-if="detail.investigation || (patrol_capabilities?.is_super_admin && detail.patrol_flags?.length)"
+                    class="rounded-xl border border-indigo-200 bg-indigo-50/80 p-4"
+                >
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-800">Investigation workspace</p>
+                    <div v-if="detail.investigation" class="mt-3 space-y-3">
+                        <div class="rounded-lg border border-indigo-100 bg-white px-3 py-2">
+                            <p class="text-sm font-black text-slate-900">{{ detail.investigation.case_reference }} · {{ detail.investigation.title }}</p>
+                            <p class="mt-0.5 text-xs font-semibold text-slate-600">Status: {{ detail.investigation.status }} · Severity: {{ detail.investigation.severity }}</p>
+                            <p class="text-[10px] text-slate-500">Assigned to {{ detail.investigation.assigned_to?.name || '—' }}</p>
+                        </div>
+                        <ul v-if="detail.investigation.timeline?.length" class="max-h-40 space-y-2 overflow-y-auto">
+                            <li v-for="(entry, idx) in detail.investigation.timeline" :key="idx" class="rounded-lg border border-slate-100 bg-white px-3 py-2 text-xs">
+                                <p class="font-black text-slate-800">{{ entry.actor_name || 'System' }} · {{ formatDateTime(entry.at) }}</p>
+                                <p class="mt-0.5 font-semibold text-slate-600">{{ entry.note }}</p>
+                            </li>
+                        </ul>
+                        <textarea v-model="investigationNoteForm.note" rows="3" class="form-input" placeholder="Add investigation note…" />
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="rounded-lg bg-indigo-700 px-3 py-1.5 text-[10px] font-black uppercase text-white disabled:opacity-50" :disabled="busy.patrol || !investigationNoteForm.note.trim()" @click="submitInvestigationNote">Add note</button>
+                            <button type="button" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[10px] font-black uppercase text-rose-800 disabled:opacity-50" :disabled="busy.patrol" @click="submitResolveInvestigation">Resolve case</button>
+                        </div>
+                    </div>
+                    <div v-else-if="detail.patrol_flags?.length" class="mt-3">
+                        <p class="text-xs font-semibold text-slate-600">Open a formal investigation to track notes and resolution for this anomaly.</p>
+                        <input v-model="investigationOpenForm.title" class="form-input mt-2" placeholder="Investigation title (optional)" />
+                        <textarea v-model="investigationOpenForm.note" rows="2" class="form-input mt-2" placeholder="Opening note…" />
+                        <button type="button" class="mt-2 rounded-lg bg-indigo-700 px-3 py-1.5 text-[10px] font-black uppercase text-white disabled:opacity-50" :disabled="busy.patrol" @click="submitOpenInvestigation">Open investigation</button>
+                    </div>
+                </section>
+
                 <section
                     v-if="publicPreviewLinks.length"
                     class="rounded-xl border border-primary-200 bg-gradient-to-br from-primary-50/90 via-white to-teal-50/60 p-4 shadow-sm ring-1 ring-primary-100"
@@ -154,7 +251,188 @@
                 <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Actions</p>
 
                 <OperationsExpandableAction
-                    v-if="activeModule === 'quests'"
+                    v-if="activeModule === 'quests' && patrol_capabilities?.quests?.admin_boost"
+                    title="Boost quest (admin promotion)"
+                    hint="Free strategic boost — no charge to client."
+                    icon="🚀"
+                    tone="emerald"
+                    submit-label="Boost this quest"
+                    :busy="busy.patrol"
+                    @submit="submitAdminBoost"
+                >
+                    <select v-model="boostForm.tier" class="form-input">
+                        <option v-for="tier in patrol_options.boost_tiers" :key="tier.value" :value="tier.value">{{ tier.label }}</option>
+                    </select>
+                    <select v-model="boostForm.reason_code" class="form-input mt-3">
+                        <option v-for="reason in patrol_options.admin_boost_reasons" :key="reason.value" :value="reason.value">{{ reason.label }}</option>
+                    </select>
+                    <label class="mt-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <input v-model="boostForm.free" type="checkbox" class="rounded border-slate-300 text-primary-600" />
+                        Free boost (admin promotion)
+                    </label>
+                </OperationsExpandableAction>
+
+                <OperationsExpandableAction
+                    v-if="activeModule === 'quests' && patrol_capabilities?.quests?.request_revision"
+                    title="Request revision"
+                    hint="Quality gate — client notified with deadline."
+                    icon="!"
+                    tone="amber"
+                    submit-label="Send revision request"
+                    :busy="busy.patrol"
+                    @submit="submitRequestRevision"
+                >
+                    <select v-model="revisionForm.issue_type" class="form-input">
+                        <option v-for="issue in patrol_options.revision_issue_types" :key="issue.value" :value="issue.value">{{ issue.label }}</option>
+                    </select>
+                    <textarea v-model="revisionForm.message" class="form-input mt-3 min-h-24" placeholder="Message to client…" />
+                </OperationsExpandableAction>
+
+                <OperationsExpandableAction
+                    v-if="activeModule === 'quests' && patrol_capabilities?.quests?.collusion_check"
+                    title="Check collusion pattern"
+                    hint="Award velocity and repeat freelancer signals."
+                    icon="🔍"
+                    tone="rose"
+                    submit-label="Run check"
+                    :busy="busy.patrol"
+                    @submit="runCollusionCheck"
+                >
+                    <div v-if="collusionReport" class="rounded-lg border border-rose-100 bg-rose-50/80 p-3 text-xs font-semibold text-slate-700">
+                        <p class="font-black uppercase text-rose-800">Risk: {{ collusionReport.risk }}</p>
+                        <p class="mt-1">{{ collusionReport.headline }}</p>
+                    </div>
+                </OperationsExpandableAction>
+
+                <OperationsExpandableAction
+                    v-if="activeModule === 'proposals' && patrol_capabilities?.proposals?.rate_quality"
+                    title="Rate proposal quality"
+                    hint="Logged for freelancer quality tracking."
+                    icon="★"
+                    tone="amber"
+                    submit-label="Save rating"
+                    :busy="busy.patrol"
+                    @submit="submitProposalRate"
+                >
+                    <select v-model="rateForm.rating" class="form-input">
+                        <option value="1">⭐ Poor</option>
+                        <option value="2">⭐⭐ Fair</option>
+                        <option value="3">⭐⭐⭐ Good</option>
+                        <option value="4">⭐⭐⭐⭐ Excellent</option>
+                    </select>
+                </OperationsExpandableAction>
+
+                <OperationsExpandableAction
+                    v-if="activeModule === 'proposals' && patrol_capabilities?.proposals?.recommend_to_client"
+                    title="Recommend to client"
+                    hint="Platform recommended badge on proposal."
+                    icon="✦"
+                    tone="emerald"
+                    submit-label="Mark recommended"
+                    :busy="busy.patrol"
+                    @submit="submitRecommendProposal"
+                />
+
+                <OperationsExpandableAction
+                    v-if="activeModule === 'quests' && patrol_capabilities?.quests?.pause_quest"
+                    title="Pause quest"
+                    hint="Remove from search/feed for 24–48 hours."
+                    icon="⏸"
+                    tone="slate"
+                    submit-label="Pause quest"
+                    :busy="busy.patrol"
+                    @submit="submitPauseQuest"
+                >
+                    <textarea v-model="pauseForm.reason" class="form-input min-h-20" placeholder="Reason (min 20 chars)…" />
+                    <select v-model.number="pauseForm.hours" class="form-input mt-3">
+                        <option :value="24">24 hours</option>
+                        <option :value="48">48 hours</option>
+                        <option :value="72">72 hours</option>
+                    </select>
+                </OperationsExpandableAction>
+
+                <OperationsExpandableAction
+                    v-if="activeModule === 'quests' && patrol_capabilities?.quests?.feature_quest"
+                    title="Feature on homepage"
+                    hint="Manual curation for featured quests section."
+                    icon="★"
+                    tone="emerald"
+                    submit-label="Feature quest"
+                    :busy="busy.patrol"
+                    @submit="submitFeatureQuest"
+                >
+                    <select v-model="featureForm.tier" class="form-input">
+                        <option value="standard">Standard</option>
+                        <option value="premium">Premium</option>
+                        <option value="elite">Elite</option>
+                    </select>
+                    <input v-model.number="featureForm.duration_days" type="number" min="1" max="30" class="form-input mt-3" placeholder="Duration days" />
+                    <input v-model="featureForm.reason" class="form-input mt-3" placeholder="Curation reason" />
+                </OperationsExpandableAction>
+
+                <OperationsExpandableAction
+                    v-if="activeModule === 'quests' && patrol_capabilities?.quests?.verify_deliverables"
+                    title="Verify deliverables"
+                    hint="Quality checklist — issues trigger revision request."
+                    icon="✓"
+                    tone="sky"
+                    submit-label="Save verification"
+                    :busy="busy.patrol"
+                    @submit="submitVerifyDeliverables"
+                >
+                    <label v-for="(checked, key) in verifyForm.checklist" :key="key" class="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <input v-model="verifyForm.checklist[key]" type="checkbox" class="rounded border-slate-300 text-primary-600" />
+                        {{ key }}
+                    </label>
+                    <select v-model="verifyForm.verdict" class="form-input mt-3">
+                        <option value="verified">Verified</option>
+                        <option value="issues_found">Issues found</option>
+                        <option value="needs_clarification">Needs clarification</option>
+                    </select>
+                    <textarea v-model="verifyForm.notes" class="form-input mt-3 min-h-20" placeholder="Notes…" />
+                </OperationsExpandableAction>
+
+                <OperationsExpandableAction
+                    v-if="activeModule === 'quests' && patrol_capabilities?.quests?.merge_duplicate"
+                    title="Mark as duplicate"
+                    hint="Close this quest and point to the original."
+                    icon="⧉"
+                    tone="rose"
+                    submit-label="Close as duplicate"
+                    :busy="busy.patrol"
+                    @submit="submitMergeDuplicate"
+                >
+                    <input v-model="mergeForm.original_quest_id" type="number" class="form-input" placeholder="Original quest ID" />
+                </OperationsExpandableAction>
+
+                <OperationsExpandableAction
+                    v-if="activeModule === 'proposals' && patrol_capabilities?.proposals?.create_template"
+                    title="Copy as reference template"
+                    hint="Anonymized pitch saved for staff training."
+                    icon="📋"
+                    tone="indigo"
+                    submit-label="Publish template"
+                    :busy="busy.patrol"
+                    @submit="submitCreateTemplate"
+                >
+                    <input v-model="templateForm.title" class="form-input" placeholder="Template title (optional)" />
+                </OperationsExpandableAction>
+
+                <OperationsExpandableAction
+                    v-if="activeModule === 'proposals' && (patrol_capabilities?.proposals?.hide_from_client || patrol_capabilities?.proposals?.request_hide_approval)"
+                    title="Hide from client"
+                    hint="Super admin hides immediately; staff submits for approval."
+                    icon="🙈"
+                    tone="rose"
+                    submit-label="Submit hide request"
+                    :busy="busy.patrol"
+                    @submit="submitHideProposal"
+                >
+                    <textarea v-model="hideForm.reason" class="form-input min-h-20" placeholder="Reason (min 20 chars)…" />
+                </OperationsExpandableAction>
+
+                <OperationsExpandableAction
+                    v-if="activeModule === 'quests' && patrol_capabilities?.quests?.contact_client"
                     title="Contact client"
                     hint="Email, in-app message, or open a CS ticket."
                     icon="✉"
@@ -187,9 +465,7 @@
                     </div>
                 </OperationsExpandableAction>
 
-                <OperationsExpandableAction
-                    v-if="activeModule === 'quests'"
-                    title="Contact freelancer"
+                <OperationsExpandableAction v-if="activeModule === 'quests' && patrol_capabilities?.quests?.contact_freelancer" title="Contact freelancer"
                     hint="Only freelancers who have submitted a proposal on this quest."
                     icon="💬"
                     tone="sky"
@@ -262,7 +538,7 @@
                     </label>
                 </OperationsExpandableAction>
 
-                <OperationsExpandableAction v-if="activeModule === 'quests'" title="Edit quest" hint="Non-critical fields; submit major edits for approval." icon="✎" tone="slate">
+                <OperationsExpandableAction v-if="activeModule === 'quests' && patrol_capabilities?.quests?.edit_quest" title="Edit quest" hint="Non-critical fields; submit major edits for approval." icon="✎" tone="slate">
                     <div class="space-y-5">
                         <div class="moderation-field">
                             <label class="moderation-label" for="edit-quest-title">Title</label>
@@ -386,6 +662,22 @@
                 </OperationsExpandableAction>
             </div>
         </OperationsSlideOver>
+
+        <div v-if="dismissFlagTarget" class="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/50 p-4" @click.self="dismissFlagTarget = null">
+            <form class="w-full max-w-md rounded-2xl border bg-white p-5 shadow-xl dark:bg-slate-900" @submit.prevent="submitDismissFlag">
+                <h3 class="text-base font-black text-slate-900 dark:text-white">Dismiss anomaly</h3>
+                <p class="mt-2 text-sm font-semibold text-slate-600">{{ dismissFlagTarget.label }}</p>
+                <select v-model="dismissForm.reason_code" required class="form-input mt-4">
+                    <option value="">Select reason…</option>
+                    <option v-for="reason in patrol_options.dismissal_reasons" :key="reason.value" :value="reason.value">{{ reason.label }}</option>
+                </select>
+                <textarea v-model="dismissForm.reason_notes" rows="3" class="form-input mt-3" placeholder="Optional notes…" />
+                <div class="mt-4 flex gap-2">
+                    <button type="submit" class="rounded-lg bg-slate-900 px-4 py-2 text-xs font-black uppercase text-white">Dismiss</button>
+                    <button type="button" class="rounded-lg border px-4 py-2 text-xs font-black uppercase" @click="dismissFlagTarget = null">Cancel</button>
+                </div>
+            </form>
+        </div>
     </component>
 </template>
 
@@ -412,6 +704,11 @@ const props = defineProps({
     route_prefix: { type: String, default: 'operations' },
     use_admin_shell: { type: Boolean, default: false },
     conversation_monitoring_summary: { type: Object, default: () => ({}) },
+    patrol_capabilities: { type: Object, default: () => ({ is_super_admin: false, quests: {}, proposals: {} }) },
+    patrol_options: { type: Object, default: () => ({ dismissal_reasons: [], admin_boost_reasons: [], revision_issue_types: [], boost_tiers: [] }) },
+    patrol_trends: { type: Object, default: null },
+    pending_approval_requests: { type: Array, default: () => [] },
+    open_investigations: { type: Array, default: () => [] },
 });
 
 const shellComponent = computed(() => (props.use_admin_shell ? AdminShell : OperationsShell));
@@ -467,7 +764,28 @@ const busy = reactive({
     edit: false,
     remove: false,
     media: false,
+    patrol: false,
 });
+
+const boostForm = reactive({ tier: '7_days', reason_code: 'promotional_category', free: true });
+const revisionForm = reactive({ issue_type: 'incomplete_description', message: '' });
+const rateForm = reactive({ rating: '3' });
+const dismissForm = reactive({ reason_code: '', reason_notes: '' });
+const dismissFlagTarget = ref(null);
+const collusionReport = ref(null);
+const localPatrolTrends = ref(props.patrol_trends);
+const localPendingApprovals = ref([...(props.pending_approval_requests || [])]);
+const localOpenInvestigations = ref([...(props.open_investigations || [])]);
+
+const investigationOpenForm = reactive({ title: '', note: '' });
+const investigationNoteForm = reactive({ note: '' });
+const templateForm = reactive({ title: '' });
+
+const pauseForm = reactive({ reason: '', hours: 48 });
+const featureForm = reactive({ tier: 'standard', duration_days: 7, reason: '' });
+const verifyForm = reactive({ verdict: 'verified', notes: '', checklist: { specific: false, criteria: false, budget: false, timeline: false, skills: false, patterns: false } });
+const mergeForm = reactive({ original_quest_id: '' });
+const hideForm = reactive({ reason: '' });
 
 const queue = useClientQueue(() => rawItems.value, {
     defaultSortKey: 'id',
@@ -482,6 +800,7 @@ const tableColumns = computed(() =>
               { key: 'id', label: 'ID', sortable: true },
               { key: 'title', label: 'Quest', sortable: true },
               { key: 'health_score', label: 'Health', sortable: true },
+              { key: 'anomaly', label: 'Anomaly', sortable: false },
               { key: 'admin_status', label: 'Admin status', sortable: true, path: 'admin_status.value' },
               { key: 'status', label: 'Status', sortable: true },
               { key: 'created_at', label: 'Created', sortable: true, format: 'date' },
@@ -489,6 +808,7 @@ const tableColumns = computed(() =>
         : [
               { key: 'id', label: 'ID', sortable: true },
               { key: 'title', label: 'Proposal', sortable: true },
+              { key: 'anomaly', label: 'Anomaly', sortable: false },
               { key: 'admin_status', label: 'Admin status', sortable: true },
               { key: 'status', label: 'Status', sortable: true },
               { key: 'created_at', label: 'Created', sortable: true, format: 'date' },
@@ -987,6 +1307,186 @@ async function reloadActiveQueue() {
     if (queueDef) {
         await loadQueue(queueDef);
     }
+}
+
+function anomalyClass(level) {
+    if (level === 'high') return 'bg-rose-100 text-rose-800 ring-1 ring-rose-200';
+    if (level === 'medium') return 'bg-amber-100 text-amber-900 ring-1 ring-amber-200';
+    return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
+}
+
+function openDismissFlag(flag) {
+    dismissFlagTarget.value = flag;
+    dismissForm.reason_code = '';
+    dismissForm.reason_notes = '';
+}
+
+async function submitDismissFlag() {
+    if (!dismissFlagTarget.value) return;
+    await runAction('patrol', () => window.axios.post(apiRoute('patrol-flags.dismiss', dismissFlagTarget.value.id), { ...dismissForm }), 'Anomaly dismissed.', async () => {
+        dismissFlagTarget.value = null;
+        await openDetail(selectedRow.value);
+        await reloadActiveQueue();
+    });
+}
+
+async function submitAdminBoost() {
+    if (!selectedRow.value) return;
+    await runAction('patrol', () => window.axios.post(apiRoute('quests.admin-boost', selectedRow.value.id), { ...boostForm }), 'Quest boosted.', async () => {
+        await openDetail(selectedRow.value);
+        await reloadActiveQueue();
+    });
+}
+
+async function submitRequestRevision() {
+    if (!selectedRow.value) return;
+    await runAction('patrol', () => window.axios.post(apiRoute('quests.request-revision', selectedRow.value.id), { ...revisionForm }), 'Revision request sent.', async () => {
+        await openDetail(selectedRow.value);
+    });
+}
+
+async function runCollusionCheck() {
+    if (!selectedRow.value) return;
+    busy.patrol = true;
+    try {
+        const { data } = await window.axios.post(apiRoute('quests.collusion-check', selectedRow.value.id));
+        collusionReport.value = data;
+        toast('Collusion check complete.');
+    } catch (error) {
+        toast(error?.response?.data?.message || 'Collusion check failed.', 'error');
+    } finally {
+        busy.patrol = false;
+    }
+}
+
+async function submitProposalRate() {
+    if (!selectedRow.value) return;
+    await runAction('patrol', () => window.axios.post(apiRoute('proposals.rate', selectedRow.value.id), { rating: Number(rateForm.rating) }), 'Proposal rated.', async () => {
+        await openDetail(selectedRow.value);
+    });
+}
+
+async function submitRecommendProposal() {
+    if (!selectedRow.value) return;
+    await runAction('patrol', () => window.axios.post(apiRoute('proposals.recommend', selectedRow.value.id)), 'Proposal recommended.', async () => {
+        await openDetail(selectedRow.value);
+    });
+}
+
+async function submitPauseQuest() {
+    if (!selectedRow.value) return;
+    await runAction('patrol', () => window.axios.post(apiRoute('quests.pause', selectedRow.value.id), { ...pauseForm }), 'Quest paused.', async () => {
+        await openDetail(selectedRow.value);
+        await reloadActiveQueue();
+    });
+}
+
+async function submitFeatureQuest() {
+    if (!selectedRow.value) return;
+    await runAction('patrol', () => window.axios.post(apiRoute('quests.feature', selectedRow.value.id), { ...featureForm }), 'Quest featured.', async () => {
+        await openDetail(selectedRow.value);
+    });
+}
+
+async function submitVerifyDeliverables() {
+    if (!selectedRow.value) return;
+    await runAction('patrol', () => window.axios.post(apiRoute('quests.verify-deliverables', selectedRow.value.id), { ...verifyForm }), 'Verification saved.', async () => {
+        await openDetail(selectedRow.value);
+    });
+}
+
+async function submitMergeDuplicate() {
+    if (!selectedRow.value || !mergeForm.original_quest_id) return;
+    await runAction('patrol', () => window.axios.post(apiRoute('quests.merge-duplicate', selectedRow.value.id), { ...mergeForm }), 'Duplicate closed.', async () => {
+        slideOpen.value = false;
+        await reloadActiveQueue();
+    });
+}
+
+async function submitHideProposal() {
+    if (!selectedRow.value) return;
+    await runAction('patrol', () => window.axios.post(apiRoute('proposals.hide-request', selectedRow.value.id), { ...hideForm }), 'Hide request submitted.', async () => {
+        await openDetail(selectedRow.value);
+    });
+}
+
+async function reviewApproval(id, decision) {
+    busy.patrol = true;
+    try {
+        const { data } = await window.axios.post(apiRoute('approval-requests.review', id), { decision });
+        localPatrolTrends.value = data.patrol_trends ?? localPatrolTrends.value;
+        localPendingApprovals.value = data.pending_approval_requests ?? [];
+        toast(data.message || 'Request reviewed.');
+    } catch (error) {
+        toast(error?.response?.data?.message || 'Review failed.', 'error');
+    } finally {
+        busy.patrol = false;
+    }
+}
+
+async function submitOpenInvestigation() {
+    if (!selectedRow.value) return;
+    const routeName = activeModule.value === 'quests' ? 'quests.open-investigation' : 'proposals.open-investigation';
+    const flagIds = (detail.value?.patrol_flags || []).map((f) => f.id);
+
+    await runAction('patrol', () => window.axios.post(apiRoute(routeName, selectedRow.value.id), {
+        ...investigationOpenForm,
+        flag_ids: flagIds,
+        severity: detail.value?.patrol_flags?.[0]?.severity || 'medium',
+    }), 'Investigation opened.', async (response) => {
+        investigationOpenForm.title = '';
+        investigationOpenForm.note = '';
+        if (response?.data?.investigation) {
+            detail.value = { ...detail.value, investigation: response.data.investigation };
+        }
+        localOpenInvestigations.value = (await window.axios.get(apiRoute('investigations.open'))).data.items ?? localOpenInvestigations.value;
+        if (localPatrolTrends.value) {
+            localPatrolTrends.value.open_investigations = localOpenInvestigations.value.length;
+        }
+    });
+}
+
+async function submitInvestigationNote() {
+    if (!detail.value?.investigation?.id || !investigationNoteForm.note.trim()) return;
+
+    await runAction('patrol', () => window.axios.post(apiRoute('investigations.notes', detail.value.investigation.id), { ...investigationNoteForm }), 'Note added.', async (response) => {
+        investigationNoteForm.note = '';
+        if (response?.data?.investigation) {
+            detail.value = { ...detail.value, investigation: response.data.investigation };
+        }
+    });
+}
+
+async function submitResolveInvestigation() {
+    if (!detail.value?.investigation?.id) return;
+    const note = window.prompt('Resolution note (optional):') ?? '';
+
+    await runAction('patrol', () => window.axios.post(apiRoute('investigations.resolve', detail.value.investigation.id), { note }), 'Investigation resolved.', async (response) => {
+        detail.value = { ...detail.value, investigation: null };
+        localOpenInvestigations.value = response?.data?.open_investigations ?? localOpenInvestigations.value;
+        if (response?.data?.patrol_trends) {
+            localPatrolTrends.value = response.data.patrol_trends;
+        }
+    });
+}
+
+async function submitCreateTemplate() {
+    if (!selectedRow.value || activeModule.value !== 'proposals') return;
+
+    await runAction('patrol', () => window.axios.post(apiRoute('proposals.template', selectedRow.value.id), { ...templateForm }), 'Reference template published.', async () => {
+        templateForm.title = '';
+    });
+}
+
+async function openInvestigationSubject(inv) {
+    const module = inv.subject_type === 'proposal' ? 'proposals' : 'quests';
+    if (activeModule.value !== module) {
+        activeModule.value = module;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    const row = { id: inv.subject_id, title: inv.title };
+    await openDetail(row);
 }
 
 function labelize(value) {

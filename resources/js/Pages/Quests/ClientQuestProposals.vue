@@ -25,6 +25,14 @@
                 </div>
             </header>
 
+            <ProposalClarificationInboxPanel
+                v-if="clarification_inbox?.length"
+                :items="clarification_inbox"
+                variant="violet"
+                title="Clarifying questions on this quest"
+                :show-proposal-link="true"
+            />
+
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm ring-1 ring-slate-100">
                     <button
@@ -224,8 +232,28 @@
                                 <span class="rounded-full bg-slate-100 px-2 py-0.5 font-black text-slate-700">{{ p.completeness_score }}% complete</span>
                                 <span>L{{ p.trust_tier }} trust</span>
                                 <span>Submitted {{ formatWhen(p.created_at) }}</span>
+                                <span
+                                    v-if="p.clarification?.action_required"
+                                    class="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-rose-800 ring-1 ring-rose-200"
+                                >
+                                    Clarification
+                                </span>
+                                <span
+                                    v-else-if="p.clarification?.message_count"
+                                    class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-sky-800 ring-1 ring-sky-200"
+                                >
+                                    {{ p.clarification.message_count }} clarify msg{{ p.clarification.message_count === 1 ? '' : 's' }}
+                                </span>
                             </div>
                             <div v-if="canShortlist(p)" class="mt-3 flex flex-wrap gap-2">
+                                <Link
+                                    v-if="p.clarification?.clarify_url"
+                                    :href="p.clarification.clarify_url"
+                                    class="rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-wide text-white shadow-sm"
+                                    :class="p.clarification.action_required ? 'bg-rose-600 hover:bg-rose-700' : 'bg-sky-600 hover:bg-sky-700'"
+                                >
+                                    {{ p.clarification.action_required ? 'Open clarify' : 'Clarify' }}
+                                </Link>
                                 <Link
                                     :href="p.show_url"
                                     class="rounded-full bg-primary-700 px-4 py-2 text-[10px] font-black uppercase tracking-wide text-white shadow-sm hover:bg-primary-800"
@@ -277,6 +305,7 @@
 <script setup>
 import ListSearchSortBar from '@/Components/Ui/ListSearchSortBar.vue';
 import BackChevronLink from '@/Components/Ui/BackChevronLink.vue';
+import ProposalClarificationInboxPanel from '@/Components/Quests/ProposalClarificationInboxPanel.vue';
 import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import axios from 'axios';
@@ -287,6 +316,7 @@ const props = defineProps({
     quest: { type: Object, required: true },
     proposals: { type: Array, default: () => [] },
     shortlist_meta: { type: Object, default: () => ({ max: 5, count: 0 }) },
+    clarification_inbox: { type: Array, default: () => [] },
 });
 
 const page = usePage();

@@ -66,6 +66,21 @@ class QuestListingExpiryService
         return true;
     }
 
+    public function acceptsFreelancerInvites(Quest $quest): bool
+    {
+        if (! $this->listingStillRelevant($quest)) {
+            return false;
+        }
+
+        if ($quest->listing_expires_at !== null && $quest->listing_expires_at->lte(now())) {
+            return false;
+        }
+
+        $adminStatus = $quest->admin_status?->value ?? (string) $quest->admin_status;
+
+        return ! in_array($adminStatus, ['restricted', 'suspended'], true);
+    }
+
     public function canExtend(Quest $quest, User $client): bool
     {
         if ((int) $quest->client_id !== (int) $client->id) {
@@ -103,7 +118,8 @@ class QuestListingExpiryService
 
         return DB::transaction(function () use ($quest, $client, $additionalDays, $reason, $bounds): Quest {
             $previous = $quest->listing_expires_at ?? now();
-            $newExpiry = $previous->copy()->addDays($additionalDays);
+            $anchor = $previous->isFuture() ? $previous : now();
+            $newExpiry = $anchor->copy()->addDays($additionalDays);
             $maxAllowed = now()->addDays($bounds['max'] + $bounds['extension_max']);
             if ($newExpiry->greaterThan($maxAllowed)) {
                 throw ValidationException::withMessages([
@@ -140,8 +156,19 @@ class QuestListingExpiryService
                     ['type' => 'user', 'id' => $client->id, 'label' => $client->name],
                     ['type' => 'quest', 'id' => $quest->id, 'label' => $quest->title],
                 ]),
-                $reason,
-                $quest,
+                [
+                    'reason' => $reason,
+                    'days_added' => $additionalDays,
+                    'previous_expires_at' => $previous->toIso8601String(),
+                    'new_expires_at' => $newExpiry->toIso8601String(),
+                ],
+                null,
+                $client,
+                Quest::class,
+                $quest->id,
+                $quest->state_id,
+                $quest->local_government_id,
+                $quest->quest_category_id,
             );
 
             $this->notifyFreelancersOfExtension($quest->fresh(), $additionalDays, $newExpiry);
@@ -284,8 +311,16 @@ class QuestListingExpiryService
                     ['type' => 'user', 'id' => $client->id, 'label' => $client->name],
                     ['type' => 'quest', 'id' => $quest->id, 'label' => $quest->title],
                 ]),
+                [
+                    'source_quest_id' => $source->id,
+                ],
                 null,
-                $quest,
+                $client,
+                Quest::class,
+                $quest->id,
+                $quest->state_id,
+                $quest->local_government_id,
+                $quest->quest_category_id,
             );
 
             return $quest;

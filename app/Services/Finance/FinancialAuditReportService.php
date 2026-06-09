@@ -390,11 +390,10 @@ final class FinancialAuditReportService
             ->whereBetween('occurred_at', [$from, $to])
             ->sum('amount_minor');
 
-        $questBoosts = (int) \App\Models\AdminFinancialLedgerEntry::query()
-            ->where('type', 'promotional_spend')
-            ->where('source', 'quest_boost')
-            ->whereBetween('occurred_at', [$from, $to])
-            ->sum('gross_amount_minor');
+        $questBoosts = (int) \App\Models\QuestBoostPayment::query()
+            ->where('status', 'paid')
+            ->whereBetween('paid_at', [$from, $to])
+            ->sum('amount_minor');
 
         $premiumFreelancers = (int) \App\Models\FreelancerSubscriptionPayment::query()
             ->where('status', 'paid')

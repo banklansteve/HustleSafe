@@ -6,6 +6,7 @@ use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Models\User;
 use App\Services\Freelancer\FreelancerProSubscriptionService;
+use App\Services\Proposals\ProposalClarificationInboxService;
 use App\Services\Proposals\ProposalCompletenessScoreService;
 use App\Services\Proposals\ProposalShortlistService;
 use App\Services\Verification\VerificationEngineService;
@@ -29,6 +30,8 @@ class QuestClientProposalsController extends Controller
             abort(403);
         }
 
+        $client = $request->user();
+
         $offers = QuestOffer::query()
             ->where('quest_id', $quest->id)
             ->visibleInClientInbox()
@@ -41,7 +44,7 @@ class QuestClientProposalsController extends Controller
             ->get();
 
         $proposals = $offers
-            ->map(fn (QuestOffer $o) => self::proposalRow($quest, $o, $completeness, $verification))
+            ->map(fn (QuestOffer $o) => self::proposalRow($quest, $o, $completeness, $verification, $client))
             ->values()
             ->all();
 
@@ -59,6 +62,7 @@ class QuestClientProposalsController extends Controller
                 'max' => $shortlistSettings['max_per_quest'],
                 'count' => $shortlists->countForQuest($quest),
             ],
+            'clarification_inbox' => app(ProposalClarificationInboxService::class)->forQuestOwner($quest, $client),
         ]);
     }
 
@@ -70,6 +74,7 @@ class QuestClientProposalsController extends Controller
         QuestOffer $o,
         ?ProposalCompletenessScoreService $completeness = null,
         ?VerificationEngineService $verification = null,
+        ?User $client = null,
     ): array {
         $completeness ??= app(ProposalCompletenessScoreService::class);
         $verification ??= app(VerificationEngineService::class);
@@ -115,6 +120,9 @@ class QuestClientProposalsController extends Controller
                 'is_pro' => $proMembership->isPro($freelancer),
             ] : null,
             'show_url' => route('quests.proposals.show', [$quest->getRouteKey(), $o->id]),
+            'clarification' => ($client ?? $quest->client)
+                ? app(ProposalClarificationInboxService::class)->badgeForOffer($o, $client ?? $quest->client)
+                : null,
         ];
     }
 

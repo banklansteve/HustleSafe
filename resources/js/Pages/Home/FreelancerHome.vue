@@ -50,6 +50,14 @@
                         </div>
                     </section>
 
+                    <ProposalClarificationInboxPanel
+                        v-if="clarification_inbox?.length"
+                        :items="clarification_inbox"
+                        variant="sky"
+                        compact
+                        :show-proposal-link="true"
+                    />
+
                     <!-- Stats -->
                     <section>
                         <div class="flex flex-wrap items-end justify-between gap-3">
@@ -463,6 +471,7 @@
 
 <script setup>
 import DashboardNotificationsPanel from '@/Components/Home/DashboardNotificationsPanel.vue';
+import ProposalClarificationInboxPanel from '@/Components/Quests/ProposalClarificationInboxPanel.vue';
 import DashboardStatTile from '@/Components/Home/DashboardStatTile.vue';
 import MiniBarChart from '@/Components/Home/MiniBarChart.vue';
 import PanelIcon from '@/Components/Home/PanelIcon.vue';
@@ -534,6 +543,10 @@ defineProps({
     notifications: {
         type: Array,
         required: true,
+    },
+    clarification_inbox: {
+        type: Array,
+        default: () => [],
     },
     portfolioSnapshot: {
         type: Array,

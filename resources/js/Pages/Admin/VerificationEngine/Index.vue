@@ -45,8 +45,9 @@
                                         <input v-model="type.enabled" type="checkbox" />
                                         Enabled platform-wide
                                     </label>
-                                    <button type="submit" class="rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="typesForm.processing">
-                                        Save
+                                    <button type="submit" class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="typesForm.processing">
+                                        <span v-if="typesForm.processing" class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                        {{ typesForm.processing ? 'Saving…' : 'Save' }}
                                     </button>
                                 </div>
                                 <div v-else class="mt-4">
@@ -205,8 +206,9 @@
                                         </div>
                                     </div>
                                 </div>
-                                <button type="submit" class="mt-4 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="typesForm.processing">
-                                    Save all settings
+                                <button type="submit" class="mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="typesForm.processing">
+                                    <span v-if="typesForm.processing" class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                    {{ typesForm.processing ? 'Saving…' : 'Save all settings' }}
                                 </button>
                             </div>
                         </div>
@@ -225,7 +227,10 @@
                                 </button>
                             </div>
                             <LimitRow v-for="level in CLIENT_LEVELS" :key="`client-${level}`" v-model="limitsForm.client_posting_minor[level]" :level="level" :editing="editingLimits === 'client'" />
-                            <button v-if="editingLimits === 'client'" type="submit" class="mt-4 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="limitsForm.processing">Save client limits</button>
+                            <button v-if="editingLimits === 'client'" type="submit" class="mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="limitsForm.processing">
+                                <span v-if="limitsForm.processing" class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                {{ limitsForm.processing ? 'Saving…' : 'Save client limits' }}
+                            </button>
                         </div>
                         <div class="rounded-3xl border p-4" :class="shell.card">
                             <div class="flex items-center justify-between gap-3">
@@ -236,8 +241,9 @@
                             </div>
                             <p class="mt-2 text-xs font-semibold" :class="shell.cardMuted">Maximum quest budget (₦) a freelancer at each level can propose on.</p>
                             <LimitRow v-for="level in FREELANCER_LEVELS" :key="`freelancer-${level}`" v-model="limitsForm.freelancer_proposal_minor[level]" :level="level" :editing="editingLimits === 'freelancer'" />
-                            <button v-if="editingLimits === 'freelancer'" type="submit" class="mt-4 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="limitsForm.processing">
-                                Save freelancer value limits
+                            <button v-if="editingLimits === 'freelancer'" type="submit" class="mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="limitsForm.processing">
+                                <span v-if="limitsForm.processing" class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                {{ limitsForm.processing ? 'Saving…' : 'Save freelancer value limits' }}
                             </button>
                         </div>
                         <div class="rounded-3xl border p-4 xl:col-span-2" :class="shell.card">
@@ -249,8 +255,9 @@
                             </div>
                             <p class="mt-2 text-xs font-semibold" :class="shell.cardMuted">How many proposals a freelancer can submit per calendar month at each verification level. Pro membership removes this cap (job value limits still apply).</p>
                             <CountLimitRow v-for="level in FREELANCER_LEVELS" :key="`freelancer-count-${level}`" v-model="limitsForm.freelancer_monthly_proposals[level]" :level="level" :editing="editingLimits === 'freelancer-count'" />
-                            <button v-if="editingLimits === 'freelancer-count'" type="submit" class="mt-4 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="limitsForm.processing">
-                                Save monthly proposal counts
+                            <button v-if="editingLimits === 'freelancer-count'" type="submit" class="mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="limitsForm.processing">
+                                <span v-if="limitsForm.processing" class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                {{ limitsForm.processing ? 'Saving…' : 'Save monthly proposal counts' }}
                             </button>
                         </div>
                     </form>
@@ -286,8 +293,9 @@
                                 {{ field.money ? formatMoney(safeguardForm[field.key]) : safeguardForm[field.key] }}
                             </p>
                             <span class="mt-1 block text-xs font-bold" :class="shell.cardMuted">{{ field.hint }}</span>
-                            <button v-if="editingSafeguard === field.key" type="submit" class="mt-4 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="safeguardForm.processing">
-                                Save value
+                            <button v-if="editingSafeguard === field.key" type="submit" class="mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase" :class="shell.btnPrimary" :disabled="safeguardForm.processing">
+                                <span v-if="safeguardForm.processing" class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                {{ safeguardForm.processing ? 'Saving…' : 'Save value' }}
                             </button>
                         </div>
                     </form>
@@ -489,15 +497,13 @@
                         <div class="flex flex-wrap items-center gap-3">
                             <button
                                 type="submit"
-                                class="rounded-xl px-5 py-2.5 text-xs font-black uppercase"
+                                class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black uppercase"
                                 :class="shell.btnPrimary"
                                 :disabled="overrideForm.busy || !canSubmitOverride"
                             >
-                                Apply override
+                                <span v-if="overrideForm.busy" class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                {{ overrideForm.busy ? 'Applying…' : 'Apply override' }}
                             </button>
-                            <p v-if="overrideForm.message" class="text-sm font-bold" :class="overrideForm.messageType === 'error' ? 'text-rose-700' : 'text-emerald-700'">
-                                {{ overrideForm.message }}
-                            </p>
                         </div>
                     </form>
                 </AdminPanel>
@@ -755,8 +761,6 @@ const overrideForm = reactive({
     level: 0,
     reason: '',
     busy: false,
-    message: '',
-    messageType: 'success',
     searchResults: [],
     searchLoading: false,
 });
@@ -1009,7 +1013,9 @@ function saveTypes() {
         onSuccess: () => {
             editingSetting.value = '';
             syncStageContentFromProps();
+            toast('Verification settings saved.');
         },
+        onError: () => toast('Could not save verification settings.', 'error'),
     });
 }
 
@@ -1018,7 +1024,9 @@ function saveLimits() {
         preserveScroll: true,
         onSuccess: () => {
             editingLimits.value = '';
+            toast('Limit configuration saved.');
         },
+        onError: () => toast('Could not save limits.', 'error'),
     });
 }
 
@@ -1027,7 +1035,9 @@ function saveSafeguards() {
         preserveScroll: true,
         onSuccess: () => {
             editingSafeguard.value = '';
+            toast('Safeguard value saved.');
         },
+        onError: () => toast('Could not save safeguard.', 'error'),
     });
 }
 
@@ -1141,7 +1151,6 @@ async function submitLevelOverride() {
         return;
     }
     overrideForm.busy = true;
-    overrideForm.message = '';
     try {
         const { data } = await window.axios.post(
             route('admin.verification-engine.users.level-override', overrideForm.selectedUser.id),
@@ -1150,8 +1159,8 @@ async function submitLevelOverride() {
                 reason: overrideForm.reason,
             },
         );
-        overrideForm.message = data.message || 'Verification level override applied and logged.';
-        overrideForm.messageType = 'success';
+        const message = data.message || 'Verification level override applied and logged.';
+        toast(message);
         if (data.user) {
             overrideForm.selectedUser = data.user;
             overrideForm.level = data.user.current_level;
@@ -1162,8 +1171,7 @@ async function submitLevelOverride() {
             preserveScroll: true,
         });
     } catch (error) {
-        overrideForm.message = error?.response?.data?.message || 'Could not apply override. Please try again.';
-        overrideForm.messageType = 'error';
+        toast(error?.response?.data?.message || 'Could not apply override. Please try again.', 'error');
     } finally {
         overrideForm.busy = false;
     }

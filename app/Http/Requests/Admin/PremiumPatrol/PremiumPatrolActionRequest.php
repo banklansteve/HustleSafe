@@ -22,6 +22,11 @@ class PremiumPatrolActionRequest extends FormRequest
             'title' => ['nullable', 'string', 'max:200'],
             'message' => ['nullable', 'string', 'max:2000'],
             'assign_to_id' => ['nullable', 'integer', 'exists:users,id'],
+            'severity' => ['nullable', 'string', 'in:low,medium,high,critical'],
+            'watchlist_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'send_notification' => ['nullable', 'boolean'],
+            'refund_amount_minor' => ['nullable', 'integer', 'min:0'],
+            'refund_destination' => ['nullable', 'string', 'in:wallet,payment_method'],
         ];
     }
 }

@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Operations;
 use App\Http\Controllers\Controller;
 use App\Models\Quest;
 use App\Models\QuestFile;
-use App\Models\QuestOffer;
+use App\Models\QuestPatrolFlag;
 use App\Services\Operations\StaffQuestModerationService;
 use App\Services\Admin\AdminProposalModerationService;
 use App\Services\Admin\AdminQuestModerationService;
@@ -13,6 +13,15 @@ use App\Services\Admin\ProposalManagementEngineService;
 use App\Services\Admin\QuestManagementEngineService;
 use App\Services\ConversationMonitoring\ConversationMonitoringAdminService;
 use App\Services\Operations\StaffModerationQueueService;
+use App\Models\ModerationApprovalRequest;
+use App\Models\QuestOffer;
+use App\Models\QuestPatrolInvestigation;
+use App\Services\Admin\QuestPatrol\QuestPatrolAnomalyService;
+use App\Services\Admin\QuestPatrol\QuestPatrolInvestigationService;
+use App\Services\Admin\QuestPatrol\ProposalTemplateService;
+use App\Services\Admin\QuestPatrol\QuestPatrolTrendsService;
+use App\Services\Admin\QuestPatrol\QuestPatrolModerationService;
+use App\Support\Operations\ModerationPatrolCapabilities;
 use App\Support\Operations\StaffCapabilities;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,8 +32,10 @@ use Inertia\Response;
 
 class OperationsModerationController extends Controller
 {
-    public function index(Request $request, StaffModerationQueueService $queues, ConversationMonitoringAdminService $conversationMonitoring): Response
+    public function index(Request $request, StaffModerationQueueService $queues, ConversationMonitoringAdminService $conversationMonitoring, QuestPatrolTrendsService $patrolTrends): Response
     {
+        $isSuper = $request->user()?->role?->slug === 'super_admin';
+
         return Inertia::render('Operations/Moderation/Index', [
             'quest_queues' => $queues->questQueues(),
             'proposal_queues' => $queues->proposalQueues(),
@@ -33,6 +44,21 @@ class OperationsModerationController extends Controller
             'capabilities' => [
                 'quest_admin_statuses' => StaffCapabilities::questAdminStatusValues(),
                 'proposal_admin_statuses' => StaffCapabilities::proposalAdminStatusValues(),
+            ],
+            'patrol_capabilities' => ModerationPatrolCapabilities::forUser($request->user()),
+            'patrol_trends' => $isSuper ? $patrolTrends->summary() : null,
+            'pending_approval_requests' => $isSuper ? $patrolTrends->pendingApprovals() : [],
+            'open_investigations' => $isSuper ? $patrolTrends->openCases() : [],
+            'patrol_options' => [
+                'dismissal_reasons' => collect(config('quest_patrol.dismissal_reasons', []))->map(fn ($label, $value) => ['value' => $value, 'label' => $label])->values()->all(),
+                'admin_boost_reasons' => collect(config('quest_patrol.admin_boost_reasons', []))->map(fn ($label, $value) => ['value' => $value, 'label' => $label])->values()->all(),
+                'revision_issue_types' => collect(config('quest_patrol.revision_issue_types', []))->map(fn ($label, $value) => ['value' => $value, 'label' => $label])->values()->all(),
+                'boost_tiers' => [
+                    ['value' => '3_days', 'label' => '3 days'],
+                    ['value' => '7_days', 'label' => '7 days'],
+                    ['value' => '14_days', 'label' => '14 days'],
+                    ['value' => '30_days', 'label' => '30 days'],
+                ],
             ],
         ]);
     }
@@ -273,5 +299,277 @@ class OperationsModerationController extends Controller
         $engine->deleteProposal($proposal, $request->user(), $validated, $request);
 
         return response()->json(['message' => 'Proposal removed.', 'removed_id' => $proposal->id]);
+    }
+
+    public function questAdminBoost(Request $request, Quest $quest, QuestPatrolModerationService $patrol, StaffModerationQueueService $queues): JsonResponse
+    {
+        $validated = $request->validate([
+            'tier' => ['required', Rule::in(['3_days', '7_days', '14_days', '30_days'])],
+            'reason_code' => ['required', 'string', 'max:64'],
+            'reason_label' => ['nullable', 'string', 'max:120'],
+            'free' => ['sometimes', 'boolean'],
+        ]);
+
+        $result = $patrol->adminBoost($quest, $request->user(), $validated);
+
+        return response()->json(array_merge($result, ['quest' => $queues->questDetail($quest->id)]));
+    }
+
+    public function questRequestRevision(Request $request, Quest $quest, QuestPatrolModerationService $patrol, StaffModerationQueueService $queues): JsonResponse
+    {
+        $validated = $request->validate([
+            'issue_type' => ['required', 'string', 'max:64'],
+            'message' => ['required', 'string', 'min:20', 'max:2000'],
+            'deadline_days' => ['nullable', 'integer', 'min:1', 'max:30'],
+        ]);
+
+        $result = $patrol->requestRevision($quest, $request->user(), $validated, $request);
+
+        return response()->json(array_merge($result, ['quest' => $queues->questDetail($quest->id)]));
+    }
+
+    public function questPause(Request $request, Quest $quest, QuestPatrolModerationService $patrol, StaffModerationQueueService $queues): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:20', 'max:2000'],
+            'hours' => ['nullable', 'integer', 'min:24', 'max:72'],
+        ]);
+
+        $result = $patrol->pauseQuest($quest, $request->user(), $validated);
+
+        return response()->json(array_merge($result, ['quest' => $queues->questDetail($quest->id)]));
+    }
+
+    public function questCollusionCheck(Quest $quest, QuestPatrolAnomalyService $anomalies): JsonResponse
+    {
+        return response()->json($anomalies->collusionReport($quest));
+    }
+
+    public function dismissPatrolFlag(Request $request, QuestPatrolFlag $flag, QuestPatrolModerationService $patrol): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason_code' => ['required', 'string', 'max:64'],
+            'reason_notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $patrol->dismissFlag($flag, $request->user(), $validated);
+
+        return response()->json(['message' => 'Anomaly dismissed.']);
+    }
+
+    public function proposalRate(Request $request, QuestOffer $proposal, QuestPatrolModerationService $patrol, StaffModerationQueueService $queues): JsonResponse
+    {
+        $validated = $request->validate([
+            'rating' => ['required', 'integer', 'min:1', 'max:4'],
+        ]);
+
+        $patrol->rateProposal($proposal, $request->user(), $validated);
+
+        return response()->json(['message' => 'Proposal rated.', 'proposal' => $queues->proposalDetail($proposal->id)]);
+    }
+
+    public function proposalRecommend(Request $request, QuestOffer $proposal, QuestPatrolModerationService $patrol, StaffModerationQueueService $queues): JsonResponse
+    {
+        $patrol->recommendProposal($proposal, $request->user());
+
+        return response()->json(['message' => 'Proposal marked as platform recommended.', 'proposal' => $queues->proposalDetail($proposal->id)]);
+    }
+
+    public function proposalRequestClarification(Request $request, QuestOffer $proposal, QuestPatrolModerationService $patrol, StaffModerationQueueService $queues): JsonResponse
+    {
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'min:20', 'max:2000'],
+            'deadline_hours' => ['nullable', 'integer', 'min:12', 'max:168'],
+        ]);
+
+        $result = $patrol->requestClarification($proposal, $request->user(), $validated);
+
+        return response()->json(array_merge($result, ['proposal' => $queues->proposalDetail($proposal->id)]));
+    }
+
+    public function proposalHideRequest(Request $request, QuestOffer $proposal, QuestPatrolModerationService $patrol, StaffModerationQueueService $queues): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:20', 'max:2000'],
+        ]);
+
+        $result = $patrol->hideProposalRequest($proposal, $request->user(), $validated);
+
+        return response()->json(array_merge($result, ['proposal' => $queues->proposalDetail($proposal->id)]));
+    }
+
+    public function questFeature(Request $request, Quest $quest, QuestPatrolModerationService $patrol, StaffModerationQueueService $queues): JsonResponse
+    {
+        $validated = $request->validate([
+            'tier' => ['nullable', Rule::in(['standard', 'premium', 'elite'])],
+            'duration_days' => ['nullable', 'integer', 'min:1', 'max:30'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $result = $patrol->featureQuest($quest, $request->user(), $validated);
+
+        return response()->json(array_merge($result, ['quest' => $queues->questDetail($quest->id)]));
+    }
+
+    public function questVerifyDeliverables(Request $request, Quest $quest, QuestPatrolModerationService $patrol, StaffModerationQueueService $queues): JsonResponse
+    {
+        $validated = $request->validate([
+            'verdict' => ['required', Rule::in(['verified', 'issues_found', 'needs_clarification'])],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'deadline_days' => ['nullable', 'integer', 'min:1', 'max:30'],
+            'checklist' => ['nullable', 'array'],
+        ]);
+
+        $result = $patrol->verifyDeliverables($quest, $request->user(), $validated, $request);
+
+        return response()->json(array_merge($result, ['quest' => $queues->questDetail($quest->id)]));
+    }
+
+    public function questMergeDuplicate(Request $request, Quest $quest, QuestPatrolModerationService $patrol, StaffModerationQueueService $queues): JsonResponse
+    {
+        $validated = $request->validate([
+            'original_quest_id' => ['required', 'integer', 'exists:quests,id'],
+        ]);
+
+        $result = $patrol->mergeDuplicate($quest, $request->user(), $validated, $request);
+
+        return response()->json(array_merge($result, ['quest' => $queues->questDetail($quest->id)]));
+    }
+
+    public function reviewApprovalRequest(Request $request, ModerationApprovalRequest $approval, QuestPatrolModerationService $patrol, QuestPatrolTrendsService $trends): JsonResponse
+    {
+        $validated = $request->validate([
+            'decision' => ['required', Rule::in(['approved', 'rejected'])],
+            'review_notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $patrol->reviewApprovalRequest($approval, $request->user(), $validated);
+
+        return response()->json([
+            'message' => 'Approval request '.$validated['decision'].'.',
+            'patrol_trends' => $trends->summary(),
+            'pending_approval_requests' => $trends->pendingApprovals(),
+        ]);
+    }
+
+    public function questOpenInvestigation(Request $request, Quest $quest, QuestPatrolInvestigationService $investigations, StaffModerationQueueService $queues): JsonResponse
+    {
+        $this->ensureSuperAdmin($request);
+
+        $validated = $request->validate([
+            'title' => ['nullable', 'string', 'max:200'],
+            'severity' => ['nullable', Rule::in(['low', 'medium', 'high'])],
+            'note' => ['nullable', 'string', 'max:2000'],
+            'flag_ids' => ['nullable', 'array'],
+            'flag_ids.*' => ['integer'],
+        ]);
+
+        $case = $investigations->open('quest', $quest->id, $request->user(), $validated);
+
+        return response()->json([
+            'message' => 'Investigation opened.',
+            'investigation' => $investigations->payload($case),
+            'quest' => $queues->questDetail($quest->id),
+        ]);
+    }
+
+    public function proposalOpenInvestigation(Request $request, QuestOffer $proposal, QuestPatrolInvestigationService $investigations, StaffModerationQueueService $queues): JsonResponse
+    {
+        $this->ensureSuperAdmin($request);
+
+        $validated = $request->validate([
+            'title' => ['nullable', 'string', 'max:200'],
+            'severity' => ['nullable', Rule::in(['low', 'medium', 'high'])],
+            'note' => ['nullable', 'string', 'max:2000'],
+            'flag_ids' => ['nullable', 'array'],
+            'flag_ids.*' => ['integer'],
+        ]);
+
+        $case = $investigations->open('proposal', $proposal->id, $request->user(), $validated);
+
+        return response()->json([
+            'message' => 'Investigation opened.',
+            'investigation' => $investigations->payload($case),
+            'proposal' => $queues->proposalDetail($proposal->id),
+        ]);
+    }
+
+    public function investigationAddNote(Request $request, QuestPatrolInvestigation $investigation, QuestPatrolInvestigationService $investigations): JsonResponse
+    {
+        $this->ensureSuperAdmin($request);
+
+        $validated = $request->validate([
+            'note' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $case = $investigations->addNote($investigation, $request->user(), $validated);
+
+        return response()->json([
+            'message' => 'Note added.',
+            'investigation' => $investigations->payload($case),
+        ]);
+    }
+
+    public function investigationResolve(Request $request, QuestPatrolInvestigation $investigation, QuestPatrolInvestigationService $investigations, QuestPatrolTrendsService $trends): JsonResponse
+    {
+        $this->ensureSuperAdmin($request);
+
+        $validated = $request->validate([
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $case = $investigations->resolve($investigation, $request->user(), $validated);
+
+        return response()->json([
+            'message' => 'Investigation resolved.',
+            'investigation' => $investigations->payload($case),
+            'patrol_trends' => $trends->summary(),
+            'open_investigations' => $trends->openCases(),
+        ]);
+    }
+
+    public function openInvestigations(QuestPatrolInvestigationService $investigations, Request $request): JsonResponse
+    {
+        $this->ensureSuperAdmin($request);
+
+        return response()->json([
+            'items' => $investigations->openCases(30),
+        ]);
+    }
+
+    public function proposalCreateTemplate(Request $request, QuestOffer $proposal, ProposalTemplateService $templates): JsonResponse
+    {
+        $this->ensureSuperAdmin($request);
+
+        $validated = $request->validate([
+            'title' => ['nullable', 'string', 'max:200'],
+        ]);
+
+        $template = $templates->createFromProposal($proposal, $request->user(), $validated);
+
+        return response()->json([
+            'message' => 'Reference template published.',
+            'template' => [
+                'id' => $template->id,
+                'title' => $template->title,
+                'body_excerpt' => \Illuminate\Support\Str::limit(strip_tags($template->body), 180),
+            ],
+        ]);
+    }
+
+    public function proposalTemplates(Request $request, ProposalTemplateService $templates): JsonResponse
+    {
+        $this->ensureSuperAdmin($request);
+
+        return response()->json([
+            'items' => $templates->published(30),
+        ]);
+    }
+
+    private function ensureSuperAdmin(Request $request): void
+    {
+        if ($request->user()?->role?->slug !== 'super_admin') {
+            abort(403, 'Super admin access required.');
+        }
     }
 }

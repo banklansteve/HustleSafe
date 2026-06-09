@@ -48,8 +48,8 @@
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <button type="button" class="rounded-lg bg-slate-900 px-3 py-1.5 text-[10px] font-black uppercase text-white dark:bg-white dark:text-slate-900" @click="reviewAlert(alert)">Review</button>
-                        <button type="button" class="rounded-lg border px-3 py-1.5 text-[10px] font-black uppercase" :class="shell.btnGhost" @click="dismissAlert(alert)">Dismiss</button>
-                        <button type="button" class="rounded-lg bg-amber-600 px-3 py-1.5 text-[10px] font-black uppercase text-white" @click="investigateAlert(alert)">Investigate</button>
+                        <button type="button" class="rounded-lg border px-3 py-1.5 text-[10px] font-black uppercase" :class="shell.btnGhost" @click="openDismiss(alert)">Dismiss</button>
+                        <button type="button" class="rounded-lg bg-amber-600 px-3 py-1.5 text-[10px] font-black uppercase text-white" @click="reviewAlert(alert)">Investigate</button>
                     </div>
                 </div>
             </section>
@@ -85,7 +85,6 @@
 
                 <div class="flex flex-wrap gap-3">
                     <button type="button" class="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black uppercase text-white" @click="showGrantPremium = true">Manual premium upgrade</button>
-                    <button type="button" class="rounded-xl bg-amber-600 px-4 py-2.5 text-xs font-black uppercase text-white" @click="showGrantBoost = true">Manual quest boost</button>
                 </div>
             </template>
 
@@ -116,7 +115,7 @@
                                 <th class="px-4 py-3">Tier</th>
                                 <th class="px-4 py-3">Plan</th>
                                 <th class="px-4 py-3">Paid</th>
-                                <th class="px-4 py-3">Acct age</th>
+                                <th class="px-4 py-3">Trust</th>
                                 <th class="px-4 py-3">Risk</th>
                                 <th class="px-4 py-3">Status</th>
                                 <th class="px-4 py-3" />
@@ -126,19 +125,20 @@
                             <tr
                                 v-for="row in premium_users.data"
                                 :key="row.user_id"
-                                class="border-b"
+                                class="border-b cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-900/40"
                                 :class="[shell.tableDivide, row.has_open_flags ? 'bg-orange-50/60 dark:bg-orange-950/20' : '']"
+                                @click="openPremiumDetail(row.user_id)"
                             >
                                 <td class="px-4 py-3 font-bold" :class="shell.cardTitle">{{ row.fullname }}</td>
                                 <td class="px-4 py-3 text-xs" :class="shell.cardMuted">{{ formatWhen(row.signup_date) }}</td>
                                 <td class="px-4 py-3">L{{ row.verification_tier }}</td>
                                 <td class="px-4 py-3">{{ row.subscription_type }}</td>
                                 <td class="px-4 py-3 font-black">{{ row.cost_paid_display }}</td>
-                                <td class="px-4 py-3 text-xs" :class="row.account_age_flag ? 'font-black text-orange-600' : shell.cardMuted">{{ row.account_age_at_purchase }}</td>
+                                <td class="px-4 py-3 text-xs font-bold text-emerald-700">{{ row.trust_score ?? '—' }}</td>
                                 <td class="px-4 py-3"><span class="rounded-full px-2 py-0.5 text-[10px] font-black" :class="riskClass(row.risk_score)">{{ row.risk_score }}</span></td>
                                 <td class="px-4 py-3 text-xs font-black uppercase">{{ row.patrol_status }}</td>
                                 <td class="px-4 py-3">
-                                    <button type="button" class="text-xs font-black text-primary-700" @click="openPremiumDetail(row.user_id)">View</button>
+                                    <button type="button" class="text-xs font-black text-primary-700" @click.stop="openPremiumDetail(row.user_id)">View</button>
                                 </td>
                             </tr>
                         </tbody>
@@ -202,49 +202,31 @@
             </template>
         </div>
 
-        <AdminSlideOver :open="detailOpen" :title="detailTitle" eyebrow="Patrol detail" width-class="max-w-full sm:max-w-xl" @close="detailOpen = false">
-            <div v-if="detailLoading" class="py-12 text-center text-sm font-semibold" :class="shell.cardMuted">Loading…</div>
-            <div v-else-if="premiumDetail" class="space-y-4">
-                <p class="text-sm font-bold" :class="shell.cardTitle">{{ premiumDetail.user.fullname }}</p>
-                <p class="text-xs" :class="shell.cardMuted">Risk score: {{ premiumDetail.user.risk_score }} · {{ premiumDetail.user.location }}</p>
-                <div v-if="premiumDetail.flags.length" class="space-y-1">
-                    <p v-for="f in premiumDetail.flags" :key="f.id" class="rounded-lg bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800 dark:bg-orange-950/40">{{ f.label }} ({{ f.severity }})</p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <button type="button" class="rounded-lg bg-red-700 px-3 py-1.5 text-[10px] font-black uppercase text-white" @click="runPremiumAction('suspend')">Suspend</button>
-                    <button type="button" class="rounded-lg bg-amber-600 px-3 py-1.5 text-[10px] font-black uppercase text-white" @click="runPremiumAction('refund')">Refund</button>
-                    <button type="button" class="rounded-lg border px-3 py-1.5 text-[10px] font-black uppercase" :class="shell.btnGhost" @click="runPremiumAction('investigate')">Investigate</button>
-                </div>
-            </div>
-            <div v-else-if="boostDetail" class="space-y-4">
-                <p class="text-sm font-bold" :class="shell.cardTitle">{{ boostDetail.boost.quest_title }}</p>
-                <p class="text-xs" :class="shell.cardMuted">Budget {{ boostDetail.budget_vs_market.budget_display }} vs market {{ boostDetail.budget_vs_market.market_median_display }} ({{ boostDetail.budget_vs_market.deviation_percent ?? '—' }}%)</p>
-                <p class="text-xs" :class="shell.cardMuted">Client account age: {{ boostDetail.client_account_age_days ?? '—' }} days</p>
-                <div class="flex flex-wrap gap-2">
-                    <button type="button" class="rounded-lg bg-red-700 px-3 py-1.5 text-[10px] font-black uppercase text-white" @click="runBoostAction('demote')">Demote</button>
-                    <button type="button" class="rounded-lg bg-amber-600 px-3 py-1.5 text-[10px] font-black uppercase text-white" @click="runBoostAction('refund')">Refund</button>
-                    <button type="button" class="rounded-lg border px-3 py-1.5 text-[10px] font-black uppercase" :class="shell.btnGhost" @click="runBoostAction('investigate')">Investigate</button>
-                </div>
-            </div>
-        </AdminSlideOver>
+        <PremiumUserReviewPanel
+            :open="reviewOpen"
+            :user-id="reviewUserId"
+            :reason-codes="reason_codes"
+            @close="reviewOpen = false"
+            @action-complete="onActionComplete"
+        />
 
-        <div v-if="showGrantPremium" class="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4" @click.self="showGrantPremium = false">
-            <form class="w-full max-w-lg rounded-2xl border p-6" :class="shell.card" @submit.prevent="submitGrantPremium">
-                <h3 class="text-lg font-black" :class="shell.cardTitle">Manual premium upgrade</h3>
-                <input v-model="grantPremiumSearch" type="search" placeholder="Search user…" class="mt-4 w-full rounded-xl border px-3 py-2 text-sm" :class="shell.input" @input="searchGrantUsers" />
-                <ul v-if="grantUserResults.length" class="mt-2 max-h-40 overflow-auto rounded-xl border">
-                    <li v-for="u in grantUserResults" :key="u.id">
-                        <button type="button" class="w-full px-3 py-2 text-left text-sm hover:bg-slate-50" @click="grantPremiumForm.user_id = u.id">{{ u.name }} · {{ u.email }}</button>
-                    </li>
-                </ul>
-                <select v-model="grantPremiumForm.billing_cycle" class="mt-4 w-full rounded-xl border px-3 py-2 text-sm" :class="shell.input">
-                    <option value="month">Monthly</option>
-                    <option value="year">Annual</option>
-                </select>
-                <textarea v-model="grantPremiumForm.reason_notes" required rows="3" class="mt-4 w-full rounded-xl border px-3 py-2 text-sm" :class="shell.input" placeholder="Reason (audit trail)…" />
+        <PremiumPatrolGrantPremiumModal
+            :open="showGrantPremium"
+            @close="showGrantPremium = false"
+            @upgraded="onPremiumUpgraded"
+        />
+
+        <div v-if="dismissAlert" class="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/50 p-4" @click.self="dismissAlert = null">
+            <form class="w-full max-w-md rounded-2xl border p-5" :class="shell.card" @submit.prevent="submitDismiss">
+                <h3 class="text-base font-black" :class="shell.cardTitle">Dismiss anomaly</h3>
+                <p class="mt-2 text-sm" :class="shell.cardMuted">{{ dismissAlert.message }}</p>
+                <textarea v-model="dismissReason" required rows="3" class="mt-4 w-full rounded-xl border px-3 py-2 text-sm" :class="shell.input" placeholder="Dismissal reason…" />
                 <div class="mt-4 flex gap-2">
-                    <button type="submit" class="rounded-xl bg-emerald-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="!grantPremiumForm.user_id">Upgrade</button>
-                    <button type="button" class="rounded-xl border px-4 py-2 text-xs font-black uppercase" :class="shell.btnGhost" @click="showGrantPremium = false">Cancel</button>
+                    <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black uppercase text-white dark:bg-white dark:text-slate-900" :disabled="dismissSubmitting">
+                        <span v-if="dismissSubmitting" class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        Dismiss
+                    </button>
+                    <button type="button" class="rounded-xl border px-4 py-2 text-xs font-black uppercase" :class="shell.btnGhost" @click="dismissAlert = null">Cancel</button>
                 </div>
             </form>
         </div>
@@ -255,11 +237,13 @@
 import AdminDateInput from '@/Components/Admin/AdminDateInput.vue';
 import AdminKpiTile from '@/Components/Admin/AdminKpiTile.vue';
 import AdminPanel from '@/Components/Admin/AdminPanel.vue';
-import AdminSlideOver from '@/Components/Admin/AdminSlideOver.vue';
+import PremiumPatrolGrantPremiumModal from '@/Pages/Admin/PremiumPatrol/Components/PremiumPatrolGrantPremiumModal.vue';
+import PremiumUserReviewPanel from '@/Pages/Admin/PremiumPatrol/Components/PremiumUserReviewPanel.vue';
+import { useFlashToastWatcher } from '@/composables/useFlashToast';
 import { useInjectedAdminTheme } from '@/composables/useAdminTheme';
+import { useOperationsToast } from '@/composables/useOperationsToast';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { router } from '@inertiajs/vue3';
-import axios from 'axios';
 import { computed, reactive, ref } from 'vue';
 import VueApexCharts from 'vue3-apexcharts';
 
@@ -275,6 +259,8 @@ const props = defineProps({
 });
 
 const { shell, chartMode, isDark } = useInjectedAdminTheme();
+const { toast } = useOperationsToast();
+useFlashToastWatcher(toast);
 
 const activeTab = ref(props.tab);
 const rangePresets = [
@@ -294,20 +280,13 @@ const customTo = ref(props.range.to);
 const premiumFilters = reactive({ signup_range: '', patrol_status: '', billing_cycle: '' });
 const boostFilters = reactive({ boost_status: '', duration: '' });
 
-const detailOpen = ref(false);
-const detailLoading = ref(false);
-const premiumDetail = ref(null);
-const boostDetail = ref(null);
-const selectedUserId = ref(null);
-const selectedBoostId = ref(null);
-
+const reviewOpen = ref(false);
+const reviewUserId = ref(null);
 const showGrantPremium = ref(false);
-const showGrantBoost = ref(false);
-const grantPremiumSearch = ref('');
-const grantUserResults = ref([]);
-const grantPremiumForm = reactive({ user_id: null, billing_cycle: 'month', reason_code: 'manual_grant', reason_notes: '' });
 
-const detailTitle = computed(() => premiumDetail.value?.user?.fullname ?? boostDetail.value?.boost?.quest_title ?? 'Detail');
+const dismissAlert = ref(null);
+const dismissReason = ref('');
+const dismissSubmitting = ref(false);
 
 const chartBase = computed(() => ({
     chart: { toolbar: { show: false }, fontFamily: 'inherit', foreColor: isDark.value ? '#94a3b8' : '#64748b' },
@@ -379,80 +358,54 @@ function reloadBoosts() {
     visit({ ...boostFilters });
 }
 
-async function openPremiumDetail(userId) {
-    selectedUserId.value = userId;
-    detailOpen.value = true;
-    detailLoading.value = true;
-    premiumDetail.value = null;
-    boostDetail.value = null;
-    const { data } = await axios.get(route('admin.api.premium-patrol.premium-user', userId));
-    premiumDetail.value = data;
-    detailLoading.value = false;
+function openPremiumDetail(userId) {
+    reviewUserId.value = userId;
+    reviewOpen.value = true;
 }
 
-async function openBoostDetail(boostId) {
-    selectedBoostId.value = boostId;
-    detailOpen.value = true;
-    detailLoading.value = true;
-    boostDetail.value = null;
-    premiumDetail.value = null;
-    const { data } = await axios.get(route('admin.api.premium-patrol.boost', boostId));
-    boostDetail.value = data;
-    detailLoading.value = false;
-}
-
-function runPremiumAction(action) {
-    const userId = selectedUserId.value;
-    if (!userId) return;
-    const reason = prompt('Reason code (fraud/suspicious/terms/investigation):', 'investigation');
-    const notes = prompt('Notes for audit trail:', '');
-    if (!reason) return;
-    const routes = {
-        suspend: 'admin.premium-patrol.premium-users.suspend',
-        refund: 'admin.premium-patrol.premium-users.refund',
-        investigate: 'admin.premium-patrol.premium-users.investigate',
-    };
-    router.post(route(routes[action], userId), { reason_code: reason, reason_notes: notes }, { preserveScroll: true, onSuccess: () => { detailOpen.value = false; } });
-}
-
-function runBoostAction(action) {
-    const boostId = selectedBoostId.value;
-    if (!boostId) return;
-    const reason = prompt('Reason code:', 'investigation');
-    const notes = prompt('Notes:', '');
-    if (!reason) return;
-    const routes = {
-        demote: 'admin.premium-patrol.boosts.demote',
-        refund: 'admin.premium-patrol.boosts.refund',
-        investigate: 'admin.premium-patrol.boosts.investigate',
-    };
-    router.post(route(routes[action], boostId), { reason_code: reason, reason_notes: notes }, { preserveScroll: true, onSuccess: () => { detailOpen.value = false; } });
-}
-
-function dismissAlert(alert) {
-    const reason = prompt('Dismissal reason:', '');
-    if (!reason) return;
-    router.post(route('admin.api.premium-patrol.flags.dismiss', alert.id), { reason }, { preserveScroll: true });
+function openBoostDetail() {
+    toast('Boost detail panel coming next — use Quest Boosts admin for now.', 'info');
 }
 
 function reviewAlert(alert) {
-    if (alert.subject_type === 'premium_user' && alert.subject_id) openPremiumDetail(alert.subject_id);
-    else if (alert.subject_type === 'boosted_quest' && alert.subject_id) openBoostDetail(alert.subject_id);
+    if (alert.subject_type === 'premium_user' && alert.subject_id) {
+        openPremiumDetail(alert.subject_id);
+    }
 }
 
-function investigateAlert(alert) {
-    reviewAlert(alert);
+function openDismiss(alert) {
+    dismissAlert.value = alert;
+    dismissReason.value = '';
 }
 
-async function searchGrantUsers() {
-    const { data } = await axios.get(route('admin.api.premium-patrol.users.search'), { params: { q: grantPremiumSearch.value } });
-    grantUserResults.value = data.data || [];
-}
-
-function submitGrantPremium() {
-    router.post(route('admin.premium-patrol.premium-users.grant', grantPremiumForm.user_id), grantPremiumForm, {
+function submitDismiss() {
+    if (!dismissAlert.value || dismissSubmitting.value) return;
+    dismissSubmitting.value = true;
+    router.post(route('admin.api.premium-patrol.flags.dismiss', dismissAlert.value.id), { reason: dismissReason.value }, {
         preserveScroll: true,
-        onSuccess: () => { showGrantPremium.value = false; },
+        onSuccess: () => {
+            toast('Anomaly dismissed.');
+            dismissAlert.value = null;
+        },
+        onFinish: () => {
+            dismissSubmitting.value = false;
+        },
     });
+}
+
+function onPremiumUpgraded(name) {
+    toast(`${name} upgraded to premium successfully.`);
+    router.reload({ only: ['premium_users', 'metrics', 'anomaly_alerts'], preserveScroll: true });
+}
+
+function onActionComplete(action) {
+    const labels = {
+        suspend: 'Premium subscription suspended.',
+        refund: 'Premium charge refunded.',
+        investigate: 'Investigation case opened.',
+        watchlist: 'User added to watchlist.',
+    };
+    toast(labels[action] || 'Action completed.');
+    router.reload({ only: ['premium_users', 'anomaly_alerts'], preserveScroll: true });
 }
 </script>

@@ -11,6 +11,7 @@ use App\Http\Controllers\Operations\OperationsProactiveOutreachController;
 use App\Http\Controllers\Operations\OperationsResponseTemplatesController;
 use App\Http\Controllers\Operations\OperationsOnboardingQualityController;
 use App\Http\Controllers\Operations\OperationsPatrolController;
+use App\Http\Controllers\Operations\OperationsUserActivityPatrolController;
 use App\Http\Controllers\Operations\OperationsPaymentMonitoringController;
 use App\Http\Controllers\Operations\OperationsPayoutExceptionsController;
 use App\Http\Controllers\Operations\OperationsQualityController;
@@ -108,6 +109,19 @@ Route::post('/api/patrol/sessions', [OperationsPatrolController::class, 'start']
 Route::get('/api/patrol/sessions/{session}', [OperationsPatrolController::class, 'sessionDetail'])->name('api.patrol.sessions.detail');
 Route::post('/api/patrol/items/{item}/decide', [OperationsPatrolController::class, 'decide'])->middleware('throttle:120,1')->name('api.patrol.items.decide');
 
+Route::get('/user-activity-patrol', [OperationsUserActivityPatrolController::class, 'index'])->name('user-activity-patrol.index');
+Route::get('/api/user-activity-patrol/listing', [OperationsUserActivityPatrolController::class, 'listing'])->name('api.user-activity-patrol.listing');
+Route::get('/api/user-activity-patrol/users/{user}', [OperationsUserActivityPatrolController::class, 'detail'])->name('api.user-activity-patrol.detail');
+Route::post('/api/user-activity-patrol/flags/{flag}/assign', [OperationsUserActivityPatrolController::class, 'assign'])->middleware('throttle:60,1')->name('api.user-activity-patrol.flags.assign');
+Route::post('/api/user-activity-patrol/flags/{flag}/release', [OperationsUserActivityPatrolController::class, 'release'])->middleware('throttle:60,1')->name('api.user-activity-patrol.flags.release');
+Route::post('/api/user-activity-patrol/flags/{flag}/resolve', [OperationsUserActivityPatrolController::class, 'resolve'])->middleware('throttle:40,1')->name('api.user-activity-patrol.flags.resolve');
+Route::post('/api/user-activity-patrol/flags/{flag}/dismiss', [OperationsUserActivityPatrolController::class, 'dismiss'])->middleware('throttle:40,1')->name('api.user-activity-patrol.flags.dismiss');
+Route::post('/user-activity-patrol/users/{user}/warn', [OperationsUserActivityPatrolController::class, 'warn'])->middleware('throttle:30,1')->name('user-activity-patrol.users.warn');
+Route::post('/user-activity-patrol/users/{user}/watchlist', [OperationsUserActivityPatrolController::class, 'watchlist'])->middleware('throttle:30,1')->name('user-activity-patrol.users.watchlist');
+Route::post('/user-activity-patrol/users/{user}/investigate', [OperationsUserActivityPatrolController::class, 'investigate'])->middleware('throttle:30,1')->name('user-activity-patrol.users.investigate');
+Route::post('/user-activity-patrol/users/{user}/message', [OperationsUserActivityPatrolController::class, 'message'])->middleware('throttle:30,1')->name('user-activity-patrol.users.message');
+Route::post('/user-activity-patrol/users/{user}/note', [OperationsUserActivityPatrolController::class, 'note'])->middleware('throttle:60,1')->name('user-activity-patrol.users.note');
+
 Route::get('/onboarding', [OperationsOnboardingController::class, 'index'])->name('onboarding.index');
 Route::get('/api/onboarding', [OperationsOnboardingController::class, 'listing'])->name('api.onboarding.listing');
 Route::get('/api/onboarding/records/{record}', [OperationsOnboardingController::class, 'detail'])->name('api.onboarding.detail');
@@ -156,6 +170,11 @@ Route::post('/api/moderation/proposals/{proposal}/notices', [OperationsModeratio
 Route::post('/api/moderation/proposals/{proposal}/notes', [OperationsModerationController::class, 'proposalNote'])->middleware('throttle:60,1')->name('api.moderation.proposals.notes');
 Route::post('/api/moderation/proposals/{proposal}/flags', [OperationsModerationController::class, 'proposalFlag'])->middleware('throttle:60,1')->name('api.moderation.proposals.flags');
 Route::delete('/api/moderation/proposals/{proposal}', [OperationsModerationController::class, 'proposalRemove'])->middleware('throttle:30,1')->name('api.moderation.proposals.remove');
+Route::post('/api/moderation/quests/{quest}/request-revision', [OperationsModerationController::class, 'questRequestRevision'])->middleware('throttle:30,1')->name('api.moderation.quests.request-revision');
+Route::post('/api/moderation/quests/{quest}/collusion-check', [OperationsModerationController::class, 'questCollusionCheck'])->middleware('throttle:30,1')->name('api.moderation.quests.collusion-check');
+Route::post('/api/moderation/proposals/{proposal}/rate', [OperationsModerationController::class, 'proposalRate'])->middleware('throttle:40,1')->name('api.moderation.proposals.rate');
+Route::post('/api/moderation/proposals/{proposal}/request-clarification', [OperationsModerationController::class, 'proposalRequestClarification'])->middleware('throttle:30,1')->name('api.moderation.proposals.request-clarification');
+Route::post('/api/moderation/proposals/{proposal}/hide-request', [OperationsModerationController::class, 'proposalHideRequest'])->middleware('throttle:30,1')->name('api.moderation.proposals.hide-request');
 
 Route::redirect('/quests', '/operations/moderation?module=quests')->name('quests.index');
 Route::get('/quests/export', [OperationsQuestsController::class, 'export'])->name('quests.export');

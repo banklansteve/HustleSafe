@@ -47,6 +47,17 @@
             </Link>
         </AdminPanel>
 
+        <AdminPanel v-if="isSuperAdmin" eyebrow="Revenue" title="Revenue monitor">
+            <Link
+                :href="route('admin.revenue-monitor.index')"
+                prefetch="false"
+                class="inline-flex rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-sm font-black text-emerald-950 transition hover:border-emerald-200"
+                :class="shell.card"
+            >
+                Open revenue monitor — boosts, premium, platform fees, trends &amp; exports
+            </Link>
+        </AdminPanel>
+
         <AdminPanel eyebrow="Moderation tools" title="Onboarding & trust">
             <div class="grid gap-3 sm:grid-cols-2">
                 <Link

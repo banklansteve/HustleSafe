@@ -17,6 +17,8 @@ use App\Http\Controllers\Admin\AdminFinancialAuditController;
 use App\Http\Controllers\Admin\AdminFinancialReviewController;
 use App\Http\Controllers\Admin\AdminPlatformFeeLedgerController;
 use App\Http\Controllers\Admin\AdminPremiumPatrolController;
+use App\Http\Controllers\Admin\AdminRevenueMonitorController;
+use App\Http\Controllers\Admin\AdminUserActivityPatrolController;
 use App\Http\Controllers\Admin\AdminQuestCompletionEventsController;
 use App\Http\Controllers\Admin\AdminQuestJourneySurveyController;
 use App\Http\Controllers\Admin\AdminQuestReleaseController;
@@ -236,6 +238,14 @@ Route::get('/api/platform-fees/export', [AdminPlatformFeeLedgerController::class
     ->middleware('throttle:20,1')
     ->name('api.platform-fees.export');
 
+Route::prefix('revenue-monitor')->name('revenue-monitor.')->group(function (): void {
+    Route::get('/', [AdminRevenueMonitorController::class, 'index'])->name('index');
+    Route::get('/api/listing', [AdminRevenueMonitorController::class, 'listing'])->name('api.listing');
+    Route::get('/api/transactions/{type}/{id}', [AdminRevenueMonitorController::class, 'detail'])->name('api.transactions.detail');
+    Route::get('/export/csv', [AdminRevenueMonitorController::class, 'exportCsv'])->name('export.csv');
+    Route::get('/export/pdf', [AdminRevenueMonitorController::class, 'exportPdf'])->name('export.pdf');
+});
+
 Route::prefix('financial-audit')->name('financial-audit.')->group(function (): void {
     Route::get('/', [AdminFinancialAuditController::class, 'index'])->name('index');
     Route::get('/api/dashboard', [AdminFinancialAuditController::class, 'dashboardApi'])->name('api.dashboard');
@@ -401,6 +411,24 @@ Route::post('/premium-patrol/boosts/{questBoost}/investigate', [AdminPremiumPatr
 Route::post('/premium-patrol/boosts/{questBoost}/request-verification', [AdminPremiumPatrolController::class, 'requestVerification'])->middleware('throttle:30,1')->name('premium-patrol.boosts.request-verification');
 Route::post('/premium-patrol/quests/{quest}/suspend', [AdminPremiumPatrolController::class, 'suspendQuest'])->middleware('throttle:30,1')->name('premium-patrol.quests.suspend');
 
+Route::get('/user-activity-patrol', [AdminUserActivityPatrolController::class, 'index'])->name('user-activity-patrol.index');
+Route::get('/api/user-activity-patrol/listing', [AdminUserActivityPatrolController::class, 'listing'])->name('api.user-activity-patrol.listing');
+Route::get('/api/user-activity-patrol/users/{user}', [AdminUserActivityPatrolController::class, 'detail'])->name('api.user-activity-patrol.detail');
+Route::post('/api/user-activity-patrol/flags/{flag}/assign', [AdminUserActivityPatrolController::class, 'assign'])->middleware('throttle:60,1')->name('api.user-activity-patrol.flags.assign');
+Route::post('/api/user-activity-patrol/flags/{flag}/release', [AdminUserActivityPatrolController::class, 'release'])->middleware('throttle:60,1')->name('api.user-activity-patrol.flags.release');
+Route::post('/api/user-activity-patrol/flags/{flag}/resolve', [AdminUserActivityPatrolController::class, 'resolve'])->middleware('throttle:40,1')->name('api.user-activity-patrol.flags.resolve');
+Route::post('/api/user-activity-patrol/flags/{flag}/dismiss', [AdminUserActivityPatrolController::class, 'dismiss'])->middleware('throttle:40,1')->name('api.user-activity-patrol.flags.dismiss');
+Route::post('/user-activity-patrol/users/{user}/warn', [AdminUserActivityPatrolController::class, 'warn'])->middleware('throttle:30,1')->name('user-activity-patrol.users.warn');
+Route::post('/user-activity-patrol/users/{user}/watchlist', [AdminUserActivityPatrolController::class, 'watchlist'])->middleware('throttle:30,1')->name('user-activity-patrol.users.watchlist');
+Route::post('/user-activity-patrol/users/{user}/investigate', [AdminUserActivityPatrolController::class, 'investigate'])->middleware('throttle:30,1')->name('user-activity-patrol.users.investigate');
+Route::post('/user-activity-patrol/users/{user}/message', [AdminUserActivityPatrolController::class, 'message'])->middleware('throttle:30,1')->name('user-activity-patrol.users.message');
+Route::post('/user-activity-patrol/users/{user}/suspend', [AdminUserActivityPatrolController::class, 'suspend'])->middleware('throttle:30,1')->name('user-activity-patrol.users.suspend');
+Route::post('/user-activity-patrol/users/{user}/terminate', [AdminUserActivityPatrolController::class, 'terminate'])->middleware('throttle:30,1')->name('user-activity-patrol.users.terminate');
+Route::post('/user-activity-patrol/users/{user}/sanction', [AdminUserActivityPatrolController::class, 'imposeSanction'])->middleware('throttle:30,1')->name('user-activity-patrol.users.sanction');
+Route::post('/user-activity-patrol/users/{user}/reverse-transaction', [AdminUserActivityPatrolController::class, 'reverseTransaction'])->middleware('throttle:30,1')->name('user-activity-patrol.users.reverse-transaction');
+Route::post('/user-activity-patrol/users/{user}/merge-accounts', [AdminUserActivityPatrolController::class, 'mergeAccounts'])->middleware('throttle:30,1')->name('user-activity-patrol.users.merge-accounts');
+Route::post('/user-activity-patrol/users/{user}/note', [AdminUserActivityPatrolController::class, 'note'])->middleware('throttle:60,1')->name('user-activity-patrol.users.note');
+
 Route::get('/categories', [AdminCategoryManagementController::class, 'index'])->name('categories.index');
 Route::post('/categories', [AdminCategoryManagementController::class, 'store'])
     ->middleware('throttle:30,1')
@@ -538,6 +566,26 @@ Route::post('/api/moderation/proposals/{proposal}/notices', [AdminModerationCont
 Route::post('/api/moderation/proposals/{proposal}/notes', [AdminModerationController::class, 'proposalNote'])->middleware('throttle:60,1')->name('api.moderation.proposals.notes');
 Route::post('/api/moderation/proposals/{proposal}/flags', [AdminModerationController::class, 'proposalFlag'])->middleware('throttle:60,1')->name('api.moderation.proposals.flags');
 Route::delete('/api/moderation/proposals/{proposal}', [AdminModerationController::class, 'proposalRemove'])->middleware('throttle:30,1')->name('api.moderation.proposals.remove');
+Route::post('/api/moderation/quests/{quest}/admin-boost', [AdminModerationController::class, 'questAdminBoost'])->middleware('throttle:20,1')->name('api.moderation.quests.admin-boost');
+Route::post('/api/moderation/quests/{quest}/request-revision', [AdminModerationController::class, 'questRequestRevision'])->middleware('throttle:30,1')->name('api.moderation.quests.request-revision');
+Route::post('/api/moderation/quests/{quest}/pause', [AdminModerationController::class, 'questPause'])->middleware('throttle:20,1')->name('api.moderation.quests.pause');
+Route::post('/api/moderation/quests/{quest}/collusion-check', [AdminModerationController::class, 'questCollusionCheck'])->middleware('throttle:30,1')->name('api.moderation.quests.collusion-check');
+Route::post('/api/moderation/patrol-flags/{flag}/dismiss', [AdminModerationController::class, 'dismissPatrolFlag'])->middleware('throttle:40,1')->name('api.moderation.patrol-flags.dismiss');
+Route::post('/api/moderation/proposals/{proposal}/rate', [AdminModerationController::class, 'proposalRate'])->middleware('throttle:40,1')->name('api.moderation.proposals.rate');
+Route::post('/api/moderation/proposals/{proposal}/recommend', [AdminModerationController::class, 'proposalRecommend'])->middleware('throttle:20,1')->name('api.moderation.proposals.recommend');
+Route::post('/api/moderation/proposals/{proposal}/request-clarification', [AdminModerationController::class, 'proposalRequestClarification'])->middleware('throttle:30,1')->name('api.moderation.proposals.request-clarification');
+Route::post('/api/moderation/proposals/{proposal}/hide-request', [AdminModerationController::class, 'proposalHideRequest'])->middleware('throttle:30,1')->name('api.moderation.proposals.hide-request');
+Route::post('/api/moderation/quests/{quest}/feature', [AdminModerationController::class, 'questFeature'])->middleware('throttle:20,1')->name('api.moderation.quests.feature');
+Route::post('/api/moderation/quests/{quest}/verify-deliverables', [AdminModerationController::class, 'questVerifyDeliverables'])->middleware('throttle:30,1')->name('api.moderation.quests.verify-deliverables');
+Route::post('/api/moderation/quests/{quest}/merge-duplicate', [AdminModerationController::class, 'questMergeDuplicate'])->middleware('throttle:20,1')->name('api.moderation.quests.merge-duplicate');
+Route::post('/api/moderation/approval-requests/{approval}/review', [AdminModerationController::class, 'reviewApprovalRequest'])->middleware('throttle:30,1')->name('api.moderation.approval-requests.review');
+Route::post('/api/moderation/quests/{quest}/open-investigation', [AdminModerationController::class, 'questOpenInvestigation'])->middleware('throttle:30,1')->name('api.moderation.quests.open-investigation');
+Route::post('/api/moderation/proposals/{proposal}/open-investigation', [AdminModerationController::class, 'proposalOpenInvestigation'])->middleware('throttle:30,1')->name('api.moderation.proposals.open-investigation');
+Route::post('/api/moderation/investigations/{investigation}/notes', [AdminModerationController::class, 'investigationAddNote'])->middleware('throttle:40,1')->name('api.moderation.investigations.notes');
+Route::post('/api/moderation/investigations/{investigation}/resolve', [AdminModerationController::class, 'investigationResolve'])->middleware('throttle:30,1')->name('api.moderation.investigations.resolve');
+Route::get('/api/moderation/investigations/open', [AdminModerationController::class, 'openInvestigations'])->name('api.moderation.investigations.open');
+Route::post('/api/moderation/proposals/{proposal}/template', [AdminModerationController::class, 'proposalCreateTemplate'])->middleware('throttle:20,1')->name('api.moderation.proposals.template');
+Route::get('/api/moderation/proposal-templates', [AdminModerationController::class, 'proposalTemplates'])->name('api.moderation.proposal-templates');
 
 Route::get('/outreach', [AdminProactiveOutreachController::class, 'index'])->name('outreach.index');
 Route::get('/api/outreach', [AdminProactiveOutreachController::class, 'listing'])->name('api.outreach.listing');

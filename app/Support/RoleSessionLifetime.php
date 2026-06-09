@@ -4,11 +4,8 @@ namespace App\Support;
 
 final class RoleSessionLifetime
 {
-    /** Production default — shorten via SUPER_ADMIN_SESSION_LIFETIME in .env when ready. */
-    public const SUPER_ADMIN_MINUTES_PRODUCTION = 20160; // 14 days
-
-    /** Local / development idle timeout when env is not set. */
-    public const SUPER_ADMIN_MINUTES_LOCAL = 10080; // 7 days
+    /** Default super-admin idle timeout (14 days). Override via SUPER_ADMIN_SESSION_LIFETIME in .env. */
+    public const SUPER_ADMIN_MINUTES = 20160;
 
     public const OPERATIONS_STAFF_MINUTES = 300;
 
@@ -31,9 +28,7 @@ final class RoleSessionLifetime
             return max(1, (int) $configured);
         }
 
-        return app()->environment('production')
-            ? self::SUPER_ADMIN_MINUTES_PRODUCTION
-            : self::SUPER_ADMIN_MINUTES_LOCAL;
+        return max(1, (int) config('session.super_admin_lifetime', self::SUPER_ADMIN_MINUTES));
     }
 
     public static function operationsStaffMinutes(): int

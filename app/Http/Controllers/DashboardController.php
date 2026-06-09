@@ -11,6 +11,7 @@ use App\Models\Portfolio;
 use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Models\User;
+use App\Services\Proposals\ProposalClarificationInboxService;
 use App\Services\QuestMatchingService;
 use App\Services\UserNotificationPresenter;
 use App\Support\UserAgentFriendly;
@@ -86,6 +87,7 @@ class DashboardController extends Controller
             ],
             'matchingQuests' => $this->mapMatchingQuestRows($user),
             'recentOffers' => $this->freelancerRecentOffers($user),
+            'clarification_inbox' => app(ProposalClarificationInboxService::class)->inboxForUser($user, 6),
             'homeShortcuts' => $this->freelancerHomeShortcuts(),
             'skillCategoriesCount' => (int) ($user->quest_category_preferences_count ?? 0),
             'scoreOpportunities' => $this->freelancerScoreOpportunities($user),
@@ -204,6 +206,7 @@ class DashboardController extends Controller
             ],
             'attentionQuests' => $this->clientAttentionQuests($user),
             'inboundOffers' => $this->clientInboundOffers($user),
+            'clarification_inbox' => app(ProposalClarificationInboxService::class)->inboxForUser($user, 6),
             'homeShortcuts' => $this->clientHomeShortcuts(),
             'scoreOpportunities' => $this->clientScoreOpportunities($user),
             'trustGuideUrl' => route('dashboard.trust-guide'),

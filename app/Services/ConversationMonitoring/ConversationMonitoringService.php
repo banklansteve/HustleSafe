@@ -91,6 +91,8 @@ class ConversationMonitoringService
 
         foreach ($hits as $hit) {
             ConversationMessageFlag::query()->create([
+                'quest_conversation_thread_id' => null,
+                'quest_conversation_message_id' => null,
                 'proposal_clarification_thread_id' => $thread->id,
                 'proposal_clarification_message_id' => $message->id,
                 'sender_user_id' => $message->author_user_id,

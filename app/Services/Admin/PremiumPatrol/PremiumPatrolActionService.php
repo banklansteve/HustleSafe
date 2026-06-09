@@ -278,7 +278,10 @@ final class PremiumPatrolActionService
                 'actor_id' => $admin->id,
                 'note' => (string) ($data['reason_notes'] ?? 'Investigation opened.'),
             ]],
-            'meta' => $data['meta'] ?? [],
+            'meta' => array_merge($data['meta'] ?? [], [
+                'severity' => $data['severity'] ?? 'medium',
+                'reason_code' => $data['reason_code'] ?? null,
+            ]),
         ]);
 
         $this->logAction(
@@ -298,7 +301,7 @@ final class PremiumPatrolActionService
      */
     public function addToWatchlist(User $target, User $admin, string $type, array $data): PremiumPatrolWatchlist
     {
-        $days = (int) config('premium_patrol.watchlist_default_days', 90);
+        $days = (int) ($data['watchlist_days'] ?? config('premium_patrol.watchlist_default_days', 90));
         $entry = PremiumPatrolWatchlist::query()->create([
             'watchlist_type' => $type,
             'user_id' => $target->id,

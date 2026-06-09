@@ -68,6 +68,6 @@ class StaffAdminLoginTest extends TestCase
     {
         $this->assertSame(300, RoleSessionLifetime::minutesForRole('admin'));
         $this->assertSame(10080, RoleSessionLifetime::minutesForRole('client'));
-        $this->assertSame(10080, RoleSessionLifetime::superAdminMinutes());
+        $this->assertSame(20160, RoleSessionLifetime::superAdminMinutes());
     }
 }

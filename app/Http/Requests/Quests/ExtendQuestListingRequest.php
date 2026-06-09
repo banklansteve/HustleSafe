@@ -11,9 +11,7 @@ class ExtendQuestListingRequest extends FormRequest
     {
         $quest = $this->route('quest');
 
-        return $quest !== null
-            && $this->user() !== null
-            && (int) $quest->client_id === (int) $this->user()->id;
+        return $quest !== null && $this->user()?->can('extendListing', $quest);
     }
 
     /**

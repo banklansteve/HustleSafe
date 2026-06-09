@@ -12,6 +12,39 @@
             </div>
 
             <section
+                v-if="!observer_mode && clarification_alert"
+                class="rounded-2xl border px-4 py-4 text-sm font-semibold leading-relaxed shadow-sm ring-1 sm:px-5"
+                :class="clarification_alert.action_required
+                    ? 'border-rose-200 bg-gradient-to-r from-rose-50 via-white to-orange-50/60 text-rose-950 ring-rose-100'
+                    : 'border-sky-200 bg-gradient-to-r from-sky-50 via-white to-cyan-50/60 text-sky-950 ring-sky-100'"
+                role="status"
+                aria-live="polite"
+            >
+                <p
+                    class="text-[10px] font-black uppercase tracking-[0.2em]"
+                    :class="clarification_alert.action_required ? 'text-rose-800' : 'text-sky-800'"
+                >
+                    Clarifying questions
+                </p>
+                <p class="mt-1 font-black">
+                    {{ clarification_alert.headline }}
+                </p>
+                <p v-if="clarification_alert.preview" class="mt-2 text-xs font-semibold opacity-90">
+                    “{{ clarification_alert.preview }}”
+                </p>
+                <Link
+                    v-if="clarification_url"
+                    :href="clarification_url"
+                    class="mt-3 inline-flex rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm"
+                    :class="clarification_alert.action_required ? 'bg-rose-600 hover:bg-rose-700' : 'bg-sky-600 hover:bg-sky-700'"
+                >
+                    {{ clarification_alert.action_required
+                        ? (is_author ? 'Answer now' : 'Open thread')
+                        : 'Open thread' }}
+                </Link>
+            </section>
+
+            <section
                 v-if="!observer_mode && showFundingNotice"
                 class="rounded-2xl border-2 border-amber-400 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-950 ring-2 ring-amber-200 sm:px-5"
                 role="alert"
@@ -759,6 +792,7 @@ const props = defineProps({
     conversation_with_freelancer_url: { type: String, default: null },
     clarification_url: { type: String, default: null },
     clarification_summary: { type: Number, default: 0 },
+    clarification_alert: { type: Object, default: null },
     commerce: { type: Object, default: null },
 });
 

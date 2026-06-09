@@ -20,8 +20,8 @@
                     {{ freelancer_match_stats.total }} freelancers match this category.
                     {{ freelancer_match_stats.label }}
                 </p>
-                <p class="mt-2 text-xs font-semibold text-slate-500">
-                    Tag freelancers to notify them about your quest. They can view the brief and send a proposal.
+                <p class="mt-2 text-xs font-semibold leading-relaxed text-slate-500">
+                    Know someone who’d be a great fit? Invite them — they’ll receive your quest by email and in-app notification.
                 </p>
             </header>
 
@@ -76,7 +76,7 @@
                             :disabled="tagBusy === f.id"
                             @click="tagFreelancer(f)"
                         >
-                            {{ tagBusy === f.id ? 'Tagging…' : 'Tag & notify' }}
+                            {{ tagBusy === f.id ? 'Inviting…' : 'Invite' }}
                         </button>
                     </div>
                 </li>

@@ -34,6 +34,7 @@ use App\Services\Quest\QuestListingExpiryService;
 use App\Services\QuestCoverService;
 use App\Services\QuestFileStorageService;
 use App\Services\QuestFormFieldProfileService;
+use App\Services\Proposals\ProposalClarificationInboxService;
 use App\Services\QuestPublishedNotificationService;
 use App\Services\QuestSlugService;
 use App\Services\Verification\VerificationEngineService;
@@ -486,7 +487,13 @@ class QuestController extends Controller
             $questPayload['commerce'] = array_merge($commerce, QuestCommerceUi::partyExtras($quest, $user));
         }
 
-        $clientProposalSummaries = $isQuestOwner ? $this->clientProposalSummariesForQuest($quest) : [];
+        $clientProposalSummaries = $isQuestOwner && $user
+            ? $this->clientProposalSummariesForQuest($quest, $user)
+            : [];
+        $clarificationInbox = app(ProposalClarificationInboxService::class);
+        $clarificationAlerts = $isQuestOwner && $user
+            ? $clarificationInbox->forQuestOwner($quest, $user)
+            : ($myOffer && $user ? array_filter([$clarificationInbox->forOffer($myOffer, $user)]) : []);
 
         return Inertia::render('Quests/Show', [
             'quest' => $questPayload,
@@ -504,13 +511,23 @@ class QuestController extends Controller
                 )
                 : null,
             'workspace' => $summary ? array_merge(['enabled' => true], $summary) : ['enabled' => false],
-            'my_offer' => $myOffer ? [
+            'my_offer' => $myOffer ? array_merge([
                 'id' => $myOffer->id,
                 'status' => $myOffer->status,
                 'pitch' => $myOffer->pitch,
                 'quoted_amount_minor' => $myOffer->quoted_amount_minor,
                 'show_url' => route('quests.proposals.show', [$quest, $myOffer]),
-            ] : null,
+            ], ($myOfferClarification = $user ? $clarificationInbox->forOffer($myOffer, $user) : null)
+                ? [
+                    'clarification_url' => $myOfferClarification['clarify_url'],
+                    'clarification_alert' => $myOfferClarification,
+                ]
+                : [
+                    'clarification_url' => in_array($myOffer->status, ['submitted', 'shortlisted'], true) && $quest->status === QuestStatus::Open
+                        ? route('quests.proposals.clarify', [$quest, $myOffer])
+                        : null,
+                    'clarification_alert' => null,
+                ]) : null,
             'is_bookmarked' => $isBookmarked,
             'similar_quests' => $similar,
             'from_client_quests' => $fromClientQuests,
@@ -545,6 +562,7 @@ class QuestController extends Controller
             'offers_count_display' => (int) $quest->offers_count,
             'recommendations_more_url' => $isQuestOwner ? route('quests.recommendations', $quest) : null,
             'can_manage_invites' => $user?->can('manageInvites', $quest) ?? false,
+            'clarification_alerts' => $clarificationAlerts,
             'boost_upsell' => $isQuestOwner && $user
                 ? app(\App\Services\Quest\ClientQuestBoostService::class)->upsellPayload(
                     $quest,
@@ -558,7 +576,7 @@ class QuestController extends Controller
 
     public function recommendations(Request $request, Quest $quest): Response
     {
-        $this->authorize('update', $quest);
+        $this->authorize('manageInvites', $quest);
 
         $quest->loadMissing(['invitedFreelancers:id,first_name,name,slug,avatar_url']);
 
@@ -660,7 +678,7 @@ class QuestController extends Controller
 
     public function extendListing(ExtendQuestListingRequest $request, Quest $quest, QuestListingExpiryService $listingExpiry): RedirectResponse
     {
-        $this->authorize('update', $quest);
+        $this->authorize('extendListing', $quest);
 
         $listingExpiry->extend(
             $quest,
@@ -674,7 +692,7 @@ class QuestController extends Controller
 
     public function repost(Request $request, Quest $quest, QuestListingExpiryService $listingExpiry): RedirectResponse
     {
-        $this->authorize('update', $quest);
+        $this->authorize('repost', $quest);
 
         $fresh = $listingExpiry->repost($quest, $request->user());
 
@@ -695,6 +713,10 @@ class QuestController extends Controller
         $users = User::query()
             ->whereRelation('role', 'slug', 'freelancer')
             ->where('users.id', '<>', $request->user()->id)
+            ->whereDoesntHave('questOffers', function ($q) use ($quest): void {
+                $q->where('quest_id', $quest->id)
+                    ->whereIn('status', ['submitted', 'shortlisted', 'accepted']);
+            })
             ->where(function ($w) use ($q): void {
                 $w->where('first_name', 'like', '%'.$q.'%')
                     ->orWhere('last_name', 'like', '%'.$q.'%')
@@ -1120,7 +1142,7 @@ class QuestController extends Controller
     /**
      * @return list<array<string, mixed>>
      */
-    protected function clientProposalSummariesForQuest(Quest $quest): array
+    protected function clientProposalSummariesForQuest(Quest $quest, ?User $client = null): array
     {
         return QuestOffer::query()
             ->where('quest_id', $quest->id)
@@ -1129,7 +1151,7 @@ class QuestController extends Controller
             ->latest('created_at')
             ->limit(120)
             ->get()
-            ->map(fn (QuestOffer $o) => QuestClientProposalsController::proposalRow($quest, $o))
+            ->map(fn (QuestOffer $o) => QuestClientProposalsController::proposalRow($quest, $o, client: $client))
             ->values()
             ->all();
     }
