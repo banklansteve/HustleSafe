@@ -9,15 +9,13 @@ use App\Http\Requests\Quests\ConfirmProposalAwardRequest;
 use App\Models\PaymentEscrow;
 use App\Models\Quest;
 use App\Models\QuestOffer;
-use App\Notifications\ProposalAcceptedClientNotification;
-use App\Notifications\ProposalAcceptedFreelancerNotification;
 use App\Notifications\ProposalAwardPendingFreelancerNotification;
 use App\Notifications\ProposalDeclinedFreelancerNotification;
 use App\Notifications\ProposalEscrowFundedFreelancerNotification;
 use App\Notifications\ProposalWithdrawnClientNotification;
 use App\Services\Admin\AdminActivityFeedService;
 use App\Services\Payments\PaystackClient;
-use App\Services\Contracts\ContractGenerationService;
+use App\Jobs\FinalizeProposalAwardJob;
 use App\Services\Proposals\ProposalClarificationPromptService;
 use App\Services\Proposals\ProposalClarificationService;
 use App\Services\Proposals\ProposalShortlistService;
@@ -111,13 +109,9 @@ class QuestProposalLifecycleController extends Controller
     ): RedirectResponse {
         $this->authorize('respondAsClient', $offer);
         $request->validate([
-            'confirm' => ['accepted'],
-            'confirm_scope' => ['accepted'],
-            'confirm_price' => ['accepted'],
-            'confirm_deadline' => ['accepted'],
+            'confirm_award_terms' => ['accepted'],
             'accept_escrow_rules' => ['accepted'],
             'accept_fees_and_terms' => ['accepted'],
-            'accept_auto_release_ack' => ['accepted'],
             'deliverables' => ['required', 'array', 'min:1', 'max:20'],
             'deliverables.*.title' => ['required', 'string', 'max:255'],
             'deliverables.*.description' => ['nullable', 'string', 'max:2000'],
@@ -208,7 +202,14 @@ class QuestProposalLifecycleController extends Controller
             ->whereIn('status', ['submitted', 'shortlisted', 'pending_award'])
             ->pluck('id');
 
-        DB::transaction(function () use ($quest, $offer): void {
+        $freelancerConfirmation = [
+            'ip' => $request->ip(),
+            'user_agent' => substr((string) $request->userAgent(), 0, 2000),
+            'confirmed_at' => now()->toIso8601String(),
+            'action' => __('I agree to the terms of this contract'),
+        ];
+
+        DB::transaction(function () use ($quest, $offer, $freelancerConfirmation): void {
             QuestOffer::query()
                 ->where('quest_id', $quest->id)
                 ->where('id', '<>', $offer->id)
@@ -220,10 +221,17 @@ class QuestProposalLifecycleController extends Controller
                     'client_pinned_at' => null,
                 ]);
 
+            $snapshot = $offer->award_terms_snapshot ?? [];
+            if (! is_array($snapshot)) {
+                $snapshot = [];
+            }
+            $snapshot['freelancer_confirmation'] = $freelancerConfirmation;
+
             $offer->update([
                 'status' => 'accepted',
                 'accepted_at' => now(),
                 'award_freelancer_confirmed_at' => now(),
+                'award_terms_snapshot' => $snapshot,
             ]);
 
             $quest->update([
@@ -241,53 +249,14 @@ class QuestProposalLifecycleController extends Controller
             $verificationEngine->recordArbitrationAgreement($quest, $offer, $request->user(), 'freelancer');
         }
 
-        $quest->client?->notify(new ProposalAcceptedClientNotification($offer));
-        $offer->freelancer?->notify(new ProposalAcceptedFreelancerNotification($offer));
+        FinalizeProposalAwardJob::dispatch(
+            questId: (int) $quest->id,
+            offerId: (int) $offer->id,
+            declinedOfferIds: $otherOfferIds->map(fn ($id) => (int) $id)->values()->all(),
+        )->onConnection('database');
 
-        $snapshot = $offer->award_terms_snapshot ?? [];
-        if (! is_array($snapshot)) {
-            $snapshot = [];
-        }
-        $snapshot['freelancer_confirmation'] = [
-            'ip' => $request->ip(),
-            'user_agent' => substr((string) $request->userAgent(), 0, 2000),
-            'confirmed_at' => now()->toIso8601String(),
-            'action' => __('I agree to the terms of this contract'),
-        ];
-        $offer->update(['award_terms_snapshot' => $snapshot]);
-
-        app(ContractGenerationService::class)->generateFromAward($quest->fresh(), $offer->fresh(), $request);
-
-        $surveyService = app(\App\Services\Quest\QuestJourneySurveyService::class);
-        QuestOffer::query()
-            ->whereIn('id', $otherOfferIds)
-            ->with('freelancer')
-            ->each(fn (QuestOffer $declined) => $surveyService->onProposalRejected($quest, $declined, 'lost_award'));
-
-        $quest->loadMissing(['client', 'questCategory', 'stateModel']);
-        $offer->loadMissing('freelancer');
-        app(AdminActivityFeedService::class)->record(
-            'financial',
-            'contract.started',
-            'Contract started',
-            "{$quest->client?->name} accepted {$offer->freelancer?->name} for {$quest->title}",
-            app(AdminActivityFeedService::class)->entities([
-                ['type' => 'user', 'id' => $quest->client_id, 'label' => $quest->client?->name],
-                ['type' => 'user', 'id' => $offer->freelancer_id, 'label' => $offer->freelancer?->name],
-                ['type' => 'quest', 'id' => $quest->id, 'label' => $quest->title],
-            ]),
-            ['category' => $quest->questCategory?->name, 'state' => $quest->stateModel?->name],
-            (int) ($offer->quoted_amount_minor ?? $quest->budget_amount_minor ?? 0),
-            $request->user(),
-            QuestOffer::class,
-            $offer->id,
-            $quest->state_id,
-            $quest->local_government_id,
-            $quest->quest_category_id,
-            'info',
-        );
-
-        return back()->with('success', __('Award confirmed — the client can now fund escrow to start work.'));
+        return back()
+            ->with('success', __('Award confirmed — the client can now fund escrow to start work.'));
     }
 
     public function markEscrowFunded(Request $request, Quest $quest, QuestOffer $offer, VerificationEngineService $verificationEngine): RedirectResponse

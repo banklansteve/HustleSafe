@@ -1013,26 +1013,6 @@
                         <p v-if="my_offer.quoted_amount_minor" class="mt-2 text-xs font-bold text-slate-600">
                             Quoted {{ formatBudget(my_offer.quoted_amount_minor) }}
                         </p>
-                        <div
-                            v-if="my_offer.clarification_alert"
-                            class="mt-3 rounded-xl border px-3 py-3 text-xs font-semibold leading-relaxed"
-                            :class="my_offer.clarification_alert.action_required ? 'border-rose-200 bg-rose-50 text-rose-950' : 'border-sky-200 bg-sky-50 text-sky-950'"
-                        >
-                            <p class="font-black uppercase tracking-wide">
-                                {{ my_offer.clarification_alert.headline }}
-                            </p>
-                            <p v-if="my_offer.clarification_alert.preview" class="mt-1">
-                                “{{ my_offer.clarification_alert.preview }}”
-                            </p>
-                            <Link
-                                v-if="my_offer.clarification_url"
-                                :href="my_offer.clarification_url"
-                                class="mt-2 inline-flex rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white"
-                                :class="my_offer.clarification_alert.action_required ? 'bg-rose-600 hover:bg-rose-700' : 'bg-sky-600 hover:bg-sky-700'"
-                            >
-                                {{ my_offer.clarification_alert.action_required ? 'Answer now' : 'Open thread' }}
-                            </Link>
-                        </div>
                     </div>
                     <template v-else>
                         <button

@@ -69,7 +69,7 @@ class ProposalClarificationMonitoringTest extends TestCase
         ]);
     }
 
-    public function test_client_clarification_question_scanned_for_abusive_terms(): void
+    public function test_client_typed_clarification_question_scanned_for_abusive_terms(): void
     {
         if (! \Illuminate\Support\Facades\Schema::hasTable('conversation_message_flags')) {
             $this->markTestSkipped('Conversation monitoring tables are not migrated.');
@@ -96,6 +96,7 @@ class ProposalClarificationMonitoringTest extends TestCase
             'thread_id' => $thread->id,
             'author_user_id' => $client->id,
             'role' => 'client',
+            'prompt_key' => 'custom',
             'body' => 'This looks like a scam proposal and I want a threat-free answer please.',
         ]);
 
@@ -107,5 +108,51 @@ class ProposalClarificationMonitoringTest extends TestCase
                 ->whereIn('trigger_category', ['abusive_language', 'blacklisted_keyword'])
                 ->exists()
         );
+    }
+
+    public function test_platform_clarification_prompt_is_not_flagged_or_redacted(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('conversation_message_flags')) {
+            $this->markTestSkipped('Conversation monitoring tables are not migrated.');
+        }
+
+        $client = User::factory()->create();
+        $freelancer = User::factory()->create();
+        $quest = Quest::factory()->create(['client_id' => $client->id]);
+        $offer = QuestOffer::factory()->create([
+            'quest_id' => $quest->id,
+            'freelancer_id' => $freelancer->id,
+            'status' => 'shortlisted',
+        ]);
+
+        $thread = ProposalClarificationThread::query()->create([
+            'quest_id' => $quest->id,
+            'quest_offer_id' => $offer->id,
+            'client_id' => $client->id,
+            'freelancer_id' => $freelancer->id,
+            'status' => 'open',
+        ]);
+
+        $body = 'Before I award, can you confirm your proposal covers everything in my quest brief — including deliverables, revisions, and anything you called out in your pitch?';
+
+        $message = ProposalClarificationMessage::query()->create([
+            'thread_id' => $thread->id,
+            'author_user_id' => $client->id,
+            'role' => 'client',
+            'prompt_key' => 'scope_alignment',
+            'body' => $body,
+        ]);
+
+        app(ConversationMonitoringService::class)->processClarificationMessage($message->fresh());
+
+        $message->refresh();
+
+        $this->assertFalse($message->is_redacted);
+        $this->assertDatabaseMissing('conversation_message_flags', [
+            'proposal_clarification_message_id' => $message->id,
+        ]);
+        $this->assertDatabaseMissing('conversation_thread_reviews', [
+            'proposal_clarification_thread_id' => $thread->id,
+        ]);
     }
 }

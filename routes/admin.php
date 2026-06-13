@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\AdminDirectMessageController;
 use App\Http\Controllers\Admin\AdminDisputesController;
 use App\Http\Controllers\Admin\AdminEngagementPolicyController;
 use App\Http\Controllers\Admin\AdminEmailBroadcastController;
+use App\Http\Controllers\Admin\AdminEscrowManagementController;
 use App\Http\Controllers\Admin\AdminFinancialControlController;
 use App\Http\Controllers\Admin\AdminFinancialAuditController;
 use App\Http\Controllers\Admin\AdminFinancialReviewController;
@@ -224,6 +225,13 @@ Route::get('/api/financial-review', [AdminFinancialReviewController::class, 'lis
 Route::post('/api/financial-review/flags/{flag}/resolve', [AdminFinancialReviewController::class, 'resolve'])
     ->middleware('throttle:60,1')
     ->name('api.financial-review.resolve');
+
+Route::prefix('escrow-management')->name('escrow-management.')->group(function (): void {
+    Route::get('/', [AdminEscrowManagementController::class, 'index'])->name('index');
+    Route::get('/api/dashboard', [AdminEscrowManagementController::class, 'dashboardApi'])->name('api.dashboard');
+    Route::get('/api/reconciliation', [AdminEscrowManagementController::class, 'reconciliation'])->name('api.reconciliation');
+    Route::get('/records/{record}', [AdminEscrowManagementController::class, 'recordShow'])->name('records.show');
+});
 
 Route::get('/financial', [AdminFinancialControlController::class, 'index'])->name('financial.index');
 Route::get('/financial/summary', [AdminFinancialControlController::class, 'summary'])->name('financial.summary');

@@ -29,6 +29,14 @@
                             <p class="mt-1 text-xs font-semibold text-slate-500">
                                 With {{ c.counterparty_name }} · {{ c.total_label }}
                             </p>
+                            <p
+                                v-if="c.auto_release"
+                                class="mt-1.5 text-[11px] font-bold"
+                                :class="c.auto_release.countdown_active ? 'text-rose-700' : 'text-sky-800'"
+                            >
+                                <span v-if="c.auto_release.countdown_active">Auto-release countdown · {{ countdownLabel(c.auto_release.seconds_until_release) }}</span>
+                                <span v-else>Delivery {{ c.auto_release.expected_delivery_label }} · auto-release {{ c.auto_release.auto_release_label }}</span>
+                            </p>
                         </div>
                         <div class="flex shrink-0 flex-col items-end gap-1">
                             <span class="rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wide ring-1" :class="statusClass(c.status)">
@@ -50,6 +58,15 @@ import { Head, Link } from '@inertiajs/vue3';
 defineProps({
     contracts: { type: Array, default: () => [] },
 });
+
+function countdownLabel(seconds) {
+    const s = Math.max(0, Number(seconds) || 0);
+    const days = Math.floor(s / 86400);
+    const hours = Math.floor((s % 86400) / 3600);
+    if (days > 0) return `${days}d ${hours}h`;
+    const mins = Math.floor((s % 3600) / 60);
+    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+}
 
 function formatWhen(iso) {
     if (!iso) return '';

@@ -38,18 +38,8 @@ class ConversationMonitoringAdminService
     public function summary(?User $actor = null): array
     {
         $query = ConversationThreadReview::query()
-            ->whereIn('status', ['pending', 'assigned', 'awaiting_super_admin']);
-
-        $isSuperAdmin = $actor?->role?->slug === 'super_admin';
-        if ($actor && ! $isSuperAdmin) {
-            $query->where(function ($scope) use ($actor): void {
-                $scope->where('assigned_staff_id', $actor->id)
-                    ->orWhere(function ($unassigned): void {
-                        $unassigned->whereNull('assigned_staff_id')
-                            ->whereIn('status', ['pending', 'assigned']);
-                    });
-            });
-        }
+            ->whereIn('status', ['pending', 'assigned', 'awaiting_super_admin'])
+            ->where('flag_count', '>', 0);
 
         return [
             'moderation_queue' => (clone $query)->count(),
@@ -65,8 +55,6 @@ class ConversationMonitoringAdminService
     {
         $perPage = max(10, min(50, (int) $request->query('per_page', 20)));
         $page = max(1, (int) $request->query('page', 1));
-        $actor = $request->user();
-        $isSuperAdmin = $actor?->role?->slug === 'super_admin';
 
         $query = ConversationThreadReview::query()
             ->with([
@@ -78,18 +66,9 @@ class ConversationMonitoringAdminService
                 'quest:id,title,reference_code',
             ])
             ->whereIn('status', ['pending', 'assigned', 'awaiting_super_admin'])
+            ->where('flag_count', '>', 0)
             ->orderByDesc('priority')
             ->orderByDesc('last_flagged_at');
-
-        if (! $isSuperAdmin && $actor) {
-            $query->where(function ($scope) use ($actor): void {
-                $scope->where('assigned_staff_id', $actor->id)
-                    ->orWhere(function ($unassigned) use ($actor): void {
-                        $unassigned->whereNull('assigned_staff_id')
-                            ->whereIn('status', ['pending', 'assigned']);
-                    });
-            });
-        }
 
         if ($request->filled('category')) {
             $cat = (string) $request->query('category');

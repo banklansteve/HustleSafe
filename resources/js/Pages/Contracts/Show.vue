@@ -23,19 +23,53 @@
 
             <div class="grid gap-4 sm:grid-cols-2">
                 <section
-                    v-if="role.is_client"
+                    v-if="role.is_client && contract.escrow?.is_held"
                     class="rounded-2xl border border-amber-200/90 bg-amber-50/90 p-4 ring-1 ring-amber-100 sm:p-5"
                 >
                     <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-900">Escrow held</p>
                     <p class="font-display mt-1 text-2xl font-black text-amber-950">{{ contract.financial.total_label }}</p>
                     <p class="mt-2 text-xs font-semibold leading-relaxed text-amber-950/90">
-                        These funds are securely held and will only release when you mark the job complete or 72 hours after the agreed delivery date if no dispute is opened.
+                        These funds are securely held until you mark the job complete or escrow auto-releases per your contract timeline.
                         Read our
                         <Link :href="route('legal.escrow')" class="font-black text-amber-950 underline underline-offset-2">Escrow Policy</Link>.
                     </p>
-                    <p v-if="disputeWindow.active" class="mt-2 text-xs font-bold text-amber-900">
-                        Auto-release countdown · {{ countdownLabel(disputeWindow.seconds_until_release) }} remaining
+                </section>
+
+                <section
+                    v-else-if="role.is_client && contract.escrow?.awaiting_funding"
+                    class="rounded-2xl border border-amber-200/90 bg-amber-50/90 p-4 ring-1 ring-amber-100 sm:p-5"
+                >
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-900">Escrow funding</p>
+                    <p class="font-display mt-1 text-2xl font-black text-amber-950">{{ contract.financial.total_label }}</p>
+                    <p class="mt-2 text-xs font-semibold leading-relaxed text-amber-950/90">
+                        Fund escrow for this contract before work is expected to start. Nothing is released to the freelancer until you mark the job complete.
+                        Read our
+                        <Link :href="route('legal.escrow')" class="font-black text-amber-950 underline underline-offset-2">Escrow Policy</Link>.
                     </p>
+                    <p v-if="contract.escrow_expires_at" class="mt-2 text-xs font-bold text-amber-900">
+                        Fund by {{ formatWhen(contract.escrow_expires_at) }}
+                    </p>
+                    <form
+                        v-if="contract.escrow?.show_fund_button && contract.escrow?.funding_post_url"
+                        :action="contract.escrow.funding_post_url"
+                        method="POST"
+                        class="mt-3"
+                    >
+                        <input type="hidden" name="_token" :value="csrfToken" />
+                        <button
+                            type="submit"
+                            class="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-800"
+                        >
+                            Pay with Paystack
+                        </button>
+                    </form>
+                    <Link
+                        v-else-if="contract.escrow?.proposal_url"
+                        :href="contract.escrow.proposal_url"
+                        class="mt-3 inline-flex items-center rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-emerald-800"
+                    >
+                        Fund escrow
+                    </Link>
                 </section>
 
                 <section
@@ -46,6 +80,10 @@
                     <p class="font-display mt-1 text-2xl font-black text-emerald-950">{{ contract.financial.freelancer_net_label }}</p>
                     <p v-if="deliveryCountdown.active" class="mt-2 text-xs font-bold text-emerald-900">
                         Delivery deadline · {{ deliveryCountdown.deadline_label }} · {{ countdownLabel(deliveryCountdown.seconds_remaining) }} left
+                    </p>
+                    <p v-if="autoRelease.visible" class="mt-2 text-xs font-semibold text-emerald-950/90">
+                        Auto-release · {{ autoRelease.auto_release_label }}
+                        <span v-if="autoRelease.active"> · {{ countdownLabel(liveAutoReleaseSeconds) }} left</span>
                     </p>
                     <p class="mt-2 text-xs font-semibold text-emerald-950/90">
                         Revisions · {{ contract.revisions_used }} of {{ contract.revisions_included }} used
@@ -199,24 +237,6 @@
                     Download PDF
                 </a>
                 <button
-                    v-if="role.is_freelancer && delivery_extension.freelancer_button.can_request"
-                    type="button"
-                    class="inline-flex items-center rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide text-white transition"
-                    :class="delivery_extension.freelancer_button.button_tone === 'amber' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-primary-700 hover:bg-primary-800'"
-                    @click="openExtensionForm"
-                >
-                    {{ delivery_extension.freelancer_button.button_label }}
-                </button>
-                <button
-                    v-else-if="role.is_freelancer"
-                    type="button"
-                    disabled
-                    class="inline-flex cursor-not-allowed items-center rounded-full bg-slate-200 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-500"
-                    :title="delivery_extension.freelancer_button.reason || ''"
-                >
-                    {{ delivery_extension.freelancer_button.button_label }}
-                </button>
-                <button
                     v-if="permissions.can_request_amendment"
                     type="button"
                     class="inline-flex items-center rounded-full bg-primary-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-primary-800"
@@ -234,52 +254,6 @@
                 </button>
             </section>
 
-            <section v-if="delivery_extension.pending && role.is_client" class="rounded-2xl border border-amber-200 bg-amber-50/90 p-5 ring-1 ring-amber-100">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <h2 class="font-display text-sm font-black uppercase tracking-wide text-amber-950">Delivery extension request</h2>
-                        <p class="mt-1 text-xs font-bold text-amber-800">
-                            Respond within {{ countdownLabel(delivery_extension.pending.client_seconds_remaining) }}
-                            · deadline {{ delivery_extension.pending.client_deadline_label }}
-                        </p>
-                    </div>
-                    <span class="rounded-full bg-amber-200/80 px-2.5 py-1 text-[10px] font-black uppercase text-amber-950">Extension {{ delivery_extension.pending.extension_number }} of 2</span>
-                </div>
-                <dl class="mt-4 space-y-2 text-sm font-semibold text-amber-950">
-                    <div><span class="text-amber-800">Reason:</span> {{ delivery_extension.pending.reason_label }}</div>
-                    <div><span class="text-amber-800">Proposed date:</span> {{ delivery_extension.pending.proposed_delivery_label }}</div>
-                    <div><span class="text-amber-800">Current deadline:</span> {{ delivery_extension.pending.original_delivery_label }}</div>
-                </dl>
-                <p class="mt-3 rounded-xl border border-amber-100 bg-white/70 p-3 text-sm leading-relaxed text-amber-950">{{ delivery_extension.pending.explanation }}</p>
-                <p v-if="delivery_extension.pending.progress_note" class="mt-2 text-xs font-semibold text-amber-900">Progress update: {{ delivery_extension.pending.progress_note }}</p>
-                <p class="mt-3 text-xs font-semibold text-amber-900">If you do not respond within 48 hours, this extension request will be automatically approved.</p>
-                <div v-if="showCounterForm" class="mt-4">
-                    <label class="text-xs font-black uppercase text-amber-900">Counter-proposed date</label>
-                    <input v-model="extensionRespondForm.counter_proposed_date" type="date" class="mt-1 w-full rounded-xl border-amber-200 text-sm shadow-sm" />
-                </div>
-                <textarea v-if="showExtensionDecline" v-model="extensionRespondForm.decline_reason" rows="3" class="mt-4 w-full rounded-xl border-amber-200 text-sm shadow-sm" placeholder="Mandatory reason if declining" />
-                <div class="mt-4 flex flex-wrap gap-2">
-                    <button type="button" class="rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="extensionRespondForm.processing" @click="respondExtension('accept')">Accept</button>
-                    <button type="button" class="rounded-full bg-sky-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="extensionRespondForm.processing" @click="toggleCounterForm">Counter-propose</button>
-                    <button v-if="showCounterForm" type="button" class="rounded-full bg-sky-900 px-4 py-2 text-xs font-black uppercase text-white" :disabled="extensionRespondForm.processing" @click="respondExtension('counter')">Submit counter</button>
-                    <button type="button" class="rounded-full bg-rose-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="extensionRespondForm.processing" @click="respondExtension('decline')">Decline</button>
-                </div>
-            </section>
-
-            <section v-if="delivery_extension.pending_counter && role.is_freelancer" class="rounded-2xl border border-sky-200 bg-sky-50/80 p-5 ring-1 ring-sky-100">
-                <h2 class="font-display text-sm font-black uppercase tracking-wide text-sky-900">Client counter-proposal</h2>
-                <p class="mt-2 text-sm font-semibold text-sky-950">
-                    The client proposed {{ delivery_extension.pending_counter.counter_proposed_label }} instead of your requested {{ delivery_extension.pending_counter.proposed_delivery_label }}.
-                </p>
-                <p class="mt-2 text-xs font-bold text-sky-800">
-                    Respond within {{ countdownLabel(delivery_extension.pending_counter.freelancer_seconds_remaining) }}
-                </p>
-                <div class="mt-4 flex flex-wrap gap-2">
-                    <button type="button" class="rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="counterRespondForm.processing" @click="respondCounter('accept')">Accept counter</button>
-                    <button type="button" class="rounded-full bg-rose-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="counterRespondForm.processing" @click="respondCounter('decline')">Decline counter</button>
-                </div>
-            </section>
-
             <section v-if="pending_amendment" class="rounded-2xl border border-sky-200 bg-sky-50/80 p-5 ring-1 ring-sky-100">
                 <h2 class="font-display text-sm font-black uppercase tracking-wide text-sky-900">Amendment awaiting your response</h2>
                 <p class="mt-2 text-sm font-semibold text-sky-950">{{ pending_amendment.type_label }} · {{ pending_amendment.description }}</p>
@@ -287,6 +261,258 @@
                 <div class="mt-4 flex flex-wrap gap-2">
                     <button type="button" class="rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="respondForm.processing" @click="respondAmendment('accept')">Accept</button>
                     <button type="button" class="rounded-full bg-rose-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="respondForm.processing" @click="respondAmendment('decline')">Decline</button>
+                </div>
+            </section>
+
+            <section
+                v-if="role.is_client && contract.escrow?.is_held && autoRelease.visible"
+                class="rounded-2xl border border-sky-200/90 bg-gradient-to-br from-sky-50/95 to-white p-4 ring-1 ring-sky-100 sm:p-5"
+            >
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-sky-900">Escrow auto-release</p>
+                        <p v-if="autoRelease.phase === 'paused'" class="mt-2 text-sm font-bold text-amber-900">
+                            {{ autoRelease.pause_reason }}
+                        </p>
+                        <p v-else-if="autoRelease.active" class="mt-2 font-display text-2xl font-black text-sky-950">
+                            {{ countdownLabel(liveAutoReleaseSeconds) }} remaining
+                        </p>
+                        <p v-else class="mt-2 text-sm font-bold text-sky-950">
+                            Scheduled for {{ autoRelease.auto_release_label }}
+                        </p>
+                    </div>
+                    <span
+                        v-if="autoRelease.active"
+                        class="rounded-full bg-rose-100 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-rose-800 ring-1 ring-rose-200"
+                    >
+                        Countdown active
+                    </span>
+                </div>
+
+                <dl class="mt-4 grid gap-2 text-xs font-semibold text-sky-950/90 sm:grid-cols-2">
+                    <div class="rounded-xl border border-sky-100 bg-white/70 px-3 py-2">
+                        <dt class="text-[10px] font-black uppercase text-sky-800">Expected delivery</dt>
+                        <dd class="mt-0.5 font-black text-sky-950">{{ autoRelease.expected_delivery_label }}</dd>
+                    </div>
+                    <div class="rounded-xl border border-sky-100 bg-white/70 px-3 py-2">
+                        <dt class="text-[10px] font-black uppercase text-sky-800">Auto-release window</dt>
+                        <dd class="mt-0.5 font-black text-sky-950">{{ autoRelease.auto_release_hours }} hours after delivery date</dd>
+                    </div>
+                    <div class="rounded-xl border border-sky-100 bg-white/70 px-3 py-2 sm:col-span-2">
+                        <dt class="text-[10px] font-black uppercase text-sky-800">Exact auto-release date & time</dt>
+                        <dd class="mt-0.5 font-black text-sky-950">{{ autoRelease.auto_release_label }} (WAT)</dd>
+                    </div>
+                </dl>
+
+                <p class="mt-3 rounded-xl border border-sky-100 bg-white/60 p-3 text-xs font-semibold leading-relaxed text-sky-950/90">
+                    If you do not mark this job complete, escrow will auto-release to the freelancer
+                    <span class="font-black">{{ autoRelease.auto_release_hours }} hours</span>
+                    after the agreed delivery date
+                    (<span class="font-black">{{ autoRelease.expected_delivery_label }}</span>),
+                    unless you open a dispute before then.
+                </p>
+
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <Link
+                        v-if="autoRelease.quest_url"
+                        :href="autoRelease.quest_url"
+                        class="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2 text-[10px] font-black uppercase tracking-wide text-white hover:bg-emerald-800"
+                    >
+                        Mark job complete
+                    </Link>
+                    <Link
+                        v-if="autoRelease.active_dispute"
+                        :href="autoRelease.active_dispute.url"
+                        class="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-[10px] font-black uppercase tracking-wide text-rose-900 hover:bg-rose-100"
+                    >
+                        Open dispute case
+                    </Link>
+                    <Link
+                        v-else-if="autoRelease.can_open_dispute && autoRelease.dispute_create_url"
+                        :href="autoRelease.dispute_create_url"
+                        class="inline-flex items-center rounded-full border border-rose-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-wide text-rose-900 hover:bg-rose-50"
+                    >
+                        Raise a dispute
+                    </Link>
+                    <button
+                        type="button"
+                        class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-[10px] font-black uppercase tracking-wide text-amber-950 hover:bg-amber-100"
+                        @click="scrollToDeliveryExtension"
+                    >
+                        {{ autoRelease.has_pending_extension ? 'Review extension request' : 'Delivery extension' }}
+                    </button>
+                </div>
+                <p v-if="autoRelease.dispute_block_reason" class="mt-2 text-[10px] font-semibold text-slate-500">{{ autoRelease.dispute_block_reason }}</p>
+            </section>
+
+            <section
+                v-if="showDeliveryExtensionsPanel"
+                id="delivery-extension"
+                class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-100"
+            >
+                <div class="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-4 sm:px-5">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Delivery timeline</p>
+                            <h2 class="font-display mt-1 text-lg font-black text-slate-900">Delivery extensions</h2>
+                            <p class="mt-1 text-xs font-semibold text-slate-600">
+                                Freelancers request extensions; clients approve before deadlines change. Auto-release pauses while a request is open.
+                            </p>
+                        </div>
+                        <div class="text-right text-xs font-semibold text-slate-600">
+                            <p class="font-black text-slate-900">{{ delivery_extension.summary?.current_deadline_label || '—' }}</p>
+                            <p>Current deadline</p>
+                            <p class="mt-2 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                {{ delivery_extension.summary?.extension_count || 0 }} / {{ delivery_extension.summary?.extension_limit || 2 }} used
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4 p-4 sm:p-5">
+                    <div
+                        v-if="delivery_extension.pending && role.is_client"
+                        class="rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-white p-4 ring-1 ring-amber-100"
+                    >
+                        <div class="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-wide text-amber-900">Action required</p>
+                                <h3 class="font-display text-base font-black text-amber-950">New extension request</h3>
+                            </div>
+                            <span class="rounded-full bg-amber-200/90 px-2.5 py-1 text-[10px] font-black uppercase text-amber-950">
+                                #{{ delivery_extension.pending.extension_number }}
+                            </span>
+                        </div>
+                        <p class="mt-2 text-xs font-bold text-amber-800">
+                            Respond within {{ countdownLabel(delivery_extension.pending.client_seconds_remaining) }}
+                            · by {{ delivery_extension.pending.client_deadline_label }}
+                        </p>
+                        <dl class="mt-3 grid gap-2 text-sm font-semibold text-amber-950 sm:grid-cols-3">
+                            <div class="rounded-xl border border-amber-100 bg-white/80 px-3 py-2">
+                                <dt class="text-[10px] font-black uppercase text-amber-800">From</dt>
+                                <dd class="font-black">{{ delivery_extension.pending.original_delivery_label }}</dd>
+                            </div>
+                            <div class="rounded-xl border border-amber-100 bg-white/80 px-3 py-2">
+                                <dt class="text-[10px] font-black uppercase text-amber-800">Requested</dt>
+                                <dd class="font-black">{{ delivery_extension.pending.proposed_delivery_label }}</dd>
+                            </div>
+                            <div class="rounded-xl border border-amber-100 bg-white/80 px-3 py-2">
+                                <dt class="text-[10px] font-black uppercase text-amber-800">Reason</dt>
+                                <dd>{{ delivery_extension.pending.reason_label }}</dd>
+                            </div>
+                        </dl>
+                        <p class="mt-3 rounded-xl border border-amber-100 bg-white/70 p-3 text-sm leading-relaxed text-amber-950">{{ delivery_extension.pending.explanation }}</p>
+                        <p v-if="delivery_extension.pending.progress_note" class="mt-2 text-xs font-semibold text-amber-900">
+                            Progress: {{ delivery_extension.pending.progress_note }}
+                        </p>
+                        <p class="mt-2 text-[11px] font-semibold text-amber-800">No response within 48 hours auto-approves this extension.</p>
+                        <div v-if="showCounterForm" class="mt-4">
+                            <label class="text-xs font-black uppercase text-amber-900">Counter-proposed date</label>
+                            <input v-model="extensionRespondForm.counter_proposed_date" type="date" class="mt-1 w-full rounded-xl border-amber-200 text-sm shadow-sm" />
+                        </div>
+                        <textarea v-if="showExtensionDecline" v-model="extensionRespondForm.decline_reason" rows="3" class="mt-4 w-full rounded-xl border-amber-200 text-sm shadow-sm" placeholder="Mandatory reason if declining" />
+                        <div class="mt-4 flex flex-wrap gap-2">
+                            <button type="button" class="rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="extensionRespondForm.processing" @click="respondExtension('accept')">Accept</button>
+                            <button type="button" class="rounded-full bg-sky-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="extensionRespondForm.processing" @click="toggleCounterForm">Counter-propose</button>
+                            <button v-if="showCounterForm" type="button" class="rounded-full bg-sky-900 px-4 py-2 text-xs font-black uppercase text-white" :disabled="extensionRespondForm.processing" @click="respondExtension('counter')">Submit counter</button>
+                            <button type="button" class="rounded-full bg-rose-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="extensionRespondForm.processing" @click="respondExtension('decline')">Decline</button>
+                        </div>
+                    </div>
+
+                    <div
+                        v-else-if="delivery_extension.pending_counter && role.is_freelancer"
+                        class="rounded-2xl border-2 border-sky-300 bg-gradient-to-br from-sky-50 to-white p-4 ring-1 ring-sky-100"
+                    >
+                        <p class="text-[10px] font-black uppercase tracking-wide text-sky-900">Action required</p>
+                        <h3 class="font-display text-base font-black text-sky-950">Client counter-proposal</h3>
+                        <p class="mt-2 text-sm font-semibold text-sky-950">
+                            Client proposed <span class="font-black">{{ delivery_extension.pending_counter.counter_proposed_label }}</span>
+                            instead of your <span class="font-black">{{ delivery_extension.pending_counter.proposed_delivery_label }}</span>.
+                        </p>
+                        <p class="mt-2 text-xs font-bold text-sky-800">
+                            Respond within {{ countdownLabel(delivery_extension.pending_counter.freelancer_seconds_remaining) }}
+                            <span v-if="delivery_extension.pending_counter.freelancer_deadline_label"> · by {{ delivery_extension.pending_counter.freelancer_deadline_label }}</span>
+                        </p>
+                        <div class="mt-4 flex flex-wrap gap-2">
+                            <button type="button" class="rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="counterRespondForm.processing" @click="respondCounter('accept')">Accept counter</button>
+                            <button type="button" class="rounded-full bg-rose-700 px-4 py-2 text-xs font-black uppercase text-white" :disabled="counterRespondForm.processing" @click="respondCounter('decline')">Decline counter</button>
+                        </div>
+                    </div>
+
+                    <div
+                        v-else-if="delivery_extension.pending && role.is_freelancer"
+                        class="rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm font-semibold text-amber-950"
+                    >
+                        <p class="text-[10px] font-black uppercase tracking-wide text-amber-900">Awaiting client</p>
+                        <p class="mt-1">
+                            Extension #{{ delivery_extension.pending.extension_number }} is under client review
+                            ({{ delivery_extension.pending.proposed_delivery_label }} requested).
+                            Escrow auto-release is paused until they respond.
+                        </p>
+                    </div>
+
+                    <div v-if="extensionHistoryRows.length" class="space-y-3">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Extension history</p>
+                        <article
+                            v-for="ext in extensionHistoryRows"
+                            :key="ext.id"
+                            class="rounded-xl border p-4 transition"
+                            :class="ext.is_active ? 'border-amber-300 bg-amber-50/40 ring-1 ring-amber-200' : 'border-slate-100 bg-slate-50/50'"
+                        >
+                            <div class="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Extension #{{ ext.extension_number }}</p>
+                                    <p class="text-sm font-bold text-slate-900">{{ ext.requester_name || 'Freelancer' }}</p>
+                                    <p class="text-[11px] font-semibold text-slate-500">Submitted {{ ext.submitted_at_label || '—' }}</p>
+                                </div>
+                                <span class="rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ring-1" :class="extensionStatusClass(ext.status)">
+                                    {{ ext.status_label }}
+                                </span>
+                            </div>
+                            <div class="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-700">
+                                <span class="rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">{{ ext.original_delivery_label }}</span>
+                                <span class="text-slate-400">→</span>
+                                <span class="rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">{{ ext.proposed_delivery_label }}</span>
+                                <span v-if="ext.applied_delivery_label && ext.is_terminal" class="text-emerald-700">
+                                    · Applied {{ ext.applied_delivery_label }}
+                                </span>
+                            </div>
+                            <p class="mt-2 text-xs font-semibold text-slate-600">{{ ext.reason_label }}</p>
+                            <p v-if="ext.explanation" class="mt-2 line-clamp-3 text-xs leading-relaxed text-slate-600">{{ ext.explanation }}</p>
+                            <p v-if="ext.decline_reason" class="mt-2 text-xs font-semibold text-rose-700">Declined: {{ ext.decline_reason }}</p>
+                            <p v-if="ext.resolved_at_label" class="mt-2 text-[10px] font-semibold text-slate-400">Resolved {{ ext.resolved_at_label }}</p>
+                        </article>
+                    </div>
+
+                    <p v-else-if="!delivery_extension.pending && !delivery_extension.pending_counter" class="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-6 text-center text-sm font-semibold text-slate-500">
+                        No delivery extensions yet.
+                        <span v-if="role.is_freelancer"> Request one if you need more time — your client must approve before the deadline changes.</span>
+                        <span v-else> Your freelancer can request an extension when more time is needed.</span>
+                    </p>
+
+                    <div v-if="role.is_freelancer" class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                        <p class="text-xs font-semibold text-slate-600">
+                            {{ delivery_extension.summary?.remaining || 0 }} extension(s) remaining on this contract.
+                        </p>
+                        <button
+                            v-if="delivery_extension.freelancer_button?.can_request"
+                            type="button"
+                            class="inline-flex items-center rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide text-white transition"
+                            :class="delivery_extension.freelancer_button?.button_tone === 'amber' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-primary-700 hover:bg-primary-800'"
+                            @click="openExtensionForm"
+                        >
+                            {{ delivery_extension.freelancer_button?.button_label }}
+                        </button>
+                        <button
+                            v-else
+                            type="button"
+                            disabled
+                            class="inline-flex cursor-not-allowed items-center rounded-full bg-slate-200 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-500"
+                            :title="delivery_extension.freelancer_button?.reason || ''"
+                        >
+                            {{ delivery_extension.freelancer_button?.button_label || 'Request delivery extension' }}
+                        </button>
+                    </div>
                 </div>
             </section>
 
@@ -612,8 +838,11 @@ import AppShell from '@/Layouts/AppShell.vue';
 import PlatformFeeDisclosureNote from '@/Components/Billing/PlatformFeeDisclosureNote.vue';
 import BackChevronLink from '@/Components/Ui/BackChevronLink.vue';
 import HustleSafeLogo from '@/Components/Brand/HustleSafeLogo.vue';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed, reactive, ref } from 'vue';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+
+const page = usePage();
+const csrfToken = computed(() => page.props.csrf_token ?? document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '');
 
 const props = defineProps({
     contract: { type: Object, required: true },
@@ -626,7 +855,50 @@ const props = defineProps({
 });
 
 const deliveryCountdown = computed(() => props.contract.delivery_countdown || { active: false });
-const disputeWindow = computed(() => props.contract.dispute_window || { active: false });
+const autoRelease = computed(() => props.contract.dispute_window || { visible: false, active: false });
+
+const showDeliveryExtensionsPanel = computed(() => {
+    const ext = props.delivery_extension ?? {};
+    const hasHistory = (ext.history?.length ?? 0) > 0;
+    const hasPending = Boolean(ext.pending || ext.pending_counter);
+    const isActive = props.contract.status === 'active';
+
+    return isActive || hasHistory || hasPending;
+});
+
+const extensionHistoryRows = computed(() => {
+    const history = props.delivery_extension?.history ?? [];
+    const hasActionCard = Boolean(props.delivery_extension?.pending || props.delivery_extension?.pending_counter);
+
+    return hasActionCard ? history.filter((ext) => !ext.is_active) : history;
+});
+
+const liveAutoReleaseSeconds = ref(0);
+let autoReleaseTickTimer;
+
+watch(
+    () => autoRelease.value.seconds_until_auto_release_total,
+    (seconds) => {
+        liveAutoReleaseSeconds.value = Math.max(0, Number(seconds) || 0);
+    },
+    { immediate: true },
+);
+
+onMounted(() => {
+    autoReleaseTickTimer = setInterval(() => {
+        if (liveAutoReleaseSeconds.value > 0) {
+            liveAutoReleaseSeconds.value -= 1;
+        }
+    }, 1000);
+});
+
+onUnmounted(() => {
+    clearInterval(autoReleaseTickTimer);
+});
+
+function scrollToDeliveryExtension() {
+    document.getElementById('delivery-extension')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 const showAmendmentForm = ref(false);
 const showExtensionForm = ref(false);
@@ -719,6 +991,17 @@ function statusClass(status) {
         completed: 'bg-slate-100 text-slate-700 ring-slate-200',
         disputed: 'bg-rose-50 text-rose-900 ring-rose-200',
         cancelled: 'bg-slate-50 text-slate-500 ring-slate-200',
+    }[status] || 'bg-slate-100 text-slate-700 ring-slate-200';
+}
+
+function extensionStatusClass(status) {
+    return {
+        pending_client: 'bg-amber-100 text-amber-900 ring-amber-200',
+        counter_proposed: 'bg-sky-100 text-sky-900 ring-sky-200',
+        approved: 'bg-emerald-100 text-emerald-900 ring-emerald-200',
+        auto_approved: 'bg-emerald-100 text-emerald-900 ring-emerald-200',
+        declined: 'bg-rose-100 text-rose-900 ring-rose-200',
+        counter_rejected: 'bg-rose-100 text-rose-900 ring-rose-200',
     }[status] || 'bg-slate-100 text-slate-700 ring-slate-200';
 }
 

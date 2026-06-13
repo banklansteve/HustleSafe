@@ -37,6 +37,7 @@ class ConversationMonitoringService
 
         $thread = $message->thread;
         $quest = $thread?->quest;
+        $questId = $quest?->id ?? $thread?->quest_id;
         $offer = $quest
             ? QuestOffer::query()
                 ->where('quest_id', $quest->id)
@@ -63,7 +64,7 @@ class ConversationMonitoringService
         $this->redaction->applyToConversationMessage($message, $hits);
 
         $categories = collect($hits)->map(fn ($h) => $h['category']->value)->unique()->values()->all();
-        $this->syncConversationThreadReview($message->quest_conversation_thread_id, $quest?->id, $categories);
+        $this->syncConversationThreadReview($message->quest_conversation_thread_id, $questId, $categories);
         $this->healthScores->recalculateForUser((int) $message->user_id);
     }
 
@@ -86,6 +87,10 @@ class ConversationMonitoringService
 
         $thread = $message->thread;
         if (! $thread) {
+            return;
+        }
+
+        if ($this->isPlatformClarificationPrompt($message)) {
             return;
         }
 
@@ -185,5 +190,21 @@ class ConversationMonitoringService
             'first_flagged_at' => $review->first_flagged_at ?? now(),
             'last_flagged_at' => now(),
         ]);
+    }
+
+    /**
+     * Platform-authored clarification prompts are scanned but never flagged or redacted.
+     */
+    private function isPlatformClarificationPrompt(ProposalClarificationMessage $message): bool
+    {
+        if ($message->role !== 'client') {
+            return false;
+        }
+
+        $promptKey = trim((string) ($message->prompt_key ?? ''));
+
+        return $promptKey !== ''
+            && $promptKey !== 'custom'
+            && ! str_starts_with($promptKey, 'reply:');
     }
 }

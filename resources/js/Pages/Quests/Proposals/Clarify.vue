@@ -306,11 +306,18 @@ async function submitQuestion() {
     questionSubmitting.value = true;
     questionError.value = '';
 
+    const matchedPrompt = props.suggested_prompts.find((p) => p.key === questionPromptKey.value);
+    const body = questionBody.value.trim();
+    if (! matchedPrompt || matchedPrompt.question.trim() !== body) {
+        questionPromptKey.value = 'custom';
+        questionPromptCategory.value = 'custom';
+    }
+
     try {
         const { data } = await axios.post(
             route('quests.proposals.clarify.ask', [props.quest.route_key, props.offer.id]),
             {
-                body: questionBody.value,
+                body,
                 prompt_key: questionPromptKey.value,
                 prompt_category: questionPromptCategory.value,
             },

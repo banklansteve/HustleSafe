@@ -913,9 +913,10 @@ const navGroups = [
         label: 'Revenue & growth',
         collapsible: true,
         items: [
+            { label: 'Escrow Management', href: route('admin.escrow-management.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/escrow-management') },
             { label: 'Payments & Escrow', href: route('admin.payments-escrow.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/payments-escrow') },
             { label: 'Financial review queue', href: route('admin.financial-review.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial-review') },
-            { label: 'Financial Control', href: route('admin.financial.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial') && !p.startsWith('/admin/financial-review') && !p.startsWith('/admin/financial-audit') },
+            { label: 'Financial Control', href: route('admin.financial.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial') && !p.startsWith('/admin/financial-review') && !p.startsWith('/admin/financial-audit') && !p.startsWith('/admin/escrow-management') },
             { label: 'Financial audit', href: route('admin.financial-audit.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/financial-audit') },
             { label: 'Revenue monitor', href: route('admin.revenue-monitor.index'), icon: ChartBarSquareIcon, match: (p) => p.startsWith('/admin/revenue-monitor') },
             { label: 'Treasury', href: route('admin.treasury.index'), icon: CreditCardIcon, match: (p) => p.startsWith('/admin/treasury') },

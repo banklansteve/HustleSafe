@@ -20,10 +20,7 @@ class ConfirmProposalAwardRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'confirm' => ['accepted'],
-            'confirm_scope' => ['accepted'],
-            'confirm_price' => ['accepted'],
-            'confirm_deadline' => ['accepted'],
+            'confirm_award_terms' => ['accepted'],
         ];
     }
 }

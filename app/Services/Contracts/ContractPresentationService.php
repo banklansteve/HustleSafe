@@ -7,12 +7,14 @@ use App\Enums\DeliveryExtensionReasonCategory;
 use App\Enums\DeliveryExtensionStatus;
 use App\Models\Quest;
 use App\Models\QuestContract;
+use App\Models\QuestContractDeliveryExtension;
 use App\Models\User;
 use App\Services\Admin\FinancialControlCentreService;
 use App\Services\QuestEngagementLifecycleService;
 use App\Support\EscrowAutoReleasePolicy;
 use App\Support\EscrowReleasePolicy;
 use App\Support\NgnMoney;
+use App\Support\QuestCommerceUi;
 use Illuminate\Support\Collection;
 
 class ContractPresentationService
@@ -50,7 +52,7 @@ class ContractPresentationService
         $quest = $contract->quest;
 
         return [
-            'contract' => $this->contractRow($contract, $terms, $quest, $adminView),
+            'contract' => $this->contractRow($contract, $terms, $quest, $viewer, $adminView),
             'timeline_stages' => $this->lifecycleStages($contract, $quest),
             'role' => [
                 'is_client' => $isClient,
@@ -77,24 +79,43 @@ class ContractPresentationService
     public function indexRows(User $user): array
     {
         return QuestContract::query()
-            ->with(['quest:id,title,slug,uuid', 'client:id,name', 'freelancer:id,name'])
+            ->with(['quest:id,title,slug,uuid,completed_at,funds_released_at,dispute_opened', 'client:id,name', 'freelancer:id,name'])
             ->where(fn ($q) => $q->where('client_id', $user->id)->orWhere('freelancer_id', $user->id))
             ->latest('generated_at')
             ->limit(200)
             ->get()
-            ->map(fn (QuestContract $c) => [
-                'reference_code' => $c->reference_code,
-                'status' => $c->status->value,
-                'status_label' => $c->status->label(),
-                'quest_title' => $c->quest?->title,
-                'quest_route_key' => $c->quest?->getRouteKey(),
-                'counterparty_name' => (int) $user->id === (int) $c->client_id
-                    ? $c->freelancer?->name
-                    : $c->client?->name,
-                'total_label' => $c->financial_snapshot['total_label'] ?? null,
-                'generated_at' => $c->generated_at?->timezone('Africa/Lagos')->toIso8601String(),
-                'show_url' => route('contracts.show', $c->reference_code),
-            ])
+            ->map(function (QuestContract $c) use ($user) {
+                $row = [
+                    'reference_code' => $c->reference_code,
+                    'status' => $c->status->value,
+                    'status_label' => $c->status->label(),
+                    'quest_title' => $c->quest?->title,
+                    'quest_route_key' => $c->quest?->getRouteKey(),
+                    'counterparty_name' => (int) $user->id === (int) $c->client_id
+                        ? $c->freelancer?->name
+                        : $c->client?->name,
+                    'total_label' => $c->financial_snapshot['total_label'] ?? null,
+                    'generated_at' => $c->generated_at?->timezone('Africa/Lagos')->toIso8601String(),
+                    'show_url' => route('contracts.show', $c->reference_code),
+                    'auto_release' => null,
+                ];
+
+                if ($c->status === ContractStatus::Active && $c->quest !== null) {
+                    $schedule = $this->autoReleaseSchedule($c->quest, $c, $user);
+                    if ($schedule['visible'] ?? false) {
+                        $row['auto_release'] = [
+                            'expected_delivery_label' => $schedule['expected_delivery_label'],
+                            'auto_release_label' => $schedule['auto_release_label'],
+                            'auto_release_hours' => $schedule['auto_release_hours'],
+                            'seconds_until_release' => $schedule['seconds_until_auto_release_total'],
+                            'countdown_active' => $schedule['active'],
+                            'phase' => $schedule['phase'],
+                        ];
+                    }
+                }
+
+                return $row;
+            })
             ->all();
     }
 
@@ -102,7 +123,7 @@ class ContractPresentationService
      * @param  array<string, mixed>  $terms
      * @return array<string, mixed>
      */
-    private function contractRow(QuestContract $contract, array $terms, ?Quest $quest, bool $adminView): array
+    private function contractRow(QuestContract $contract, array $terms, ?Quest $quest, User $viewer, bool $adminView): array
     {
         $financial = $terms['financial'] ?? $contract->financial_snapshot;
         $timeline = array_merge(
@@ -164,8 +185,46 @@ class ContractPresentationService
             'quest_url' => $quest ? route('quests.show', $quest->getRouteKey()) : null,
             'escrow_expires_at' => $contract->escrow_expires_at?->timezone('Africa/Lagos')->toIso8601String(),
             'delivery_countdown' => $this->deliveryCountdown($contract),
-            'dispute_window' => $this->autoReleaseWindow($quest, $contract),
+            'dispute_window' => $this->autoReleaseSchedule($quest, $contract, $viewer),
             'delivery_timeline' => $this->deliveryTimeline($contract, $terms),
+            'escrow' => $this->escrowPayload($contract, $quest, $viewer),
+        ];
+    }
+
+    /**
+     * @return array{is_held: bool, awaiting_funding: bool, show_fund_button: bool, funding_post_url: ?string, proposal_url: ?string}
+     */
+    private function escrowPayload(QuestContract $contract, ?Quest $quest, User $viewer): array
+    {
+        $awaitingFunding = $contract->status === ContractStatus::PendingEscrow
+            || ($quest !== null && $quest->escrow_status === 'awaiting_funding');
+
+        $fundedEscrowStates = ['funded', 'partially_released', 'released', 'disputed', 'frozen', 'refunded'];
+        $isHeld = ! $awaitingFunding
+            && $contract->status !== ContractStatus::Cancelled
+            && (
+                $contract->escrow_funded_at !== null
+                || $contract->activated_at !== null
+                || ($quest !== null && (
+                    $quest->escrow_funded_at !== null
+                    || in_array($quest->escrow_status, $fundedEscrowStates, true)
+                ))
+            );
+
+        $commerce = ($quest !== null && $contract->offer !== null)
+            ? QuestCommerceUi::fundingForOffer($quest, $contract->offer, $viewer)
+            : [];
+
+        $proposalUrl = ($quest !== null && $contract->offer !== null)
+            ? route('quests.proposals.show', [$quest->getRouteKey(), $contract->offer->id])
+            : null;
+
+        return [
+            'is_held' => $isHeld,
+            'awaiting_funding' => $awaitingFunding && $contract->status !== ContractStatus::Cancelled,
+            'show_fund_button' => (bool) ($commerce['show_fund_button'] ?? false),
+            'funding_post_url' => $commerce['funding_post_url'] ?? null,
+            'proposal_url' => $proposalUrl,
         ];
     }
 
@@ -309,51 +368,52 @@ class ContractPresentationService
      */
     private function deliveryExtensionPayload(QuestContract $contract, User $viewer, bool $isFreelancer, bool $isClient): array
     {
+        $contract->loadMissing([
+            'deliveryExtensions.requester:id,name',
+            'pendingExtension.requester:id,name',
+            'pendingExtension.scopeChangeMessage.user:id,name',
+        ]);
+
         $button = $this->extensions->freelancerButtonState($contract);
         $pending = $contract->pendingExtension;
+        $limit = ContractDeliveryExtensionService::MAX_EXTENSIONS;
+        $original = $contract->original_agreed_delivery_date ?? $contract->agreed_delivery_date?->toDateString();
 
         $payload = [
             'freelancer_button' => $button,
             'reason_categories' => DeliveryExtensionReasonCategory::options(),
             'max_extension_days' => ContractDeliveryExtensionService::MAX_EXTENSION_DAYS,
             'messages_url' => route('contracts.extensions.messages', $contract->reference_code),
+            'summary' => [
+                'extension_count' => (int) $contract->delivery_extension_count,
+                'extension_limit' => $limit,
+                'remaining' => max(0, $limit - (int) $contract->delivery_extension_count),
+                'current_deadline_label' => $contract->agreed_delivery_date?->format('j M Y'),
+                'original_deadline_label' => $original ? \Carbon\Carbon::parse($original)->format('j M Y') : null,
+                'has_pending' => $pending !== null,
+            ],
+            'history' => $contract->deliveryExtensions
+                ->sortBy('extension_number')
+                ->values()
+                ->map(fn (QuestContractDeliveryExtension $ext) => $this->mapDeliveryExtensionRow(
+                    $ext,
+                    isActive: (int) $ext->id === (int) $contract->pending_extension_id,
+                ))
+                ->all(),
+            'pending' => null,
+            'pending_counter' => null,
         ];
 
         if ($pending === null) {
-            $payload['pending'] = null;
-            $payload['pending_counter'] = null;
-
             return $payload;
         }
 
-        $pendingRow = [
-            'id' => $pending->id,
-            'extension_number' => $pending->extension_number,
-            'status' => $pending->status->value,
-            'status_label' => $pending->status->label(),
-            'reason_category' => $pending->reason_category->value,
-            'reason_label' => $pending->reason_category->label(),
-            'explanation' => $pending->explanation,
-            'original_delivery_label' => $pending->original_delivery_date->format('j M Y'),
-            'proposed_delivery_label' => $pending->proposed_delivery_date->format('j M Y'),
-            'progress_note' => $pending->progress_note,
-            'progress_attachments' => $pending->progress_attachments ?? [],
-            'scope_change_message' => $pending->scopeChangeMessage ? [
-                'id' => $pending->scopeChangeMessage->id,
-                'body' => $pending->scopeChangeMessage->is_redacted
-                    ? ($pending->scopeChangeMessage->redaction_label ?? '[redacted]')
-                    : $pending->scopeChangeMessage->body,
-                'author' => $pending->scopeChangeMessage->user?->name,
-            ] : null,
-            'client_attributed_delay' => $pending->client_attributed_delay,
-        ];
+        $pendingRow = $this->mapDeliveryExtensionRow($pending, isActive: true, detailed: true);
 
         if ($pending->status === DeliveryExtensionStatus::PendingClient) {
             $pendingRow['client_seconds_remaining'] = (int) max(0, now()->diffInSeconds($pending->client_response_deadline_at, false));
             $pendingRow['client_deadline_label'] = $pending->client_response_deadline_at->timezone(config('app.timezone'))->format('j M Y, H:i');
-            $payload['pending'] = $isClient ? $pendingRow : array_merge($pendingRow, [
-                'client_seconds_remaining' => $pendingRow['client_seconds_remaining'],
-            ]);
+            $payload['pending'] = ($isClient || $isFreelancer) ? $pendingRow : null;
             $payload['pending_counter'] = null;
 
             return $payload;
@@ -362,14 +422,12 @@ class ContractPresentationService
         if ($pending->status === DeliveryExtensionStatus::CounterProposed) {
             $pendingRow['counter_proposed_label'] = $pending->counter_proposed_date?->format('j M Y');
             $pendingRow['freelancer_seconds_remaining'] = (int) max(0, now()->diffInSeconds($pending->counter_response_deadline_at, false));
+            $pendingRow['freelancer_deadline_label'] = $pending->counter_response_deadline_at?->timezone(config('app.timezone'))->format('j M Y, H:i');
             $payload['pending'] = $isClient ? $pendingRow : null;
             $payload['pending_counter'] = $isFreelancer ? $pendingRow : null;
 
             return $payload;
         }
-
-        $payload['pending'] = null;
-        $payload['pending_counter'] = null;
 
         return $payload;
     }
@@ -377,36 +435,116 @@ class ContractPresentationService
     /**
      * @return array<string, mixed>
      */
-    private function autoReleaseWindow(?Quest $quest, QuestContract $contract): array
+    private function mapDeliveryExtensionRow(
+        QuestContractDeliveryExtension $ext,
+        bool $isActive = false,
+        bool $detailed = false,
+    ): array {
+        $tz = config('app.timezone');
+
+        $row = [
+            'id' => $ext->id,
+            'extension_number' => $ext->extension_number,
+            'status' => $ext->status->value,
+            'status_label' => $ext->status->label(),
+            'is_active' => $isActive,
+            'is_terminal' => $ext->status->isTerminal(),
+            'reason_category' => $ext->reason_category->value,
+            'reason_label' => $ext->reason_category->label(),
+            'explanation' => $ext->explanation,
+            'original_delivery_label' => $ext->original_delivery_date->format('j M Y'),
+            'proposed_delivery_label' => $ext->proposed_delivery_date->format('j M Y'),
+            'applied_delivery_label' => $ext->applied_delivery_date?->format('j M Y'),
+            'counter_proposed_label' => $ext->counter_proposed_date?->format('j M Y'),
+            'submitted_at_label' => $ext->submitted_at?->timezone($tz)->format('j M Y, H:i'),
+            'resolved_at_label' => $ext->resolved_at?->timezone($tz)->format('j M Y, H:i'),
+            'requester_name' => $ext->requester?->name,
+            'decline_reason' => $ext->decline_reason,
+            'client_attributed_delay' => (bool) $ext->client_attributed_delay,
+        ];
+
+        if ($detailed) {
+            $row['progress_note'] = $ext->progress_note;
+            $row['progress_attachments'] = $ext->progress_attachments ?? [];
+            $row['scope_change_message'] = $ext->scopeChangeMessage ? [
+                'id' => $ext->scopeChangeMessage->id,
+                'body' => $ext->scopeChangeMessage->is_redacted
+                    ? ($ext->scopeChangeMessage->redaction_label ?? '[redacted]')
+                    : $ext->scopeChangeMessage->body,
+                'author' => $ext->scopeChangeMessage->user?->name,
+            ] : null;
+        }
+
+        return $row;
+    }
+
+    /**
+     * Escrow auto-release schedule for clients and freelancers on active contracts.
+     *
+     * @return array<string, mixed>
+     */
+    private function autoReleaseSchedule(?Quest $quest, QuestContract $contract, User $viewer): array
     {
+        $inactive = ['visible' => false, 'active' => false];
+
         if ($quest === null || $contract->status !== ContractStatus::Active) {
-            return ['active' => false];
+            return $inactive;
         }
 
         if ($quest->completed_at !== null || $quest->funds_released_at !== null) {
-            return ['active' => false];
+            return array_merge($inactive, ['phase' => 'completed']);
         }
 
         $contract->loadMissing('pendingExtension');
-        if ($contract->pending_extension_id !== null || $contract->deadline_clock_paused_at !== null) {
-            return ['active' => false];
-        }
 
         $due = app(QuestEngagementLifecycleService::class)->expectedCompletionAt($quest);
         if ($due === null && $contract->agreed_delivery_date !== null) {
             $due = $contract->agreed_delivery_date->copy()->endOfDay();
         }
 
-        if ($due === null || now()->lt($due)) {
-            return ['active' => false];
+        if ($due === null) {
+            return $inactive;
         }
 
+        $tz = 'Africa/Lagos';
+        $releaseHours = EscrowAutoReleasePolicy::releaseHours();
         $releaseAt = EscrowAutoReleasePolicy::releaseAt($due);
+        $now = now();
+        $pastDue = $now->gte($due);
+
+        $paused = $contract->pending_extension_id !== null || $contract->deadline_clock_paused_at !== null;
+        $pauseReason = match (true) {
+            $contract->pending_extension_id !== null => __('Paused while a delivery extension request awaits your review.'),
+            $contract->deadline_clock_paused_at !== null => __('Release countdown is temporarily paused.'),
+            default => null,
+        };
+
+        $countdownActive = $pastDue && ! $paused && ! $quest->dispute_opened;
+        $secondsUntilRelease = (int) max(0, $now->diffInSeconds($releaseAt, false));
+        $commerce = QuestCommerceUi::disputeForQuest($quest, $viewer);
 
         return [
-            'active' => true,
-            'seconds_until_release' => (int) max(0, now()->diffInSeconds($releaseAt, false)),
-            'release_eligible_label' => $releaseAt->timezone(config('app.timezone'))->format('j M Y, H:i'),
+            'visible' => true,
+            'active' => $countdownActive && $secondsUntilRelease > 0,
+            'seconds_until_release' => $countdownActive ? $secondsUntilRelease : null,
+            'seconds_until_auto_release_total' => $secondsUntilRelease,
+            'phase' => $paused ? 'paused' : ($pastDue ? 'after_delivery' : 'before_delivery'),
+            'expected_delivery_label' => $due->timezone($tz)->format('D, j M Y'),
+            'expected_delivery_at' => $due->timezone($tz)->toIso8601String(),
+            'auto_release_hours' => $releaseHours,
+            'auto_release_at' => $releaseAt->timezone($tz)->toIso8601String(),
+            'auto_release_label' => $releaseAt->timezone($tz)->format('D, j M Y · g:i A'),
+            'release_eligible_label' => $releaseAt->timezone($tz)->format('j M Y, H:i'),
+            'paused' => $paused,
+            'pause_reason' => $pauseReason,
+            'plain_english' => EscrowAutoReleasePolicy::plainEnglishWithReminders(),
+            'can_open_dispute' => $commerce['can_open_dispute'],
+            'dispute_create_url' => $commerce['dispute_create_url'],
+            'active_dispute' => $commerce['active_dispute'],
+            'dispute_block_reason' => $commerce['dispute_block_reason'],
+            'quest_url' => route('quests.show', $quest->getRouteKey()),
+            'has_pending_extension' => $contract->pending_extension_id !== null,
+            'extension_anchor' => '#delivery-extension',
         ];
     }
 
@@ -471,7 +609,7 @@ class ContractPresentationService
         $finance = app(FinancialControlCentreService::class);
         $ledger = $finance->escrowLedger($quest);
         $releasePolicy = EscrowReleasePolicy::uiPayload($quest, $viewer);
-        $disputeWindow = $this->disputeWindow($contract, $quest);
+        $disputeWindow = $this->autoReleaseSchedule($quest, $contract, $viewer);
 
         return [
             'quest_id' => $quest->id,

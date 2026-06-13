@@ -594,40 +594,20 @@
                                 </li>
                             </ul>
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="acceptForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I confirm I want to award this proposal.</span>
+                                <input v-model="acceptForm.confirm_award_terms" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>I want to award this proposal — scope, quoted price, and timeline above are what I expect delivered.</span>
                             </label>
-                            <InputError :message="acceptForm.errors.confirm" />
-                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="acceptForm.confirm_scope" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I confirm the agreed scope above matches what I expect delivered.</span>
-                            </label>
-                            <InputError :message="acceptForm.errors.confirm_scope" />
-                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="acceptForm.confirm_price" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I confirm the quoted price is what I will fund in escrow (including fees in the breakdown).</span>
-                            </label>
-                            <InputError :message="acceptForm.errors.confirm_price" />
-                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="acceptForm.confirm_deadline" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I confirm the target finish date / timeline is acceptable.</span>
-                            </label>
-                            <InputError :message="acceptForm.errors.confirm_deadline" />
+                            <InputError :message="acceptForm.errors.confirm_award_terms" />
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="acceptForm.accept_escrow_rules" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I understand I must fund escrow after the freelancer confirms, before work should begin, and funds release when I mark complete or under the 72-hour rule after the agreed delivery date.</span>
+                                <span>I will fund escrow after the freelancer confirms; release happens when I mark complete or 72 hours after the agreed delivery date (with email reminders).</span>
                             </label>
                             <InputError :message="acceptForm.errors.accept_escrow_rules" />
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="acceptForm.accept_fees_and_terms" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I accept applicable fees and the escrow rules described in the Terms.</span>
+                                <span>I accept platform fees and the escrow, dispute, and Terms of Service rules linked above.</span>
                             </label>
                             <InputError :message="acceptForm.errors.accept_fees_and_terms" />
-                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="acceptForm.accept_auto_release_ack" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I understand the email reminders on the agreed delivery date, at 24 and 36 hours after, and the 72-hour auto-release rule if I do not mark complete or open a dispute in time.</span>
-                            </label>
-                            <InputError :message="acceptForm.errors.accept_auto_release_ack" />
                             <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
                                 <p class="text-xs font-black uppercase tracking-wide text-slate-500">Confirm deliverables</p>
                                 <p class="mt-1 text-xs font-semibold text-slate-600">List each deliverable as a separate line item — this is frozen into the contract.</p>
@@ -656,22 +636,10 @@
                                 <li class="leading-relaxed">{{ awardTerms.scope_summary }}</li>
                             </ul>
                             <label class="mt-4 flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="confirmAwardForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I confirm I understand and accept this award.</span>
+                                <input v-model="confirmAwardForm.confirm_award_terms" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                                <span>I accept this award — scope, price, and finish date as shown above.</span>
                             </label>
-                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="confirmAwardForm.confirm_scope" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I accept the scope described above.</span>
-                            </label>
-                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="confirmAwardForm.confirm_price" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I accept the quoted price.</span>
-                            </label>
-                            <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
-                                <input v-model="confirmAwardForm.confirm_deadline" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I accept the target finish timeline.</span>
-                            </label>
-                            <InputError :message="confirmAwardForm.errors.confirm" />
+                            <InputError :message="confirmAwardForm.errors.confirm_award_terms" />
                         </template>
 
                         <template v-else-if="activeModal === 'escrow'">
@@ -901,21 +869,14 @@ watch(
 
 const declineForm = useForm({ confirm: false, understand_decline: false });
 const acceptForm = useForm({
-    confirm: false,
-    confirm_scope: false,
-    confirm_price: false,
-    confirm_deadline: false,
+    confirm_award_terms: false,
     accept_escrow_rules: false,
     accept_fees_and_terms: false,
-    accept_auto_release_ack: false,
     revision_definition: 'A revision adjusts the agreed deliverable within the original scope. New features or material scope expansion require an amendment.',
 });
 const acceptDeliverables = ref([{ title: '', description: '' }]);
 const confirmAwardForm = useForm({
-    confirm: false,
-    confirm_scope: false,
-    confirm_price: false,
-    confirm_deadline: false,
+    confirm_award_terms: false,
 });
 const escrowForm = useForm({ confirm: false, confirm_funds_in_escrow: false });
 const withdrawForm = useForm({ confirm: false, understand_withdraw: false });
@@ -1056,10 +1017,10 @@ const modalSubmitDisabled = computed(() => {
         return declineForm.processing || !declineForm.confirm || !declineForm.understand_decline;
     }
     if (m === 'accept') {
-        return acceptForm.processing || !acceptForm.confirm || !acceptForm.confirm_scope || !acceptForm.confirm_price || !acceptForm.confirm_deadline || !acceptForm.accept_escrow_rules || !acceptForm.accept_fees_and_terms || !acceptForm.accept_auto_release_ack;
+        return acceptForm.processing || !acceptForm.confirm_award_terms || !acceptForm.accept_escrow_rules || !acceptForm.accept_fees_and_terms;
     }
     if (m === 'confirm_award') {
-        return confirmAwardForm.processing || !confirmAwardForm.confirm || !confirmAwardForm.confirm_scope || !confirmAwardForm.confirm_price || !confirmAwardForm.confirm_deadline;
+        return confirmAwardForm.processing || !confirmAwardForm.confirm_award_terms;
     }
     if (m === 'escrow') {
         return escrowForm.processing || !escrowForm.confirm || !escrowForm.confirm_funds_in_escrow;
@@ -1143,9 +1104,13 @@ function toggleShortlist() {
         });
 }
 
+function questRouteKey() {
+    return props.quest.route_key ?? props.quest.slug ?? props.quest.uuid ?? props.quest.id;
+}
+
 function submitModal() {
     const m = activeModal.value;
-    const rk = props.quest.route_key;
+    const rk = questRouteKey();
     const oid = props.offer.id;
     if (m === 'decline') {
         declineForm
@@ -1157,13 +1122,9 @@ function submitModal() {
     } else if (m === 'accept') {
         acceptForm
             .transform(() => ({
-                confirm: bool(acceptForm.confirm),
-                confirm_scope: bool(acceptForm.confirm_scope),
-                confirm_price: bool(acceptForm.confirm_price),
-                confirm_deadline: bool(acceptForm.confirm_deadline),
+                confirm_award_terms: bool(acceptForm.confirm_award_terms),
                 accept_escrow_rules: bool(acceptForm.accept_escrow_rules),
                 accept_fees_and_terms: bool(acceptForm.accept_fees_and_terms),
-                accept_auto_release_ack: bool(acceptForm.accept_auto_release_ack),
                 revision_definition: acceptForm.revision_definition,
                 deliverables: acceptDeliverables.value.filter((d) => d.title.trim() !== ''),
             }))
@@ -1171,12 +1132,15 @@ function submitModal() {
     } else if (m === 'confirm_award') {
         confirmAwardForm
             .transform(() => ({
-                confirm: bool(confirmAwardForm.confirm),
-                confirm_scope: bool(confirmAwardForm.confirm_scope),
-                confirm_price: bool(confirmAwardForm.confirm_price),
-                confirm_deadline: bool(confirmAwardForm.confirm_deadline),
+                confirm_award_terms: bool(confirmAwardForm.confirm_award_terms),
             }))
-            .post(route('quests.proposals.confirm-award', [rk, oid]), { preserveScroll: true, onSuccess: closeModal });
+            .post(route('quests.proposals.confirm-award', [rk, oid]), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    localOfferStatus.value = 'accepted';
+                    closeModal();
+                },
+            });
     } else if (m === 'escrow') {
         escrowForm
             .transform(() => ({
@@ -1185,18 +1149,16 @@ function submitModal() {
             }))
             .post(route('quests.proposals.escrow-funded', [rk, oid]), { preserveScroll: true, onSuccess: closeModal });
     } else if (m === 'acknowledge') {
-        const questKey = props.quest.route_key ?? props.quest.slug ?? props.quest.uuid ?? props.quest.id;
         acknowledgeForm
             .transform(() => ({ confirm: bool(acknowledgeForm.confirm) }))
-            .post(route('quests.acknowledge-delivery', questKey), { preserveScroll: true, onSuccess: closeModal });
+            .post(route('quests.acknowledge-delivery', questRouteKey()), { preserveScroll: true, onSuccess: closeModal });
     } else if (m === 'release') {
-        const questKey = props.quest.route_key ?? props.quest.slug ?? props.quest.uuid ?? props.quest.id;
         releaseForm
             .transform(() => ({
                 confirm: bool(releaseForm.confirm),
                 acknowledge_release: bool(releaseForm.acknowledge_release),
             }))
-            .post(route('quests.release-funds', questKey), { preserveScroll: true, onSuccess: closeModal });
+            .post(route('quests.release-funds', questRouteKey()), { preserveScroll: true, onSuccess: closeModal });
     } else if (m === 'withdraw') {
         withdrawForm
             .transform(() => ({
