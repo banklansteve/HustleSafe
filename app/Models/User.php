@@ -165,6 +165,21 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Whether verification limits should use the freelancer proposal catalog.
+     */
+    public function usesFreelancerVerificationLimits(): bool
+    {
+        $this->loadMissing('role:id,slug');
+
+        $roleSlug = $this->role?->slug;
+        if ($roleSlug !== null) {
+            return in_array($roleSlug, ['freelancer', 'seller', 'provider'], true);
+        }
+
+        return in_array(strtolower((string) $this->account_type), ['freelancer', 'seller', 'provider', 'hustler'], true);
+    }
+
+    /**
      * Super admin who invited this operations staff member (if any).
      *
      * @return BelongsTo<User, $this>

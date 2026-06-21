@@ -5,7 +5,6 @@ namespace App\Http\Requests\Quests;
 use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Models\User;
-use App\Rules\NoDirectContactInformation;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreQuestConversationMessageRequest extends FormRequest
@@ -30,7 +29,8 @@ class StoreQuestConversationMessageRequest extends FormRequest
         }
 
         return [
-            'body' => ['required', 'string', 'min:1', 'max:'.$maxBody, new NoDirectContactInformation],
+            // Contact/payment policy is enforced asynchronously after send via conversation monitoring.
+            'body' => ['required', 'string', 'min:1', 'max:'.$maxBody],
         ];
     }
 

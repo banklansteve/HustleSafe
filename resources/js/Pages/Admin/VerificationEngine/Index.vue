@@ -477,6 +477,9 @@
                                     <p class="text-[10px] font-black uppercase tracking-wide text-emerald-800">Target limit</p>
                                     <p class="mt-1 text-xl font-black text-emerald-900">{{ overrideTargetLimit || '—' }}</p>
                                     <p class="mt-1 text-xs font-semibold text-emerald-800">From Verification Engine limits</p>
+                                    <p class="mt-1 text-[11px] font-semibold text-emerald-900/80">
+                                        {{ overrideLimitSourceLabel }}
+                                    </p>
                                 </div>
                             </div>
 
@@ -766,15 +769,47 @@ const overrideForm = reactive({
 });
 let overrideSearchTimer = null;
 
+function userUsesFreelancerLimits(user) {
+    if (!user) {
+        return false;
+    }
+
+    if (typeof user.is_freelancer === 'boolean') {
+        return user.is_freelancer;
+    }
+
+    if (user.limit_catalog === 'freelancer') {
+        return true;
+    }
+
+    if (user.limit_catalog === 'client') {
+        return false;
+    }
+
+    const role = String(user.role || user.account_type || '').toLowerCase();
+
+    return ['freelancer', 'seller', 'provider', 'hustler'].includes(role);
+}
+
+function limitMapForRole(isFreelancer) {
+    const raw = isFreelancer
+        ? props.limits?.freelancer_proposal_minor
+        : props.limits?.client_posting_minor;
+    const levelKeys = isFreelancer ? FREELANCER_LEVELS.value : CLIENT_LEVELS.value;
+
+    return normalizeLevelMap(raw, levelKeys);
+}
+
 const overrideLevelOptions = computed(() => {
     const user = overrideForm.selectedUser;
-    const catalog = user?.tier_options?.length
-        ? user.tier_options
-        : (user && ['freelancer', 'seller', 'provider'].includes(user.role)
-            ? props.tier_catalog?.freelancer
-            : props.tier_catalog?.client) || [];
+    if (!user) {
+        return [];
+    }
 
-    if (catalog.length) {
+    const isFreelancer = userUsesFreelancerLimits(user);
+    const catalog = isFreelancer ? props.tier_catalog?.freelancer : props.tier_catalog?.client;
+
+    if (Array.isArray(catalog) && catalog.length) {
         return catalog.map((tier) => ({
             value: tier.level,
             label: tier.label,
@@ -784,20 +819,20 @@ const overrideLevelOptions = computed(() => {
         }));
     }
 
-    const isFreelancer = user && ['freelancer', 'seller', 'provider'].includes(user.role);
+    const limitMap = limitMapForRole(isFreelancer);
     const levels = isFreelancer ? props.freelancer_levels : props.client_levels;
     const levelKeys = isFreelancer ? FREELANCER_LEVELS.value : CLIENT_LEVELS.value;
-    const limitMap = isFreelancer ? props.limits?.freelancer_proposal_minor : props.limits?.client_posting_minor;
 
     return levelKeys.map((level) => {
-        const limitMinor = Number(limitMap?.[level] ?? limitMap?.[String(level)] ?? 0);
+        const limitMinor = Number(limitMap[level] ?? 0);
+        const label = levels[level]?.label || levels[String(level)]?.label || `L${level}`;
 
         return {
             value: level,
-            label: levels[level]?.label || `L${level}`,
+            label,
             limit_minor: limitMinor,
             limit_formatted: formatMoney(limitMinor),
-            option_label: `${levels[level]?.label || `L${level}`} · ${formatMoney(limitMinor)}`,
+            option_label: `${label} · ${formatMoney(limitMinor)}`,
         };
     });
 });
@@ -806,6 +841,17 @@ const overrideTargetLimit = computed(() => {
     const match = overrideLevelOptions.value.find((option) => option.value === overrideForm.level);
 
     return match?.limit_formatted || null;
+});
+
+const overrideLimitSourceLabel = computed(() => {
+    const user = overrideForm.selectedUser;
+    if (!user) {
+        return '';
+    }
+
+    return userUsesFreelancerLimits(user)
+        ? 'Freelancer proposal value limits'
+        : 'Client quest posting limits';
 });
 
 watch(
@@ -989,7 +1035,11 @@ const EmptyState = defineComponent({
 });
 
 function normalizeLevelMap(value = {}, levels = []) {
-    return Object.fromEntries(levels.map((level) => [level, Number(value[level] ?? value[String(level)] ?? 0)]));
+    const source = Array.isArray(value)
+        ? Object.fromEntries(value.map((amount, index) => [index, Number(amount)]))
+        : value;
+
+    return Object.fromEntries(levels.map((level) => [level, Number(source?.[level] ?? source?.[String(level)] ?? 0)]));
 }
 
 function saveTypes() {

@@ -16,6 +16,7 @@ use App\Http\Controllers\Operations\OperationsPaymentMonitoringController;
 use App\Http\Controllers\Operations\OperationsPayoutExceptionsController;
 use App\Http\Controllers\Operations\OperationsQualityController;
 use App\Http\Controllers\Operations\OperationsTrustController;
+use App\Http\Controllers\Operations\OperationsContractManagementController;
 use App\Http\Controllers\Operations\OperationsConversationMonitoringController;
 use App\Http\Controllers\Operations\OperationsPaymentsController;
 use App\Http\Controllers\Operations\OperationsPortfoliosController;
@@ -84,7 +85,6 @@ Route::get('/api/conversation-monitoring/systematic/{escalation}', [OperationsCo
 Route::post('/api/conversation-monitoring/reviews/{review}/dismiss', [OperationsConversationMonitoringController::class, 'dismiss'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.dismiss');
 Route::post('/api/conversation-monitoring/reviews/{review}/warn', [OperationsConversationMonitoringController::class, 'warn'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.warn');
 Route::post('/api/conversation-monitoring/reviews/{review}/escalate-super-admin', [OperationsConversationMonitoringController::class, 'escalateSuperAdmin'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.escalate-super-admin');
-Route::post('/api/conversation-monitoring/reviews/{review}/suspend-user', [OperationsConversationMonitoringController::class, 'suspendUser'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.suspend-user');
 Route::post('/api/conversation-monitoring/reviews/{review}/flag-risk', [OperationsConversationMonitoringController::class, 'flagRisk'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.flag-risk');
 Route::post('/api/conversation-monitoring/systematic/{escalation}/dismiss', [OperationsConversationMonitoringController::class, 'dismissSystematic'])->middleware('throttle:30,1')->name('api.conversation-monitoring.systematic.dismiss');
 
@@ -227,6 +227,28 @@ Route::redirect('/communications', '/operations/support')->name('communications.
 Route::post('/communications/bulk-messages', [OperationsCommunicationsController::class, 'storeBulkMessage'])->middleware('throttle:10,1')->name('communications.bulk-messages.store');
 Route::post('/communications/tickets', [OperationsCommunicationsController::class, 'storeTicket'])->middleware('throttle:30,1')->name('communications.tickets.store');
 Route::patch('/communications/tickets/{ticket}/status', [OperationsCommunicationsController::class, 'updateTicketStatus'])->middleware('throttle:60,1')->name('communications.tickets.status');
+
+Route::prefix('contract-management')->name('contract-management.')->group(function (): void {
+    Route::get('/', [OperationsContractManagementController::class, 'index'])->name('index');
+    Route::get('/api/listing', [OperationsContractManagementController::class, 'listing'])->name('api.listing');
+    Route::get('/api/alerts', [OperationsContractManagementController::class, 'alerts'])->name('api.alerts');
+    Route::get('/api/patrol-flags', [OperationsContractManagementController::class, 'patrolFlags'])->name('api.patrol-flags');
+    Route::get('/api/quality-audit', [OperationsContractManagementController::class, 'qualityAuditSample'])->name('api.quality-audit');
+    Route::get('/api/saved-filters', [OperationsContractManagementController::class, 'savedFilters'])->name('api.saved-filters');
+    Route::post('/api/saved-filters', [OperationsContractManagementController::class, 'storeSavedFilter'])->middleware('throttle:30,1')->name('api.saved-filters.store');
+    Route::delete('/api/saved-filters/{filter}', [OperationsContractManagementController::class, 'destroySavedFilter'])->middleware('throttle:30,1')->name('api.saved-filters.destroy');
+    Route::post('/api/patrol-flags/{flag}/acknowledge', [OperationsContractManagementController::class, 'acknowledgePatrolFlag'])->middleware('throttle:60,1')->name('api.patrol-flags.acknowledge');
+    Route::post('/api/patrol-flags/{flag}/dismiss', [OperationsContractManagementController::class, 'dismissPatrolFlag'])->middleware('throttle:30,1')->name('api.patrol-flags.dismiss');
+    Route::get('/api/disputes', [OperationsContractManagementController::class, 'disputes'])->name('api.disputes');
+    Route::get('/api/contracts/{contract:reference_code}', [OperationsContractManagementController::class, 'detail'])->name('api.detail');
+    Route::get('/export/csv', [OperationsContractManagementController::class, 'exportCsv'])->name('export.csv');
+    Route::get('/export/pdf', [OperationsContractManagementController::class, 'exportPdf'])->name('export.pdf');
+    Route::post('/contracts/{contract:reference_code}/assign', [OperationsContractManagementController::class, 'assign'])->middleware('throttle:60,1')->name('contracts.assign');
+    Route::post('/contracts/{contract:reference_code}/note', [OperationsContractManagementController::class, 'note'])->middleware('throttle:60,1')->name('contracts.note');
+    Route::post('/contracts/{contract:reference_code}/flag', [OperationsContractManagementController::class, 'flag'])->middleware('throttle:40,1')->name('contracts.flag');
+    Route::post('/contracts/{contract:reference_code}/quality-review', [OperationsContractManagementController::class, 'qualityReview'])->middleware('throttle:40,1')->name('contracts.quality-review');
+    Route::post('/contracts/{contract:reference_code}/acknowledge-alert', [OperationsContractManagementController::class, 'acknowledgeAlert'])->middleware('throttle:60,1')->name('contracts.acknowledge-alert');
+});
 
 Route::get('/disputes', [OperationsDisputesController::class, 'index'])->name('disputes.index');
 Route::get('/disputes/export', [OperationsDisputesController::class, 'export'])->name('disputes.export');

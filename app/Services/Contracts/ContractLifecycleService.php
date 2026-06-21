@@ -3,6 +3,7 @@
 namespace App\Services\Contracts;
 
 use App\Enums\ContractStatus;
+use App\Enums\QuestStartTiming;
 use App\Enums\QuestStatus;
 use App\Models\PaymentEscrow;
 use App\Models\Quest;
@@ -37,8 +38,34 @@ class ContractLifecycleService
             'activated_at' => now(),
             'escrow_funded_at' => $escrow->funded_at ?? now(),
             'escrow_funding_reference' => $escrow->reference,
-            'contract_start_date' => now('Africa/Lagos')->toDateString(),
+            'contract_start_date' => ($quest->contract_starts_at ?? now('Africa/Lagos'))->timezone('Africa/Lagos')->toDateString(),
         ]);
+
+        if ($quest->contract_ends_at !== null) {
+            $contract->update([
+                'agreed_delivery_date' => $quest->contract_ends_at->timezone('Africa/Lagos')->toDateString(),
+            ]);
+        }
+
+        $recurring = app(\App\Services\Quest\QuestRecurringEngagementService::class);
+        if ($recurring->isRecurring($quest)) {
+            $timing = $quest->start_timing instanceof QuestStartTiming
+                ? $quest->start_timing
+                : QuestStartTiming::tryFrom((string) ($quest->start_timing ?? ''));
+            if ($timing !== QuestStartTiming::Scheduled) {
+                $start = ($escrow->funded_at ?? now())->copy()->timezone('Africa/Lagos')->startOfDay();
+                $months = max(1, (int) ($quest->contract_duration_months ?? 1));
+                $end = $start->copy()->addMonths($months)->endOfDay();
+                $quest->update([
+                    'contract_starts_at' => $start,
+                    'contract_ends_at' => $end,
+                    'delivery_deadline' => $end->toDateString(),
+                    'estimated_delivery_date' => $end->toDateString(),
+                ]);
+            }
+        }
+
+        app(\App\Services\Quest\QuestRecurringEngagementService::class)->generateSchedule($quest->fresh());
 
         $this->events->log($contract, 'contract.activated', null, [
             'escrow_reference' => $escrow->reference,

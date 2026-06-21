@@ -17,14 +17,17 @@ use App\Models\ReviewAuthenticitySignal;
 use App\Models\LoginEvent;
 use App\Models\Quest;
 use App\Models\QuestContract;
+use App\Models\QuestConversationThread;
 use App\Models\QuestDispute;
 use App\Models\QuestOffer;
 use App\Models\Review;
 use App\Models\User;
 use App\Models\UserActivityPatrolFlag;
+use App\Models\UserIdentityDocument;
 use App\Models\UserVerification;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 final class UserActivityPatrolAnomalyService
@@ -55,6 +58,8 @@ final class UserActivityPatrolAnomalyService
         $created += $this->scanRefundRates();
         $created += $this->scanPaymentMethodChanges();
         $created += $this->scanSharedIdentity();
+        $created += $this->scanSharedKycDocuments();
+        $created += $this->scanEscrowRoundTripping();
         $created += $this->scanLocationAnomalies();
         $created += $this->scanDeviceAnomalies();
         $created += $this->scanAccountInconsistency();
@@ -85,6 +90,8 @@ final class UserActivityPatrolAnomalyService
         $created += $this->flagRefundRateForUser($user) ? 1 : 0;
         $created += $this->flagPaymentMethodChangeForUser($user) ? 1 : 0;
         $created += $this->flagSharedIdentityForUser($user) ? 1 : 0;
+        $created += $this->flagSharedKycDocumentForUser($user) ? 1 : 0;
+        $created += $this->flagEscrowRoundTrippingForUser($user) ? 1 : 0;
         $created += $this->flagLocationAnomalyForUser($user) ? 1 : 0;
         $created += $this->flagDeviceAnomalyForUser($user) ? 1 : 0;
         $created += $this->flagReciprocalForUser($user) ? 1 : 0;
@@ -1072,6 +1079,173 @@ final class UserActivityPatrolAnomalyService
         return false;
     }
 
+    private function scanSharedKycDocuments(): int
+    {
+        if (! Schema::hasTable('user_identity_documents')) {
+            return 0;
+        }
+
+        $created = 0;
+
+        $sharedHashes = UserIdentityDocument::query()
+            ->whereNotNull('number_hash')
+            ->where('number_hash', '!=', '')
+            ->select('number_hash', DB::raw('COUNT(DISTINCT user_id) as account_count'))
+            ->groupBy('number_hash')
+            ->having('account_count', '>', 1)
+            ->pluck('number_hash');
+
+        foreach ($sharedHashes as $hash) {
+            $documents = UserIdentityDocument::query()
+                ->where('number_hash', $hash)
+                ->get(['user_id', 'document_kind', 'normalized_last4']);
+            $accountCount = $documents->pluck('user_id')->unique()->count();
+
+            foreach ($documents->unique('user_id') as $document) {
+                $user = User::query()->find($document->user_id);
+                if ($user) {
+                    $created += $this->upsertFlag(
+                        $user,
+                        UserActivityAnomalyType::SharedKycDocument,
+                        'shared_kyc_document:'.md5((string) $hash).":{$user->id}",
+                        'Same KYC document on '.$accountCount.' account(s)',
+                        [
+                            'document_kind' => $document->document_kind,
+                            'document_last4' => $document->normalized_last4,
+                            'account_count' => $accountCount,
+                        ],
+                        $accountCount >= 3 ? 85 : 72,
+                    ) ? 1 : 0;
+                }
+            }
+        }
+
+        return $created;
+    }
+
+    private function flagSharedKycDocumentForUser(User $user): bool
+    {
+        if (! Schema::hasTable('user_identity_documents')) {
+            return false;
+        }
+
+        $documents = UserIdentityDocument::query()
+            ->where('user_id', $user->id)
+            ->whereNotNull('number_hash')
+            ->where('number_hash', '!=', '')
+            ->get(['document_kind', 'number_hash', 'normalized_last4']);
+
+        foreach ($documents as $document) {
+            $accountCount = UserIdentityDocument::query()
+                ->where('number_hash', $document->number_hash)
+                ->distinct('user_id')
+                ->count('user_id');
+
+            if ($accountCount > 1) {
+                return $this->upsertFlag(
+                    $user,
+                    UserActivityAnomalyType::SharedKycDocument,
+                    'shared_kyc_document:'.md5((string) $document->number_hash).":{$user->id}",
+                    'Same '.str_replace('_', ' ', (string) $document->document_kind).' KYC document on '.$accountCount.' account(s)',
+                    [
+                        'document_kind' => $document->document_kind,
+                        'document_last4' => $document->normalized_last4,
+                        'account_count' => $accountCount,
+                    ],
+                    $accountCount >= 3 ? 85 : 72,
+                );
+            }
+        }
+
+        return false;
+    }
+
+    private function scanEscrowRoundTripping(): int
+    {
+        $created = 0;
+        $days = (int) config('user_activity_patrol.round_trip_window_days', 60);
+        $since = now()->subDays($days);
+
+        $clientIds = Quest::query()
+            ->whereNotNull('escrow_funded_at')
+            ->whereNotNull('funds_released_at')
+            ->where('funds_released_at', '>=', $since)
+            ->distinct()
+            ->pluck('client_id')
+            ->filter();
+
+        foreach ($clientIds as $clientId) {
+            $user = User::query()->find($clientId);
+            if ($user) {
+                $created += $this->flagEscrowRoundTrippingForUser($user) ? 1 : 0;
+            }
+        }
+
+        return $created;
+    }
+
+    private function flagEscrowRoundTrippingForUser(User $user): bool
+    {
+        $days = (int) config('user_activity_patrol.round_trip_window_days', 60);
+        $minReleases = (int) config('user_activity_patrol.round_trip_min_releases', 3);
+        $maxMessages = (int) config('user_activity_patrol.round_trip_max_messages', 4);
+        $since = now()->subDays($days);
+
+        $quests = Quest::query()
+            ->where('client_id', $user->id)
+            ->whereNotNull('escrow_funded_at')
+            ->whereNotNull('funds_released_at')
+            ->where('funds_released_at', '>=', $since)
+            ->get(['id', 'freelancer_id', 'paid_out_minor', 'budget_amount_minor']);
+
+        if ($quests->count() < $minReleases) {
+            return false;
+        }
+
+        $questIds = $quests->pluck('id')->all();
+
+        $messagesByQuest = QuestConversationThread::query()
+            ->whereIn('quest_id', $questIds)
+            ->select('quest_id', DB::raw('SUM(messages_count) as message_total'))
+            ->groupBy('quest_id')
+            ->pluck('message_total', 'quest_id');
+
+        $deliverablesByQuest = QuestContract::query()
+            ->whereIn('quest_id', $questIds)
+            ->withCount('deliverables')
+            ->get()
+            ->groupBy('quest_id')
+            ->map(fn ($group) => (int) $group->sum('deliverables_count'));
+
+        $lowEngagement = $quests->filter(function (Quest $quest) use ($messagesByQuest, $deliverablesByQuest, $maxMessages) {
+            $messages = (int) ($messagesByQuest[$quest->id] ?? 0);
+            $deliverables = (int) ($deliverablesByQuest[$quest->id] ?? 0);
+
+            return $deliverables === 0 && $messages <= $maxMessages;
+        });
+
+        if ($lowEngagement->count() < $minReleases) {
+            return false;
+        }
+
+        $distinctFreelancers = $lowEngagement->pluck('freelancer_id')->filter()->unique();
+        $totalMinor = (int) $lowEngagement->sum(fn (Quest $quest) => (int) ($quest->paid_out_minor ?: $quest->budget_amount_minor));
+
+        return $this->upsertFlag(
+            $user,
+            UserActivityAnomalyType::EscrowRoundTripping,
+            "escrow_round_tripping:{$user->id}",
+            $lowEngagement->count().' escrow releases with no deliverables in '.$days.' days',
+            [
+                'low_engagement_releases' => $lowEngagement->count(),
+                'distinct_freelancers' => $distinctFreelancers->count(),
+                'total_value_minor' => $totalMinor,
+                'window_days' => $days,
+            ],
+            $distinctFreelancers->count() <= 2 ? 88 : 66,
+        );
+    }
+
     private function scanLocationAnomalies(): int
     {
         $created = 0;
@@ -1366,6 +1540,23 @@ final class UserActivityPatrolAnomalyService
             });
 
         return $created;
+    }
+
+    public function flagClientAwardCancellation(User $client, QuestOffer $offer, Quest $quest, ?string $reason = null): bool
+    {
+        return $this->upsertFlag(
+            $client,
+            UserActivityAnomalyType::CancellationPattern,
+            "client_award_cancelled:{$offer->id}",
+            "Client cancelled award on “{$quest->title}” before escrow was funded",
+            [
+                'quest_id' => $quest->id,
+                'offer_id' => $offer->id,
+                'freelancer_id' => $offer->freelancer_id,
+                'reason' => $reason,
+            ],
+            48,
+        );
     }
 
     private function isExcludedStaffUser(User $user): bool

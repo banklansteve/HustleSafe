@@ -3,6 +3,7 @@ const DATE_ONLY_COLUMNS = new Set([
     'date_of_birth',
     'scheduled_start_date',
     'estimated_delivery_date',
+    'delivery_deadline',
     'proposed_completion_date',
     'planned_start_date',
     'planned_finish_date',

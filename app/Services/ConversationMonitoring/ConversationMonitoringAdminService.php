@@ -33,6 +33,7 @@ class ConversationMonitoringAdminService
     public function __construct(
         private readonly ConversationMonitoringScanner $scanner,
         private readonly ConversationHealthScoreService $healthScores,
+        private readonly ConversationTriggerHighlightService $highlighter,
     ) {}
 
     public function summary(?User $actor = null): array
@@ -55,6 +56,19 @@ class ConversationMonitoringAdminService
     {
         $perPage = max(10, min(50, (int) $request->query('per_page', 20)));
         $page = max(1, (int) $request->query('page', 1));
+        $statusFilter = (string) $request->query('status', 'needs_action');
+
+        $statusMap = [
+            'needs_action' => ['pending', 'assigned', 'awaiting_super_admin'],
+            'warned' => ['warned'],
+            'dismissed' => ['dismissed'],
+            'resolved' => ['resolved'],
+            'all' => ['pending', 'assigned', 'awaiting_super_admin', 'warned', 'dismissed', 'resolved'],
+        ];
+        $statuses = $statusMap[$statusFilter] ?? $statusMap['needs_action'];
+
+        $retentionMonths = max(1, (int) config('conversation_monitoring.history.retention_months', 24));
+        $retentionCutoff = now()->subMonths($retentionMonths);
 
         $query = ConversationThreadReview::query()
             ->with([
@@ -63,12 +77,17 @@ class ConversationMonitoringAdminService
                 'clarificationThread.client:id,name,email',
                 'clarificationThread.freelancer:id,name,email',
                 'assignedStaff:id,name,email',
+                'reviewedBy:id,name,email',
                 'quest:id,title,reference_code',
             ])
-            ->whereIn('status', ['pending', 'assigned', 'awaiting_super_admin'])
-            ->where('flag_count', '>', 0)
-            ->orderByDesc('priority')
-            ->orderByDesc('last_flagged_at');
+            ->whereIn('status', $statuses)
+            ->where('last_flagged_at', '>=', $retentionCutoff)
+            ->orderByDesc('last_flagged_at')
+            ->orderByDesc('priority');
+
+        if ($statusFilter === 'needs_action') {
+            $query->where('flag_count', '>', 0);
+        }
 
         if ($request->filled('category')) {
             $cat = (string) $request->query('category');
@@ -89,6 +108,14 @@ class ConversationMonitoringAdminService
             'categories' => collect(ConversationFlagCategory::cases())
                 ->map(fn (ConversationFlagCategory $c) => ['value' => $c->value, 'label' => $c->label()])
                 ->all(),
+            'status_filters' => [
+                ['value' => 'needs_action', 'label' => 'Needs action'],
+                ['value' => 'warned', 'label' => 'Warned'],
+                ['value' => 'dismissed', 'label' => 'Dismissed'],
+                ['value' => 'resolved', 'label' => 'Resolved'],
+                ['value' => 'all', 'label' => 'All (24 months)'],
+            ],
+            'retention_months' => $retentionMonths,
         ];
     }
 
@@ -136,8 +163,10 @@ class ConversationMonitoringAdminService
             'thread.freelancer:id,name,email',
             'clarificationThread.client:id,name,email',
             'clarificationThread.freelancer:id,name,email',
+            'clarificationThread:id,client_id,freelancer_id,quest_offer_id',
             'assignedStaff:id,name,email',
-            'quest:id,title,reference_code',
+            'reviewedBy:id,name,email',
+            'quest:id,title,reference_code,slug,uuid',
         ]);
 
         if ($review->isFocusedQa()) {
@@ -156,23 +185,24 @@ class ConversationMonitoringAdminService
             ->where('quest_conversation_thread_id', $review->quest_conversation_thread_id)
             ->orderBy('created_at')
             ->get()
-            ->map(function (QuestConversationMessage $m) use ($flags, $revealFull) {
+            ->map(function (QuestConversationMessage $m) use ($flags, $revealFull, $viewer) {
                 $flag = $flags->get($m->id);
-                $body = $this->adminMessageBody($m->body, $m->body_original, (bool) $m->is_redacted, $m->redaction_label, $revealFull && $flag !== null);
 
-                return [
-                    'id' => $m->id,
-                    'user' => $m->user?->only(['id', 'name']),
-                    'body' => $body,
-                    'is_redacted' => (bool) $m->is_redacted,
-                    'redaction_label' => $m->redaction_label,
-                    'created_at' => $m->created_at?->toIso8601String(),
-                    'is_flagged' => $flag !== null,
-                    'flags' => $this->formatFlagPayload($flag),
-                ];
+                return $this->formatAdminMessage(
+                    $m->id,
+                    $m->user?->only(['id', 'name']),
+                    $m->body,
+                    $m->body_original,
+                    (bool) $m->is_redacted,
+                    $m->redaction_label,
+                    $m->created_at?->toIso8601String(),
+                    $flag,
+                    $revealFull,
+                    $viewer,
+                );
             });
 
-        return $this->detailPayload($review, $messages->all(), $flaggedMessageIds, $viewer);
+        return $this->detailPayload($review, $messages->all(), $flaggedMessageIds, $viewer, $revealFull);
     }
 
     /**
@@ -191,24 +221,26 @@ class ConversationMonitoringAdminService
             ->where('thread_id', $threadId)
             ->orderBy('created_at')
             ->get()
-            ->map(function (ProposalClarificationMessage $m) use ($flags, $revealFull) {
+            ->map(function (ProposalClarificationMessage $m) use ($flags, $revealFull, $viewer) {
                 $flag = $flags->get($m->id);
-                $body = $this->adminMessageBody($m->body, $m->body_original, (bool) $m->is_redacted, $m->redaction_label, $revealFull && $flag !== null);
+                $payload = $this->formatAdminMessage(
+                    $m->id,
+                    $m->author?->only(['id', 'name']),
+                    $m->body,
+                    $m->body_original,
+                    (bool) $m->is_redacted,
+                    $m->redaction_label,
+                    $m->created_at?->toIso8601String(),
+                    $flag,
+                    $revealFull,
+                    $viewer,
+                );
+                $payload['role'] = $m->role;
 
-                return [
-                    'id' => $m->id,
-                    'user' => $m->author?->only(['id', 'name']),
-                    'role' => $m->role,
-                    'body' => $body,
-                    'is_redacted' => (bool) $m->is_redacted,
-                    'redaction_label' => $m->redaction_label,
-                    'created_at' => $m->created_at?->toIso8601String(),
-                    'is_flagged' => $flag !== null,
-                    'flags' => $this->formatFlagPayload($flag),
-                ];
+                return $payload;
             });
 
-        return $this->detailPayload($review, $messages->all(), $flags->keys()->filter()->all(), $viewer);
+        return $this->detailPayload($review, $messages->all(), $flags->keys()->filter()->all(), $viewer, $revealFull);
     }
 
     public function systematicDetail(ConversationSystematicEscalation $escalation): array
@@ -261,6 +293,13 @@ class ConversationMonitoringAdminService
             throw ValidationException::withMessages(['user' => __('No offending user identified for this review.')]);
         }
 
+        $allowedOffenderIds = $this->flaggedSenderIdsForReview($review);
+        if ($allowedOffenderIds !== [] && ! in_array((int) $offenderId, $allowedOffenderIds, true)) {
+            throw ValidationException::withMessages([
+                'user' => __('Only users with flagged messages on this conversation can be warned.'),
+            ]);
+        }
+
         $target = User::query()->findOrFail($offenderId);
         $messageBody = $note;
         $subject = __('Important: HustleSafe messaging policy');
@@ -276,6 +315,19 @@ class ConversationMonitoringAdminService
                 $messageBody = $rendered['body'] ?? $note;
                 $subject = $rendered['subject'] ?? $subject;
             }
+        }
+
+        $recentWarning = ConversationPolicyWarning::query()
+            ->where('user_id', $target->id)
+            ->where('thread_review_id', $review->id)
+            ->where('created_at', '>=', now()->subMinutes(5))
+            ->latest('id')
+            ->first();
+
+        if ($recentWarning !== null) {
+            throw ValidationException::withMessages([
+                'note' => __('A warning was already sent for this user on this review within the last few minutes.'),
+            ]);
         }
 
         $warning = ConversationPolicyWarning::query()->create([
@@ -359,6 +411,12 @@ class ConversationMonitoringAdminService
 
     public function suspendUser(User $actor, User $target, ConversationThreadReview $review, ?string $note = null): void
     {
+        if ($actor->role?->slug !== 'super_admin') {
+            throw ValidationException::withMessages([
+                'user' => __('Only Super Admins can suspend users. Escalate to Super Admin for suspension review.'),
+            ]);
+        }
+
         $this->guardSanctionThreshold($target, 'suspend', $actor);
         $weeks = PlatformSettings::conversationMonitoringSanctions()['suspend_duration_weeks'];
         $endsAt = now()->addWeeks($weeks);
@@ -417,6 +475,50 @@ class ConversationMonitoringAdminService
             'quest_title' => $review->quest?->title,
             'thread_review_id' => $review->id,
         ]);
+    }
+
+    public function deleteReview(ConversationThreadReview $review, User $superAdmin): void
+    {
+        if ($superAdmin->role?->slug !== 'super_admin') {
+            throw ValidationException::withMessages(['delete' => __('Only Super Admins can delete review records.')]);
+        }
+
+        $review->delete();
+
+        $this->audit($superAdmin, 'conversation_monitoring.review_deleted', ConversationThreadReview::class, $review->id, [
+            'quest_title' => $review->quest?->title,
+            'status' => $review->status,
+        ]);
+    }
+
+    /**
+     * @param  list<int>  $reviewIds
+     */
+    public function bulkDeleteReviews(array $reviewIds, User $superAdmin): int
+    {
+        if ($superAdmin->role?->slug !== 'super_admin') {
+            throw ValidationException::withMessages(['delete' => __('Only Super Admins can delete review records.')]);
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', $reviewIds))));
+        if ($ids === []) {
+            return 0;
+        }
+
+        $reviews = ConversationThreadReview::query()->whereIn('id', $ids)->get();
+        $count = 0;
+
+        foreach ($reviews as $review) {
+            $review->delete();
+            $count++;
+            $this->audit($superAdmin, 'conversation_monitoring.review_deleted', ConversationThreadReview::class, $review->id, [
+                'quest_title' => $review->quest?->title,
+                'status' => $review->status,
+                'bulk' => true,
+            ]);
+        }
+
+        return $count;
     }
 
     public function flagForRiskUpdate(ConversationThreadReview $review): void
@@ -532,15 +634,20 @@ class ConversationMonitoringAdminService
             'source' => $review->isFocusedQa() ? 'focused_qa' : 'quest_messages',
             'source_label' => $review->isFocusedQa() ? 'Focused Q&A' : 'Quest messages',
             'status' => $review->status,
+            'status_label' => $this->reviewStatusLabel((string) $review->status),
             'priority' => $review->priority,
             'flag_count' => $review->flag_count,
             'categories' => $categories,
             'first_flagged_at' => $review->first_flagged_at?->toIso8601String(),
             'last_flagged_at' => $review->last_flagged_at?->toIso8601String(),
+            'reviewed_at' => $review->reviewed_at?->toIso8601String(),
+            'reviewed_by' => $review->reviewedBy?->only(['id', 'name', 'email']),
             'quest' => $review->quest ? [
                 'id' => $review->quest->id,
                 'title' => $review->quest->title,
                 'reference' => $review->quest->reference_code,
+                'slug' => $review->quest->slug,
+                'uuid' => $review->quest->uuid,
             ] : null,
             'client' => $client?->only(['id', 'name', 'email']),
             'freelancer' => $freelancer?->only(['id', 'name', 'email']),
@@ -619,7 +726,10 @@ class ConversationMonitoringAdminService
             'category' => $flag->trigger_category?->value ?? $flag->trigger_category,
             'category_label' => ConversationFlagCategory::tryFrom($flag->trigger_category?->value ?? (string) $flag->trigger_category)?->label(),
             'pattern' => $flag->matched_pattern_redacted,
-            'confidence' => (float) $flag->confidence,
+            'confidence' => round((float) $flag->confidence * 100),
+            'pattern_score' => $flag->pattern_score,
+            'context_score' => $flag->context_score,
+            'reasoning' => $flag->detection_reasoning ?? [],
         ]];
     }
 
@@ -628,32 +738,173 @@ class ConversationMonitoringAdminService
      * @param  list<int|string>  $flaggedMessageIds
      * @return array<string, mixed>
      */
-    private function detailPayload(ConversationThreadReview $review, array $messages, array $flaggedMessageIds, ?User $viewer): array
+    private function detailPayload(ConversationThreadReview $review, array $messages, array $flaggedMessageIds, ?User $viewer, bool $revealFull = false): array
     {
+        $isSuperAdmin = $viewer?->role?->slug === 'super_admin';
+        $flaggedMessages = array_values(array_filter($messages, fn (array $message) => (bool) ($message['is_flagged'] ?? false)));
+
         return [
             'review' => $this->reviewRow($review),
             'messages' => $messages,
             'flagged_message_ids' => $flaggedMessageIds,
+            'flagged_messages' => $flaggedMessages,
             'party_actions' => $this->partyActionsForReview($review, $viewer),
             'warning_templates' => $this->warningTemplates(),
-            'assignable_staff' => $viewer?->role?->slug === 'super_admin' ? $this->assignableStaffAdmins() : [],
+            'assignable_staff' => $isSuperAdmin ? $this->assignableStaffAdmins() : [],
             'sanction_thresholds' => PlatformSettings::conversationMonitoringSanctions(),
             'can_dismiss' => true,
             'can_resolve_systematic' => false,
+            'can_reveal_full' => $isSuperAdmin,
+            'reveal_full' => $revealFull && $isSuperAdmin,
+            'conversation_links' => $this->conversationLinksForReview($review),
+            'policy_warnings' => $this->policyWarningsForReview($review),
         ];
     }
 
-    private function adminMessageBody(?string $body, ?string $original, bool $isRedacted, ?string $label, bool $revealFull): string
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function policyWarningsForReview(ConversationThreadReview $review): array
     {
-        if ($revealFull && $original) {
-            return $original;
+        return ConversationPolicyWarning::query()
+            ->with([
+                'user:id,name,email',
+                'issuedBy:id,name',
+                'replies.user:id,name',
+            ])
+            ->where('thread_review_id', $review->id)
+            ->latest('created_at')
+            ->get()
+            ->map(fn (ConversationPolicyWarning $warning) => [
+                'id' => $warning->id,
+                'user' => $warning->user?->only(['id', 'name', 'email']),
+                'issued_by' => $warning->issuedBy?->only(['id', 'name']),
+                'note' => $warning->note,
+                'issued_at' => $warning->created_at?->toIso8601String(),
+                'acknowledged_at' => $warning->acknowledged_at?->toIso8601String(),
+                'replies' => $warning->replies
+                    ->map(fn ($reply) => [
+                        'id' => $reply->id,
+                        'body' => $reply->body,
+                        'user' => $reply->user?->only(['id', 'name']),
+                        'created_at' => $reply->created_at?->toIso8601String(),
+                    ])
+                    ->all(),
+            ])
+            ->all();
+    }
+
+    private function reviewStatusLabel(string $status): string
+    {
+        return match ($status) {
+            'pending' => 'Needs review',
+            'assigned' => 'Assigned',
+            'awaiting_super_admin' => 'Escalated',
+            'warned' => 'User warned',
+            'dismissed' => 'Dismissed',
+            'resolved' => 'Resolved',
+            default => Str::headline(str_replace('_', ' ', $status)),
+        };
+    }
+
+    /**
+     * @return list<array{label: string, href: string, external?: bool}>
+     */
+    private function conversationLinksForReview(ConversationThreadReview $review): array
+    {
+        $links = [];
+        $quest = $review->quest;
+        $routeKey = $quest?->slug ?: $quest?->uuid;
+
+        if ($routeKey) {
+            if ($review->isFocusedQa() && $review->clarificationThread?->quest_offer_id) {
+                $offerUuid = \App\Models\QuestOffer::query()
+                    ->whereKey($review->clarificationThread->quest_offer_id)
+                    ->value('uuid');
+
+                if ($offerUuid) {
+                    $links[] = [
+                        'label' => 'Open focused Q&A thread',
+                        'href' => route('quests.proposals.clarify', [
+                            'quest' => $routeKey,
+                            'offer' => $offerUuid,
+                        ]),
+                        'external' => true,
+                    ];
+                }
+            } elseif ($review->quest_conversation_thread_id) {
+                $links[] = [
+                    'label' => 'Open quest messages',
+                    'href' => route('quests.messages.show', ['quest' => $routeKey]),
+                    'external' => true,
+                ];
+            }
+
+            $links[] = [
+                'label' => 'Open quest listing',
+                'href' => route('quests.show', ['quest' => $routeKey]),
+                'external' => true,
+            ];
         }
 
-        if ($isRedacted) {
-            return $label ?: ($body ?: 'REDACTED — POLICY VIOLATION');
+        if ($review->quest_conversation_thread_id) {
+            $links[] = [
+                'label' => 'Jump to full conversation below',
+                'href' => '#conversation-monitoring-thread',
+                'external' => false,
+            ];
         }
 
-        return $this->scanner->redactForDisplay((string) $body);
+        return $links;
+    }
+
+    /**
+     * @param  array{id?: int, name?: string}|null  $user
+     * @return array<string, mixed>
+     */
+    private function formatAdminMessage(
+        int $id,
+        ?array $user,
+        ?string $body,
+        ?string $bodyOriginal,
+        bool $isRedacted,
+        ?string $redactionLabel,
+        ?string $createdAt,
+        ?ConversationMessageFlag $flag,
+        bool $revealFull,
+        ?User $viewer,
+    ): array {
+        $isSuperReveal = $revealFull && $viewer?->role?->slug === 'super_admin';
+        $originalText = (string) ($bodyOriginal ?: $body);
+        $highlights = [];
+
+        if ($isSuperReveal) {
+            $displayBody = $originalText;
+            $displayMode = 'full';
+            if ($flag) {
+                $highlights = $this->highlighter->spans($originalText, (string) $flag->matched_pattern_redacted);
+            }
+        } elseif ($isRedacted) {
+            $displayBody = $redactionLabel ?: ($body ?: 'REDACTED — POLICY VIOLATION');
+            $displayMode = 'redacted';
+        } else {
+            $displayBody = $this->scanner->redactForDisplay((string) $body);
+            $displayMode = 'partial';
+        }
+
+        return [
+            'id' => $id,
+            'user' => $user,
+            'body' => $displayBody,
+            'display_mode' => $displayMode,
+            'is_redacted' => $isRedacted,
+            'redaction_label' => $redactionLabel,
+            'created_at' => $createdAt,
+            'is_flagged' => $flag !== null,
+            'is_revealed' => $displayMode === 'full',
+            'trigger_highlights' => $highlights,
+            'flags' => $this->formatFlagPayload($flag),
+        ];
     }
 
     /**
@@ -663,6 +914,7 @@ class ConversationMonitoringAdminService
     {
         $thresholds = PlatformSettings::conversationMonitoringSanctions();
         $isSuperAdmin = $viewer?->role?->slug === 'super_admin';
+        $flaggedSenderIds = $this->flaggedSenderIdsForReview($review);
         $out = [];
 
         $review->loadMissing([
@@ -689,16 +941,30 @@ class ConversationMonitoringAdminService
             if (! $user) {
                 continue;
             }
-            $flagCount = $this->flagCountForUser((int) $user->id);
-            $out[] = [
-                'label' => $party['label'],
-                'user' => $user->only(['id', 'name', 'email']),
-                'flag_count' => $flagCount,
-                'can_warn' => true,
-                'can_suspend' => $flagCount >= $thresholds['suspend_threshold'],
-                'can_ban' => $isSuperAdmin && $flagCount >= $thresholds['ban_threshold'],
-                'can_escalate_ban' => ! $isSuperAdmin && $flagCount >= $thresholds['ban_threshold'],
-            ];
+
+            $userId = (int) $user->id;
+            if ($flaggedSenderIds !== [] && ! in_array($userId, $flaggedSenderIds, true)) {
+                continue;
+            }
+
+            $out[] = $this->partyActionPayload(
+                $party['label'],
+                $user,
+                $review,
+                $thresholds,
+                $isSuperAdmin,
+            );
+        }
+
+        foreach ($flaggedSenderIds as $senderId) {
+            if (collect($out)->contains(fn (array $party) => (int) ($party['user']['id'] ?? 0) === $senderId)) {
+                continue;
+            }
+
+            $user = User::query()->find($senderId);
+            if ($user) {
+                $out[] = $this->partyActionPayload('Flagged sender', $user, $review, $thresholds, $isSuperAdmin);
+            }
         }
 
         if ($out === []) {
@@ -706,21 +972,76 @@ class ConversationMonitoringAdminService
             if ($offenderId) {
                 $user = User::query()->find($offenderId);
                 if ($user) {
-                    $flagCount = $this->flagCountForUser((int) $user->id);
-                    $out[] = [
-                        'label' => 'Flagged sender',
-                        'user' => $user->only(['id', 'name', 'email']),
-                        'flag_count' => $flagCount,
-                        'can_warn' => true,
-                        'can_suspend' => $flagCount >= $thresholds['suspend_threshold'],
-                        'can_ban' => $isSuperAdmin && $flagCount >= $thresholds['ban_threshold'],
-                        'can_escalate_ban' => ! $isSuperAdmin && $flagCount >= $thresholds['ban_threshold'],
-                    ];
+                    $label = $this->partyLabelForUser($review, $user) ?? 'Flagged sender';
+                    $out[] = $this->partyActionPayload($label, $user, $review, $thresholds, $isSuperAdmin);
                 }
             }
         }
 
         return $out;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function flaggedSenderIdsForReview(ConversationThreadReview $review): array
+    {
+        return $this->flagsForReview($review)
+            ->whereNotNull('sender_user_id')
+            ->pluck('sender_user_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function reviewFlagCountForUser(ConversationThreadReview $review, int $userId): int
+    {
+        return $this->flagsForReview($review)
+            ->where('sender_user_id', $userId)
+            ->count();
+    }
+
+    private function partyLabelForUser(ConversationThreadReview $review, User $user): ?string
+    {
+        $clientId = (int) ($review->thread?->client_id ?? $review->clarificationThread?->client_id ?? 0);
+        $freelancerId = (int) ($review->thread?->freelancer_id ?? $review->clarificationThread?->freelancer_id ?? 0);
+
+        if ($clientId > 0 && $user->id === $clientId) {
+            return 'Client';
+        }
+
+        if ($freelancerId > 0 && $user->id === $freelancerId) {
+            return 'Freelancer';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, int>  $thresholds
+     * @return array<string, mixed>
+     */
+    private function partyActionPayload(
+        string $label,
+        User $user,
+        ConversationThreadReview $review,
+        array $thresholds,
+        bool $isSuperAdmin,
+    ): array {
+        $userId = (int) $user->id;
+        $globalFlagCount = $this->flagCountForUser($userId);
+
+        return [
+            'label' => $label,
+            'user' => $user->only(['id', 'name', 'email']),
+            'flag_count' => $this->reviewFlagCountForUser($review, $userId),
+            'can_warn' => true,
+            'can_suspend' => $isSuperAdmin && $globalFlagCount >= $thresholds['suspend_threshold'],
+            'can_escalate_suspend' => ! $isSuperAdmin && $globalFlagCount >= $thresholds['suspend_threshold'],
+            'can_ban' => $isSuperAdmin && $globalFlagCount >= $thresholds['ban_threshold'],
+            'can_escalate_ban' => ! $isSuperAdmin && $globalFlagCount >= $thresholds['ban_threshold'],
+        ];
     }
 
     /**

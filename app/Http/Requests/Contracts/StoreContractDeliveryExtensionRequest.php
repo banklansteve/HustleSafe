@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Contracts;
 
+use App\Enums\DeliveryDateAdjustmentType;
 use App\Enums\DeliveryExtensionReasonCategory;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -19,7 +20,8 @@ class StoreContractDeliveryExtensionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'proposed_delivery_date' => ['required', 'date', 'after:today'],
+            'adjustment_type' => ['required', Rule::enum(DeliveryDateAdjustmentType::class)],
+            'proposed_delivery_date' => ['required', 'date'],
             'reason_category' => ['required', Rule::enum(DeliveryExtensionReasonCategory::class)],
             'explanation' => ['required', 'string', 'min:50', 'max:5000'],
             'include_progress' => ['boolean'],

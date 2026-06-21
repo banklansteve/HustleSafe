@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\QuestStatus;
 use App\Models\QuestOffer;
+use App\Support\ProposalMoneyCalculator;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -57,12 +58,14 @@ class FreelancerProposalsController extends Controller
         $routeKey = $quest ? ($quest->slug ?: $quest->uuid) : null;
         $category = $quest?->questCategory;
         $parent = $category?->parent;
-        $quotedMinor = (int) ($offer->quoted_amount_minor ?? 0);
+        $quotedMinor = ProposalMoneyCalculator::quoteTotalMinor($offer->pricing_snapshot ?? []);
         $finish = $offer->planned_finish_date?->toDateString()
             ?? $offer->proposed_completion_date?->toDateString();
 
         return [
             'id' => $offer->id,
+            'reference_code' => $offer->reference_code,
+            'route_key' => $offer->getRouteKey(),
             'status' => $offer->status,
             'pitch_preview' => $offer->pitch !== null && $offer->pitch !== ''
                 ? (string) Str::limit(strip_tags((string) $offer->pitch), 160)
@@ -77,11 +80,11 @@ class FreelancerProposalsController extends Controller
                 && now()->lessThanOrEqualTo($offer->freelancer_edit_deadline_at)
                 && in_array($offer->status, ['submitted', 'shortlisted'], true),
             'timeline_label' => $finish,
-            'show_url' => $routeKey ? route('quests.proposals.show', [$routeKey, $offer->id]) : null,
+            'show_url' => $routeKey ? route('quests.proposals.show', [$routeKey, $offer]) : null,
             'edit_url' => $routeKey && $offer->freelancer_edit_deadline_at !== null
                 && now()->lessThanOrEqualTo($offer->freelancer_edit_deadline_at)
                 && in_array($offer->status, ['submitted', 'shortlisted'], true)
-                ? route('quests.proposals.edit', [$routeKey, $offer->id])
+                ? route('quests.proposals.edit', [$routeKey, $offer])
                 : null,
             'quest' => $quest ? [
                 'id' => $quest->id,

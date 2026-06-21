@@ -26,6 +26,7 @@ use App\Http\Controllers\Admin\AdminQuestReleaseController;
 use App\Http\Controllers\Admin\AdminUserVerificationReviewController;
 use App\Http\Controllers\Shared\UserVerificationDocumentController;
 use App\Http\Controllers\Admin\AdminContractController;
+use App\Http\Controllers\Admin\AdminContractManagementController;
 use App\Http\Controllers\Admin\AdminContractReceiptController;
 use App\Http\Controllers\Admin\AdminLifecycleAnalyticsController;
 use App\Http\Controllers\Admin\AdminPlatformFinancialHealthController;
@@ -195,6 +196,8 @@ Route::get('/api/conversation-monitoring/terms', [AdminConversationMonitoringCon
 Route::post('/api/conversation-monitoring/terms', [AdminConversationMonitoringController::class, 'storeTerm'])->middleware('throttle:30,1')->name('api.conversation-monitoring.terms.store');
 Route::patch('/api/conversation-monitoring/terms/{term}', [AdminConversationMonitoringController::class, 'updateTerm'])->middleware('throttle:30,1')->name('api.conversation-monitoring.terms.update');
 Route::delete('/api/conversation-monitoring/terms/{term}', [AdminConversationMonitoringController::class, 'destroyTerm'])->middleware('throttle:30,1')->name('api.conversation-monitoring.terms.destroy');
+Route::delete('/api/conversation-monitoring/reviews/{review}', [AdminConversationMonitoringController::class, 'destroyReview'])->middleware('throttle:30,1')->name('api.conversation-monitoring.reviews.destroy');
+Route::post('/api/conversation-monitoring/reviews/bulk-delete', [AdminConversationMonitoringController::class, 'bulkDestroyReviews'])->middleware('throttle:20,1')->name('api.conversation-monitoring.reviews.bulk-delete');
 
 Route::get('/compliance', [AdminComplianceCentreController::class, 'index'])->name('compliance.index');
 Route::post('/compliance/requests', [AdminComplianceCentreController::class, 'store'])->middleware('throttle:20,1')->name('compliance.requests.store');
@@ -291,6 +294,9 @@ Route::post('/quests/{quest:id}/release/hold', [AdminQuestReleaseController::cla
 Route::post('/quests/{quest:id}/release/lift-hold', [AdminQuestReleaseController::class, 'liftHold'])
     ->middleware('throttle:30,1')
     ->name('quests.release.lift-hold');
+Route::post('/quests/{quest:id}/release/force-approve', [AdminQuestReleaseController::class, 'forceApproveAndRelease'])
+    ->middleware('throttle:15,1')
+    ->name('quests.release.force-approve');
 Route::get('/contracts/{quest:id}/receipt', [AdminContractReceiptController::class, 'show'])
     ->name('contracts.receipt');
 Route::get('/contracts/view/{contract:reference_code}', [AdminContractController::class, 'show'])
@@ -298,6 +304,39 @@ Route::get('/contracts/view/{contract:reference_code}', [AdminContractController
 Route::post('/contracts/view/{contract:reference_code}/flag', [AdminContractController::class, 'flagForReview'])
     ->middleware('throttle:20,1')
     ->name('contracts.flag');
+
+Route::prefix('contract-management')->name('contract-management.')->group(function (): void {
+    Route::get('/', [AdminContractManagementController::class, 'index'])->name('index');
+    Route::get('/api/listing', [AdminContractManagementController::class, 'listing'])->name('api.listing');
+    Route::get('/api/alerts', [AdminContractManagementController::class, 'alerts'])->name('api.alerts');
+    Route::get('/api/patrol-flags', [AdminContractManagementController::class, 'patrolFlags'])->name('api.patrol-flags');
+    Route::get('/api/quality-audit', [AdminContractManagementController::class, 'qualityAuditSample'])->name('api.quality-audit');
+    Route::get('/api/saved-filters', [AdminContractManagementController::class, 'savedFilters'])->name('api.saved-filters');
+    Route::post('/api/saved-filters', [AdminContractManagementController::class, 'storeSavedFilter'])->middleware('throttle:30,1')->name('api.saved-filters.store');
+    Route::delete('/api/saved-filters/{filter}', [AdminContractManagementController::class, 'destroySavedFilter'])->middleware('throttle:30,1')->name('api.saved-filters.destroy');
+    Route::post('/api/patrol-flags/{flag}/acknowledge', [AdminContractManagementController::class, 'acknowledgePatrolFlag'])->middleware('throttle:60,1')->name('api.patrol-flags.acknowledge');
+    Route::post('/api/patrol-flags/{flag}/dismiss', [AdminContractManagementController::class, 'dismissPatrolFlag'])->middleware('throttle:30,1')->name('api.patrol-flags.dismiss');
+    Route::get('/api/disputes', [AdminContractManagementController::class, 'disputes'])->name('api.disputes');
+    Route::get('/api/contracts/{contract:reference_code}', [AdminContractManagementController::class, 'detail'])->name('api.detail');
+    Route::get('/export/csv', [AdminContractManagementController::class, 'exportCsv'])->name('export.csv');
+    Route::get('/export/pdf', [AdminContractManagementController::class, 'exportPdf'])->name('export.pdf');
+    Route::post('/bulk/release', [AdminContractManagementController::class, 'bulkRelease'])->middleware('throttle:10,1')->name('bulk.release');
+    Route::post('/bulk/hold-escrow', [AdminContractManagementController::class, 'bulkHoldEscrow'])->middleware('throttle:10,1')->name('bulk.hold-escrow');
+    Route::post('/reconcile-escrow', [AdminContractManagementController::class, 'reconcileEscrow'])->middleware('throttle:5,1')->name('reconcile-escrow');
+    Route::patch('/settings', [AdminContractManagementController::class, 'updateSettings'])->middleware('throttle:10,1')->name('settings.update');
+    Route::post('/contracts/{contract:reference_code}/assign', [AdminContractManagementController::class, 'assign'])->middleware('throttle:60,1')->name('contracts.assign');
+    Route::post('/contracts/{contract:reference_code}/note', [AdminContractManagementController::class, 'note'])->middleware('throttle:60,1')->name('contracts.note');
+    Route::post('/contracts/{contract:reference_code}/flag', [AdminContractManagementController::class, 'flag'])->middleware('throttle:40,1')->name('contracts.flag');
+    Route::post('/contracts/{contract:reference_code}/quality-review', [AdminContractManagementController::class, 'qualityReview'])->middleware('throttle:40,1')->name('contracts.quality-review');
+    Route::post('/contracts/{contract:reference_code}/acknowledge-alert', [AdminContractManagementController::class, 'acknowledgeAlert'])->middleware('throttle:60,1')->name('contracts.acknowledge-alert');
+    Route::post('/contracts/{contract:reference_code}/hold-escrow', [AdminContractManagementController::class, 'holdEscrow'])->middleware('throttle:20,1')->name('contracts.hold-escrow');
+    Route::post('/contracts/{contract:reference_code}/lift-escrow-hold', [AdminContractManagementController::class, 'liftEscrowHold'])->middleware('throttle:20,1')->name('contracts.lift-escrow-hold');
+    Route::post('/contracts/{contract:reference_code}/force-approve-delivery', [AdminContractManagementController::class, 'forceApproveDelivery'])->middleware('throttle:20,1')->name('contracts.force-approve-delivery');
+    Route::post('/contracts/{contract:reference_code}/force-reject-delivery', [AdminContractManagementController::class, 'forceRejectDelivery'])->middleware('throttle:20,1')->name('contracts.force-reject-delivery');
+    Route::post('/contracts/{contract:reference_code}/release-payment', [AdminContractManagementController::class, 'releasePayment'])->middleware('throttle:20,1')->name('contracts.release-payment');
+    Route::post('/contracts/{contract:reference_code}/partial-release', [AdminContractManagementController::class, 'partialRelease'])->middleware('throttle:20,1')->name('contracts.partial-release');
+    Route::post('/contracts/{contract:reference_code}/terminate', [AdminContractManagementController::class, 'terminate'])->middleware('throttle:20,1')->name('contracts.terminate');
+});
 
 Route::get('/kyc', [AdminKycCentreController::class, 'index'])->name('kyc.index');
 Route::get('/kyc/cases/{case}', [AdminKycCentreController::class, 'show'])->name('kyc.cases.show');

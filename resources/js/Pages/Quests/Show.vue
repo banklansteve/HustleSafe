@@ -180,10 +180,16 @@
                                 {{ quest.saves_count }} saves
                             </span>
                             <span
-                                v-if="quest.delivery_deadline"
+                                v-if="completionSchedule?.hard_deadline_date"
+                                class="rounded-full bg-rose-500/20 px-3 py-1 text-white ring-1 ring-rose-200/30"
+                            >
+                                Deadline {{ completionSchedule.hard_deadline_date }}
+                            </span>
+                            <span
+                                v-else-if="completionSchedule?.planned_finish_date"
                                 class="rounded-full bg-white/10 px-3 py-1 text-white/95 ring-1 ring-white/15"
                             >
-                                Deadline {{ quest.delivery_deadline }}
+                                Target finish {{ completionSchedule.planned_finish_date }}
                             </span>
                         </div>
                         <p
@@ -519,6 +525,9 @@
                                     <dd class="mt-1 text-sm font-bold text-slate-900">
                                         {{ formatWhen(quest.due_at) }}
                                     </dd>
+                                    <p v-if="completionSchedule?.summary" class="mt-1 text-[11px] font-semibold text-slate-500">
+                                        {{ completionSchedule.summary }}
+                                    </p>
                                 </div>
                                 <div v-if="quest.project_type" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
                                     <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
@@ -571,13 +580,23 @@
                                         {{ quest.max_offers === 0 ? 'Unlimited' : quest.max_offers }}
                                     </dd>
                                 </div>
-                                <div v-if="quest.estimated_delivery_date" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
+                                <div v-if="completionSchedule?.planned_finish_date" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
                                     <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
-                                        Target delivery
+                                        Planned finish
                                     </dt>
                                     <dd class="mt-1 text-sm font-bold text-slate-900">
-                                        {{ quest.estimated_delivery_date }}
+                                        {{ completionSchedule.planned_finish_date }}
                                     </dd>
+                                    <p class="mt-1 text-[11px] font-semibold text-slate-500">Client target — flexible planning date.</p>
+                                </div>
+                                <div v-if="completionSchedule?.hard_deadline_date" class="rounded-lg bg-rose-50/80 p-3 ring-1 ring-rose-100">
+                                    <dt class="text-[10px] font-black uppercase tracking-wide text-rose-700">
+                                        Delivery deadline
+                                    </dt>
+                                    <dd class="mt-1 text-sm font-bold text-rose-950">
+                                        {{ completionSchedule.hard_deadline_date }}
+                                    </dd>
+                                    <p class="mt-1 text-[11px] font-semibold text-rose-800">Hard cutoff for finished work.</p>
                                 </div>
                                 <div v-if="quest.estimated_hours" class="rounded-lg bg-slate-50/90 p-3 ring-1 ring-slate-100">
                                     <dt class="text-[10px] font-black uppercase tracking-wide text-slate-500">
@@ -653,7 +672,7 @@
                 </section>
 
                 <QuestBoostUpsellPanel
-                    v-if="is_quest_owner && boost_upsell && (boost_upsell.can_purchase || boost_upsell.has_active_boost)"
+                    v-if="is_quest_owner && boost_upsell && (boost_upsell.can_purchase || boost_upsell.has_active_boost || boost_upsell.has_scheduled_follow_on)"
                     :upsell="boost_upsell"
                     :quest="quest"
                     :checkout-url="route('quests.boost.checkout', quest.route_key)"
@@ -948,7 +967,10 @@
                                         </p>
                                         <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-violet-900">
                                             <span>{{ p.status.replace(/_/g, ' ') }}</span>
-                                            <span class="font-bold text-slate-600">{{ formatBudget(p.quoted_amount_minor) }}</span>
+                                            <span class="font-bold text-slate-600">{{ formatBudget(p.escrow_total_minor ?? p.quoted_amount_minor) }}</span>
+                                            <span v-if="p.escrow_total_minor && p.escrow_total_minor !== p.quoted_amount_minor" class="block text-[10px] font-semibold text-slate-500">
+                                                Quote {{ formatBudget(p.quoted_amount_minor) }}
+                                            </span>
                                             <span
                                                 v-if="p.clarification?.action_required"
                                                 class="rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-black text-rose-800 ring-1 ring-rose-200"
@@ -1281,13 +1303,25 @@
                     <button
                         type="button"
                         class="mt-4 w-full rounded-full bg-rose-600 py-3 text-sm font-black text-white shadow-md hover:bg-rose-700"
-                        @click="confirmDelete"
+                        @click="openDeleteModal"
                     >
                         Delete quest
                     </button>
                 </section>
             </aside>
         </div>
+
+        <AppConfirmModal
+            :show="deleteModalOpen"
+            :busy="deleteBusy"
+            title="Delete this quest?"
+            description="This permanently removes the quest and all uploaded files. This cannot be undone."
+            confirm-label="Delete quest"
+            @cancel="closeDeleteModal"
+            @confirm="performDelete"
+        />
+
+        <OperationsToastHost />
     </AppShell>
 </template>
 
@@ -1307,11 +1341,15 @@ import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
 import ProposalClarificationInboxPanel from '@/Components/Quests/ProposalClarificationInboxPanel.vue';
+import AppConfirmModal from '@/Components/AppConfirmModal.vue';
 import AppShell from '@/Layouts/AppShell.vue';
+import OperationsToastHost from '@/Pages/Operations/Components/OperationsToastHost.vue';
+import { useOperationsToast } from '@/composables/useOperationsToast';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { ChatBubbleLeftRightIcon } from '@heroicons/vue/24/outline';
 import axios from 'axios';
+import { completionScheduleSummary, questCompletionSchedule } from '@/utils/questCompletionSchedule';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -1353,6 +1391,7 @@ const props = defineProps({
 });
 
 const page = usePage();
+const { toast } = useOperationsToast();
 const qualityGateIssues = computed(() => {
     const flash = page.props.flash?.quality_gate_issues;
     if (Array.isArray(flash) && flash.length) {
@@ -1368,6 +1407,8 @@ const localBookmarked = ref(props.is_bookmarked);
 const bookmarkBusy = ref(false);
 const showExtendForm = ref(false);
 const repostBusy = ref(false);
+const deleteModalOpen = ref(false);
+const deleteBusy = ref(false);
 
 const extendMaxDays = computed(() => props.quest?.proposal_deadline_bounds?.extension_max ?? 14);
 
@@ -1381,7 +1422,7 @@ const allQuestsHref = computed(() => {
         return route('quests.index');
     }
     if (isFreelancer.value) {
-        return route('quests.explore');
+        return route('quests.browse');
     }
 
     return route('quests.explore');
@@ -1533,6 +1574,8 @@ watch(
     { immediate: true },
 );
 
+const completionSchedule = computed(() => questCompletionSchedule(props.quest));
+
 const questListingMeta = computed(() => {
     const lines = [];
     if (props.quest.created_at) {
@@ -1543,8 +1586,11 @@ const questListingMeta = computed(() => {
     }
     const offers = props.offers_count_display ?? props.quest.offers_count ?? 0;
     lines.push(`${offers} ${offers === 1 ? 'proposal' : 'proposals'} received`);
-    if (!props.quest.delivery_deadline) {
-        lines.push('Deadline not specified');
+    const scheduleSummary = completionScheduleSummary(completionSchedule.value);
+    if (scheduleSummary) {
+        lines.push(scheduleSummary);
+    } else {
+        lines.push('No client finish date specified');
     }
 
     return lines;
@@ -2114,10 +2160,31 @@ function goToProposalComposer() {
     router.visit(route('quests.proposals.create', questRouteKey.value));
 }
 
-function confirmDelete() {
-    if (!window.confirm('Permanently delete this quest and all files?')) {
+function openDeleteModal() {
+    deleteModalOpen.value = true;
+}
+
+function closeDeleteModal() {
+    if (deleteBusy.value) {
         return;
     }
-    router.delete(route('quests.destroy', questRouteKey.value));
+
+    deleteModalOpen.value = false;
+}
+
+function performDelete() {
+    deleteBusy.value = true;
+    router.delete(route('quests.destroy', questRouteKey.value), {
+        onSuccess: () => {
+            toast('Quest removed.');
+        },
+        onError: () => {
+            toast('Could not delete this quest. Try again or contact support.', 'error');
+        },
+        onFinish: () => {
+            deleteBusy.value = false;
+            deleteModalOpen.value = false;
+        },
+    });
 }
 </script>

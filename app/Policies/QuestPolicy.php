@@ -113,4 +113,10 @@ class QuestPolicy
     {
         return app(QuestListingExpiryService::class)->canRepost($quest, $user);
     }
+
+    public function manageContractRenewal(User $user, Quest $quest): bool
+    {
+        return (int) $quest->client_id === (int) $user->id
+            && app(\App\Services\Quest\QuestRecurringEngagementService::class)->isRecurring($quest);
+    }
 }

@@ -1,5 +1,5 @@
 <template>
-    <AdminShell title="Conversation monitoring" subtitle="Scanner rules, systematic escalations, and full-text review for Super Admins.">
+    <AdminShell title="Trust review" subtitle="Scanner rules, systematic escalations, and full-text review for Super Admins.">
         <ConversationMonitoringWorkspace :summary="summary" :is-super-admin="true" route-prefix="admin" :open-review-id="openReviewId" />
     </AdminShell>
 </template>

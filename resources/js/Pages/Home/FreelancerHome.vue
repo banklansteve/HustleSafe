@@ -171,10 +171,10 @@
                                 </div>
                             </div>
                             <Link
-                                :href="route('quests.explore')"
+                                :href="route('quests.browse')"
                                 class="inline-flex items-center rounded-lg bg-primary-700 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-primary-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 sm:text-sm"
                             >
-                                Explore &amp; send proposals
+                                Find quests
                             </Link>
                         </div>
                         <ul class="mt-5 space-y-3">

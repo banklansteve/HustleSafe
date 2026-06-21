@@ -1,6 +1,6 @@
 <template>
     <AppShell>
-        <Head title="Explore quests" />
+        <Head title="Matched quests · HustleSafe" />
 
         <div
             v-if="workspace.enabled && workspacePanelItems.length"
@@ -39,53 +39,67 @@
         </div>
 
         <div class="rounded-[2rem] bg-gradient-to-br from-primary-800 via-slate-900 to-slate-950 px-6 py-10 text-white shadow-xl ring-1 ring-white/10 sm:px-10">
-            <p class="text-xs font-bold uppercase tracking-[0.25em] text-teal-200/90">
-                {{ explore_mode === 'client' ? 'Market pulse' : 'For you' }}
-            </p>
-            <h1 class="font-display mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-                {{ explore_mode === 'client' ? 'Open quests on the marketplace' : 'Matched open quests' }}
-            </h1>
-            <p class="mt-4 max-w-2xl text-base font-semibold leading-relaxed text-teal-50">
-                <template v-if="explore_mode === 'client'">
-                    Browse live public briefs for inspiration on how sponsors scope work, budgets, and timelines — without leaving HustleSafe.
-                </template>
-                <template v-else>
-                    Sorted by match score: location first, then skills fit, budget alignment, tier quality, and recent activity.
-                    Jobs in your LGA appear before wider state and national listings.
-                </template>
-            </p>
+            <div class="max-w-2xl space-y-5">
+                <QuestDiscoveryTabs v-if="explore_mode !== 'client'" />
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-[0.25em] text-teal-200/90">
+                        {{ explore_mode === 'client' ? 'Market pulse' : 'Personalised' }}
+                    </p>
+                    <h1 class="font-display mt-3 text-3xl font-black tracking-tight sm:text-4xl">
+                        {{ explore_mode === 'client' ? 'Open quests on the marketplace' : 'Matched quests' }}
+                    </h1>
+                    <p class="mt-4 max-w-2xl text-base font-semibold leading-relaxed text-teal-50">
+                        <template v-if="explore_mode === 'client'">
+                            Browse live public briefs for inspiration on how sponsors scope work, budgets, and timelines — without leaving HustleSafe.
+                        </template>
+                        <template v-else>
+                            Sorted by match score: location first, then skills fit, budget alignment, tier quality, and recent activity.
+                            Jobs in your LGA appear before wider state and national listings.
+                        </template>
+                    </p>
+                </div>
+            </div>
         </div>
 
-        <div class="mt-10 space-y-5">
+        <div class="mt-10">
             <ListSearchSortBar
                 v-if="rawQuests.length"
                 v-model:search="search"
                 v-model:sort="sortKey"
-                class="mb-2"
+                class="mb-6"
                 placeholder="Search title, category, location, match…"
                 :sort-options="sortOptions"
             />
 
             <div
-                v-for="q in visibleQuests"
-                :key="q.slug || q.uuid"
-                class="overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-sm ring-1 ring-slate-100 transition hover:border-primary-200 hover:shadow-md"
+                v-if="visibleQuests.length"
+                class="grid gap-5 sm:grid-cols-2"
             >
-                <div class="relative aspect-[21/9] w-full overflow-hidden bg-slate-100 sm:aspect-[24/9]">
-                    <img :src="q.cover_url" alt="" class="h-full w-full object-cover" loading="lazy" />
-                </div>
-                <div class="space-y-4 p-6 sm:p-8">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div class="min-w-0 flex-1">
-                        <p class="font-display text-lg font-bold text-slate-900 sm:text-xl">
-                            {{ q.title }}
-                        </p>
+                <article
+                    v-for="q in visibleQuests"
+                    :key="q.id"
+                    class="group flex flex-col overflow-hidden rounded-[1.35rem] border border-slate-100 bg-white shadow-sm ring-1 ring-slate-100 transition-[border-color,box-shadow] duration-200 hover:border-primary-200 hover:shadow-md"
+                >
+                    <div class="relative aspect-[21/9] w-full overflow-hidden bg-slate-100 sm:aspect-[24/9]">
+                        <img
+                            :src="q.cover_url"
+                            alt=""
+                            class="h-full w-full object-cover"
+                            loading="lazy"
+                        />
                         <span
                             v-if="q.is_boosted"
-                            class="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-amber-900 ring-1 ring-amber-200"
+                            class="absolute left-3 top-3 inline-flex rounded-full bg-amber-100/95 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-900 ring-1 ring-amber-200 backdrop-blur-sm"
                         >
                             Boosted
                         </span>
+                    </div>
+                    <div class="flex flex-1 flex-col space-y-4 p-5 sm:p-6">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0 flex-1">
+                        <p class="font-display line-clamp-2 text-base font-bold leading-snug text-slate-900 sm:text-lg">
+                            {{ q.title }}
+                        </p>
                         <div class="mt-3 flex flex-wrap gap-2 text-sm font-semibold text-slate-600">
                             <span
                                 v-if="q.parent_category || q.category"
@@ -101,36 +115,36 @@
                                 Budget {{ formatBudget(q.budget_minor) }}
                             </span>
                         </div>
-                        <ul class="mt-4 space-y-1.5">
+                        <ul class="mt-3 space-y-1">
                             <li
-                                v-for="(r, i) in q.reasons"
+                                v-for="(r, i) in q.reasons.slice(0, 3)"
                                 :key="i"
-                                class="flex gap-2 text-sm font-medium text-slate-600"
+                                class="flex gap-2 text-xs font-medium text-slate-600 sm:text-sm"
                             >
                                 <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-teal-500" />
-                                <span>{{ r }}</span>
+                                <span class="line-clamp-2">{{ r }}</span>
                             </li>
                         </ul>
                     </div>
                     <div
-                        class="group relative flex h-24 w-24 shrink-0 flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-primary-600 to-teal-600 text-center shadow-lg shadow-primary-900/25 ring-1 ring-white/20"
+                        class="group/match relative flex h-[4.5rem] w-[4.5rem] shrink-0 flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-primary-600 to-teal-600 text-center shadow-lg shadow-primary-900/25 ring-1 ring-white/20 sm:h-20 sm:w-20"
                         :title="matchBreakdownTitle(q)"
                     >
-                        <p class="text-xs font-bold uppercase tracking-wide text-white/80">
+                        <p class="text-[10px] font-bold uppercase tracking-wide text-white/80">
                             Match
                         </p>
-                        <p class="font-display text-2xl font-black text-white">
+                        <p class="font-display text-xl font-black text-white sm:text-2xl">
                             {{ q.match_score }}
                         </p>
                         <p
                             v-if="q.match_quality?.label"
-                            class="mt-1 max-w-[5.5rem] text-center text-[9px] font-bold leading-tight text-white/90"
+                            class="mt-0.5 max-w-[4.5rem] text-center text-[8px] font-bold leading-tight text-white/90 sm:max-w-[5rem] sm:text-[9px]"
                         >
                             {{ matchStars(q.match_quality?.stars) }}
-                            <span class="block">{{ q.match_quality.label }}</span>
+                            <span class="block truncate">{{ q.match_quality.label }}</span>
                         </p>
                         <div
-                            class="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-56 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs font-semibold text-slate-700 shadow-xl group-hover:block sm:group-focus-within:block"
+                            class="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-56 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs font-semibold text-slate-700 shadow-xl group-hover/match:block sm:group-focus-within/match:block"
                             role="tooltip"
                         >
                             <p class="font-black text-slate-900">{{ q.match_quality?.label || 'Match breakdown' }}</p>
@@ -142,14 +156,14 @@
                         </div>
                     </div>
                 </div>
-                <p class="mt-4 text-xs font-semibold text-slate-500">
+                <p class="text-xs font-semibold text-slate-500">
                     Posted {{ formatWhen(q.posted_at) }}
                 </p>
-                <div class="mt-5 flex flex-col gap-3">
-                    <div class="flex flex-wrap items-center gap-3">
+                <div class="mt-auto flex flex-col gap-3 pt-1">
+                    <div class="flex flex-wrap items-center gap-2.5">
                     <Link
                         :href="route('quests.show', q.slug || q.uuid)"
-                        class="inline-flex items-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-800 shadow-sm hover:border-primary-200 hover:bg-primary-50"
+                        class="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-800 shadow-sm hover:border-primary-200 hover:bg-primary-50"
                     >
                         View quest
                     </Link>
@@ -157,7 +171,7 @@
                         <Link
                             v-if="workspace.can_submit_proposals && q.category_match && q.budget_within_limit"
                             :href="route('quests.proposals.create', q.slug || q.uuid)"
-                            class="inline-flex items-center rounded-full bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-primary-900/20 hover:bg-primary-700"
+                            class="inline-flex items-center rounded-full bg-primary-600 px-4 py-2 text-sm font-bold text-white shadow-md shadow-primary-900/20 hover:bg-primary-700"
                         >
                             Send proposal
                         </Link>
@@ -165,7 +179,7 @@
                             v-else
                             type="button"
                             disabled
-                            class="inline-flex cursor-not-allowed items-center rounded-full bg-slate-200 px-5 py-2.5 text-sm font-bold text-slate-500 opacity-70"
+                            class="inline-flex cursor-not-allowed items-center rounded-full bg-slate-200 px-4 py-2 text-sm font-bold text-slate-500 opacity-70"
                         >
                             Send proposal
                         </button>
@@ -189,7 +203,7 @@
                     </div>
                     <div
                         v-if="explore_mode === 'freelancer' && hasExistingProposal(q)"
-                        class="w-full rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50 via-white to-teal-50/60 p-4 shadow-sm ring-1 ring-emerald-100 sm:p-5"
+                        class="w-full rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50 via-white to-teal-50/60 p-3.5 shadow-sm ring-1 ring-emerald-100 sm:p-4"
                         role="status"
                     >
                         <div class="flex flex-wrap items-start justify-between gap-3">
@@ -224,7 +238,8 @@
                         </Link>
                     </div>
                 </div>
-                </div>
+                    </div>
+                </article>
             </div>
 
             <p
@@ -255,6 +270,7 @@
 
 <script setup>
 import ListSearchSortBar from '@/Components/Ui/ListSearchSortBar.vue';
+import QuestDiscoveryTabs from '@/Components/Quests/QuestDiscoveryTabs.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
@@ -309,6 +325,16 @@ watch([search, sortKey], () => {
 const sortedFiltered = computed(() => {
     const q = search.value.trim().toLowerCase();
     let rows = rawQuests.value.slice();
+    const seen = new Set();
+    rows = rows.filter((row) => {
+        const id = Number(row?.id);
+        if (!Number.isFinite(id) || id < 1 || seen.has(id)) {
+            return false;
+        }
+        seen.add(id);
+
+        return true;
+    });
     if (q) {
         rows = rows.filter((row) => {
             const blob = [

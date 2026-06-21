@@ -128,10 +128,18 @@ class HandleInertiaRequests extends Middleware
 
                 return AdminManagementRegistry::sidebarNavigation();
             },
-            'platform_fee_percent' => static function () {
+            'platform_fee_percent' => static function () use ($request) {
+                if ($request->user()?->role?->slug === 'freelancer') {
+                    return null;
+                }
+
                 return \App\Support\PlatformSettings::platformFeePercent();
             },
-            'platform_fee_disclosure' => static function () {
+            'platform_fee_disclosure' => static function () use ($request) {
+                if ($request->user()?->role?->slug === 'freelancer') {
+                    return null;
+                }
+
                 return \App\Support\PlatformFeeDisclosure::toArray();
             },
             'announcement_banner' => static function () use ($request) {

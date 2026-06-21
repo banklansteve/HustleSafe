@@ -3,8 +3,6 @@
  * so the wizard stays offline until final Inertia submit.
  */
 
-import { htmlToPlainText } from '@/utils/htmlPlainText';
-
 function todayYmdLocal() {
     const d = new Date();
     const y = d.getFullYear();
@@ -52,10 +50,10 @@ export function validateQuestCreateStep(step, deps) {
         } else if (String(form.title).length > 200) {
             errors.title = 'Title must be 200 characters or fewer.';
         }
-        const descPlain = htmlToPlainText(form.description);
+        const descPlain = String(form.description || '').trim();
         if (!descPlain) {
             errors.description = 'Describe the quest so freelancers understand the brief.';
-        } else if (String(form.description || '').length > 50000) {
+        } else if (descPlain.length > 50000) {
             errors.description = 'Description is too long.';
         }
     }
@@ -70,8 +68,11 @@ export function validateQuestCreateStep(step, deps) {
         if (fieldProfile.show_availability && !form.availability_need) {
             errors.availability_need = 'Select an availability expectation.';
         }
-        if (form.traffic_source && String(form.traffic_source).length > 128) {
-            errors.traffic_source = 'Traffic source is too long.';
+        if (form.traffic_source_key === 'other' && String(form.traffic_source_other || '').length > 128) {
+            errors.traffic_source = 'Please keep your answer under 128 characters.';
+        }
+        if (form.traffic_source_key === 'other' && !String(form.traffic_source_other || '').trim()) {
+            errors.traffic_source = 'Tell us where you heard about us.';
         }
     }
 
@@ -104,7 +105,14 @@ export function validateQuestCreateStep(step, deps) {
         }
         const edd = String(form.estimated_delivery_date || '').trim();
         if (edd && edd < todayYmdLocal()) {
-            errors.estimated_delivery_date = 'Delivery date must be today or later.';
+            errors.estimated_delivery_date = 'Planned finish must be today or later.';
+        }
+        const ddl = String(form.delivery_deadline || '').trim();
+        if (ddl && ddl < todayYmdLocal()) {
+            errors.delivery_deadline = 'Delivery deadline must be today or later.';
+        }
+        if (ddl && edd && ddl < edd) {
+            errors.delivery_deadline = 'Delivery deadline must be on or after the planned finish date.';
         }
         const b = Number(form.budget_amount_minor);
         const maxB = Number(maxBudgetMinor);
@@ -149,6 +157,9 @@ export function validateQuestCreateStep(step, deps) {
         if (form.visibility === 'invite_only' && (!Array.isArray(form.tagged_freelancer_ids) || form.tagged_freelancer_ids.length < 1)) {
             errors.tagged_freelancer_ids = 'Invite-only quests need at least one tagged freelancer.';
         }
+        if (form.engagement_mode === 'recurring_installment' && !form.contract_renewal_preference) {
+            errors.contract_renewal_preference = 'Choose what should happen when the contract ends.';
+        }
     }
 
     return { ok: Object.keys(errors).length === 0, errors };
@@ -170,6 +181,7 @@ export const QUEST_CREATE_FIELD_STEP = {
     scheduled_start_date: 4,
     estimated_completion_days: 4,
     estimated_delivery_date: 4,
+    delivery_deadline: 4,
     budget_amount_minor: 4,
     project_type: 5,
     estimated_hours: 5,
@@ -181,6 +193,7 @@ export const QUEST_CREATE_FIELD_STEP = {
     auto_listing_expiry_days: 6,
     max_offers: 6,
     tagged_freelancer_ids: 6,
+    contract_renewal_preference: 6,
     files: 6,
     accepted_terms: 7,
     publish_now: 7,

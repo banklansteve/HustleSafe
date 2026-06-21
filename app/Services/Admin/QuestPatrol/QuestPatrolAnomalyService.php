@@ -6,11 +6,15 @@ use App\Enums\QuestPatrolFlagStatus;
 use App\Enums\QuestPatrolFlagType;
 use App\Enums\QuestPatrolSubjectType;
 use App\Enums\QuestStatus;
+use App\Models\LoginEvent;
 use App\Models\Quest;
 use App\Models\QuestBoost;
+use App\Models\QuestContract;
+use App\Models\QuestConversationThread;
 use App\Models\QuestOffer;
 use App\Models\QuestPatrolFlag;
 use App\Models\User;
+use App\Models\UserIdentityDocument;
 use App\Services\Verification\VerificationEngineService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -51,6 +55,34 @@ final class QuestPatrolAnomalyService
             ->each(function (QuestOffer $proposal) use (&$created): void {
                 $created += $this->scanProposal($proposal);
             });
+
+        $launderingDays = (int) config('quest_patrol.laundering_scan_days', 45);
+        Quest::query()
+            ->whereNotNull('escrow_funded_at')
+            ->whereNotNull('funds_released_at')
+            ->where('funds_released_at', '>=', now()->subDays($launderingDays))
+            ->whereNotNull('freelancer_id')
+            ->with(['client', 'freelancer'])
+            ->orderByDesc('id')
+            ->limit(500)
+            ->each(function (Quest $quest) use (&$created): void {
+                $created += $this->scanReleasedQuest($quest);
+            });
+
+        return $created;
+    }
+
+    public function scanReleasedQuest(Quest $quest): int
+    {
+        if (! $this->flagsAvailable()) {
+            return 0;
+        }
+
+        $quest->loadMissing(['client', 'freelancer']);
+        $created = 0;
+        $created += $this->flagSuspiciousEscrowRelease($quest) ? 1 : 0;
+        $created += $this->flagRepeatCounterpartyTransactions($quest) ? 1 : 0;
+        $created += $this->flagCircularPayment($quest) ? 1 : 0;
 
         return $created;
     }
@@ -516,6 +548,194 @@ final class QuestPatrolAnomalyService
     }
 
     /**
+     * Escrow funded, then completed/released with little or no real work done
+     * (no deliverables and near-silent conversation). Classic "round-trip" of
+     * funds to a freelancer or accomplice without a genuine task being performed.
+     */
+    private function flagSuspiciousEscrowRelease(Quest $quest): bool
+    {
+        if (! $quest->escrow_funded_at || ! $quest->funds_released_at || ! $quest->freelancer_id) {
+            return false;
+        }
+
+        $engagement = $this->escrowQuestEngagement($quest);
+        $maxMessages = (int) config('quest_patrol.unworked_release_max_messages', 4);
+
+        $noRealWork = $engagement['deliverables'] === 0 && $engagement['messages'] <= $maxMessages;
+        if (! $noRealWork) {
+            return false;
+        }
+
+        $linked = $this->partiesAreLinked((int) $quest->client_id, (int) $quest->freelancer_id);
+        $fundedToReleasedHours = $quest->escrow_funded_at->diffInHours($quest->funds_released_at);
+
+        return $this->upsertFlag(
+            QuestPatrolSubjectType::Quest,
+            $quest->id,
+            QuestPatrolFlagType::SuspiciousEscrowRelease,
+            "quest:suspicious_release:{$quest->id}",
+            [
+                'messages_exchanged' => $engagement['messages'],
+                'deliverables_submitted' => $engagement['deliverables'],
+                'funded_to_released_hours' => $fundedToReleasedHours,
+                'amount_minor' => (int) ($quest->paid_out_minor ?: $quest->budget_amount_minor),
+                'parties_linked' => $linked['linked'],
+                'link_reason' => $linked['reason'],
+            ],
+            $linked['linked'] ? 'high' : 'medium',
+        );
+    }
+
+    /**
+     * The same client and freelancer have repeatedly transacted (funded +
+     * released) within a short window — possible self-dealing / structuring.
+     */
+    private function flagRepeatCounterpartyTransactions(Quest $quest): bool
+    {
+        if (! $quest->client_id || ! $quest->freelancer_id) {
+            return false;
+        }
+
+        $days = (int) config('quest_patrol.repeat_counterparty_window_days', 60);
+        $threshold = (int) config('quest_patrol.repeat_counterparty_threshold', 3);
+
+        $pairCount = Quest::query()
+            ->where('client_id', $quest->client_id)
+            ->where('freelancer_id', $quest->freelancer_id)
+            ->whereNotNull('escrow_funded_at')
+            ->where('escrow_funded_at', '>=', now()->subDays($days))
+            ->count();
+
+        if ($pairCount < $threshold) {
+            return false;
+        }
+
+        $totalMinor = (int) Quest::query()
+            ->where('client_id', $quest->client_id)
+            ->where('freelancer_id', $quest->freelancer_id)
+            ->whereNotNull('escrow_funded_at')
+            ->where('escrow_funded_at', '>=', now()->subDays($days))
+            ->sum('paid_out_minor');
+
+        return $this->upsertFlag(
+            QuestPatrolSubjectType::Quest,
+            $quest->id,
+            QuestPatrolFlagType::RepeatCounterpartyTransactions,
+            "quest:repeat_counterparty:{$quest->client_id}:{$quest->freelancer_id}:{$days}",
+            [
+                'client_id' => (int) $quest->client_id,
+                'freelancer_id' => (int) $quest->freelancer_id,
+                'transactions' => $pairCount,
+                'window_days' => $days,
+                'total_value_minor' => $totalMinor,
+            ],
+            $pairCount >= ($threshold * 2) ? 'high' : 'medium',
+        );
+    }
+
+    /**
+     * Funds flow in both directions between two accounts (A pays B and B pays A),
+     * which is a strong layering / money-laundering signal.
+     */
+    private function flagCircularPayment(Quest $quest): bool
+    {
+        if (! $quest->client_id || ! $quest->freelancer_id) {
+            return false;
+        }
+
+        $days = (int) config('quest_patrol.circular_payment_window_days', 90);
+
+        $reverseCount = Quest::query()
+            ->where('client_id', $quest->freelancer_id)
+            ->where('freelancer_id', $quest->client_id)
+            ->whereNotNull('escrow_funded_at')
+            ->where('escrow_funded_at', '>=', now()->subDays($days))
+            ->count();
+
+        if ($reverseCount < 1) {
+            return false;
+        }
+
+        return $this->upsertFlag(
+            QuestPatrolSubjectType::Quest,
+            $quest->id,
+            QuestPatrolFlagType::CircularPayment,
+            "quest:circular_payment:{$quest->client_id}:{$quest->freelancer_id}",
+            [
+                'client_id' => (int) $quest->client_id,
+                'freelancer_id' => (int) $quest->freelancer_id,
+                'reverse_transactions' => $reverseCount,
+                'window_days' => $days,
+            ],
+            'high',
+        );
+    }
+
+    /**
+     * @return array{messages: int, deliverables: int}
+     */
+    private function escrowQuestEngagement(Quest $quest): array
+    {
+        $messages = (int) QuestConversationThread::query()
+            ->where('quest_id', $quest->id)
+            ->sum('messages_count');
+
+        $deliverables = (int) QuestContract::query()
+            ->where('quest_id', $quest->id)
+            ->withCount('deliverables')
+            ->get()
+            ->sum('deliverables_count');
+
+        return ['messages' => $messages, 'deliverables' => $deliverables];
+    }
+
+    /**
+     * Determine whether two accounts appear linked via shared login IP or shared
+     * verified identity documents — used to escalate escrow-release suspicion.
+     *
+     * @return array{linked: bool, reason: ?string}
+     */
+    private function partiesAreLinked(int $clientId, int $freelancerId): array
+    {
+        if ($clientId <= 0 || $freelancerId <= 0) {
+            return ['linked' => false, 'reason' => null];
+        }
+
+        $clientIps = LoginEvent::query()
+            ->where('user_id', $clientId)
+            ->whereNotNull('ip_address')
+            ->distinct()
+            ->pluck('ip_address');
+
+        if ($clientIps->isNotEmpty()) {
+            $sharedIp = LoginEvent::query()
+                ->where('user_id', $freelancerId)
+                ->whereIn('ip_address', $clientIps->all())
+                ->exists();
+            if ($sharedIp) {
+                return ['linked' => true, 'reason' => 'shared_ip'];
+            }
+        }
+
+        if (Schema::hasTable('user_identity_documents')) {
+            $clientHashes = UserIdentityDocument::query()
+                ->where('user_id', $clientId)
+                ->pluck('number_hash');
+            if ($clientHashes->isNotEmpty()) {
+                $sharedDoc = UserIdentityDocument::query()
+                    ->where('user_id', $freelancerId)
+                    ->whereIn('number_hash', $clientHashes->all())
+                    ->exists();
+                if ($sharedDoc) {
+                    return ['linked' => true, 'reason' => 'shared_kyc_document'];
+                }
+            }
+        }
+
+        return ['linked' => false, 'reason' => null];
+    }
+
+    /**
      * @param  array<string, mixed>  $meta
      */
     private function upsertFlag(
@@ -637,6 +857,9 @@ final class QuestPatrolAnomalyService
             QuestPatrolFlagType::InstantCompletion->value => 'Investigate client profile and check conversations for off-platform payment references.',
             QuestPatrolFlagType::WinRateAnomaly->value,
             QuestPatrolFlagType::InstantAward->value => 'Review award patterns for possible collusion.',
+            QuestPatrolFlagType::SuspiciousEscrowRelease->value => 'Escrow was released with no deliverables and near-silent chat. Confirm a genuine task was delivered before clearing; freeze release and request proof if accounts appear linked.',
+            QuestPatrolFlagType::RepeatCounterpartyTransactions->value => 'Same client and freelancer transact repeatedly. Verify the work is real and check for KYC/IP overlap suggesting one operator funding their own payout.',
+            QuestPatrolFlagType::CircularPayment->value => 'Funds move in both directions between these two accounts. Treat as a strong laundering signal — escalate to financial review and hold payouts.',
             default => 'Review details and dismiss if this is a false positive.',
         };
     }

@@ -13,6 +13,16 @@ class QuestCategoryReferenceCodeService
      * @var array<string, string>
      */
     private const PARENT_PREFIX_BY_SLUG = [
+        'home-office-cleaning' => 'CLN',
+        'repairs-maintenance' => 'RPR',
+        'automotive-services' => 'AUT',
+        'installation-assembly' => 'INS',
+        'beauty-personal-care' => 'BTY',
+        'laundry-textile-care' => 'LDY',
+        'catering-food-services' => 'FUD',
+        'transportation-logistics' => 'LOG',
+        'childcare-eldercare' => 'CRE',
+        'specialized-artisan' => 'ART',
         'technology-software' => 'TEC',
         'design-creative' => 'DES',
         'writing-content' => 'WRT',

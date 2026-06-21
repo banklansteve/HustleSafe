@@ -2,16 +2,13 @@
 
 namespace App\Services\Proposals;
 
-use App\Events\ProposalClarificationMessageSent;
 use App\Models\ProposalClarificationMessage;
-use App\Services\ConversationMonitoring\ConversationMessageRedactionService;
-use App\Services\ConversationMonitoring\ConversationMonitoringService;
 use App\Models\ProposalClarificationThread;
 use App\Models\Quest;
 use App\Models\QuestOffer;
 use App\Models\User;
-use App\Notifications\ProposalClarificationAnswerNotification;
-use App\Notifications\ProposalClarificationQuestionNotification;
+use App\Services\ConversationMonitoring\ConversationMessageRedactionService;
+use App\Support\ConversationScanDispatch;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -70,6 +67,9 @@ class ProposalClarificationService
             'suggested_prompts' => $isClient ? $this->prompts->suggestedPrompts($quest, $offer) : [],
             'offer' => [
                 'id' => $offer->id,
+                'uuid' => $offer->uuid,
+                'reference_code' => $offer->reference_code,
+                'route_key' => $offer->getRouteKey(),
                 'status' => $offer->status,
                 'freelancer' => [
                     'name' => $offer->freelancer?->name ?: $offer->freelancer?->first_name,
@@ -130,15 +130,6 @@ class ProposalClarificationService
         ];
     }
 
-    private function broadcastMessage(ProposalClarificationThread $thread, ProposalClarificationMessage $message, QuestOffer $offer): void
-    {
-        $offer->loadMissing('quest');
-        $formatted = $this->formatMessage($message);
-        $meta = $this->threadMetaFor($thread, $offer, $offer->quest);
-
-        ProposalClarificationMessageSent::dispatch($thread->id, $formatted, $meta);
-    }
-
     public function askQuestion(QuestOffer $offer, User $client, string $body, ?string $promptKey = null, ?string $promptCategory = null): ProposalClarificationMessage
     {
         $offer->loadMissing('quest');
@@ -173,15 +164,12 @@ class ProposalClarificationService
                 'body' => $body,
             ]);
 
-            app(ConversationMonitoringService::class)->processClarificationMessage($message->fresh());
-
             $thread->increment('questions_asked');
             $thread->refresh();
-            $message = $message->fresh();
-            $offer->freelancer?->notify(new ProposalClarificationQuestionNotification($offer, $message));
-            $this->broadcastMessage($thread, $message, $offer);
 
-            return $message;
+            ConversationScanDispatch::clarificationMessage($message->id);
+
+            return $message->fresh();
         });
     }
 
@@ -227,13 +215,9 @@ class ProposalClarificationService
             'body' => $body,
         ]);
 
-        app(ConversationMonitoringService::class)->processClarificationMessage($message->fresh());
-        $message = $message->fresh();
+        ConversationScanDispatch::clarificationMessage($message->id);
 
-        $offer->quest->client?->notify(new ProposalClarificationAnswerNotification($offer, $message));
-        $this->broadcastMessage($thread, $message, $offer);
-
-        return $message;
+        return $message->fresh();
     }
 
     public function closeForOffer(QuestOffer $offer): void

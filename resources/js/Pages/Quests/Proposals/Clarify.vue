@@ -4,7 +4,7 @@
 
         <div class="mx-auto max-w-2xl space-y-4 px-1 sm:px-0">
             <div class="flex flex-wrap items-center justify-between gap-2">
-                <BackChevronLink :href="route('quests.proposals.show', [quest.route_key, offer.id])" aria-label="Back to proposal" />
+                <BackChevronLink :href="route('quests.proposals.show', [quest.route_key, offerRouteKey()])" aria-label="Back to proposal" />
                 <span class="rounded-full bg-sky-100 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-sky-900">
                     Pre-award only
                 </span>
@@ -186,6 +186,10 @@ const answerErrors = reactive({});
 let pollTimer = null;
 let echoChannel = null;
 
+function offerRouteKey() {
+    return props.offer.route_key ?? props.offer.uuid ?? props.offer.id;
+}
+
 const counterpartyName = computed(() => {
     if (is_client.value) {
         return props.offer.freelancer?.name || 'Freelancer';
@@ -265,13 +269,36 @@ function applyThreadMeta(meta = {}) {
     }
 }
 
-function ingestMessage(message, meta = {}) {
-    if (!message?.id || hasMessage(message)) {
+function applyClarificationMessage(message, meta = {}) {
+    if (!message?.id) {
         return;
     }
 
-    threadState.messages.unshift(message);
+    const numericId = Number(message.id);
+    const existing = Number.isFinite(numericId)
+        ? threadState.messages.find((row) => Number(row.id) === numericId)
+        : null;
+
+    if (existing?.is_redacted && !message.is_redacted) {
+        return;
+    }
+
+    let next = threadState.messages;
+
+    if (Number.isFinite(numericId)) {
+        next = next.filter((row) => Number(row.id) !== numericId);
+    }
+
+    threadState.messages = [message, ...next];
     applyThreadMeta(meta);
+}
+
+function ingestMessage(message, meta = {}) {
+    applyClarificationMessage(message, meta);
+}
+
+function updateMessage(message, meta = {}) {
+    applyClarificationMessage(message, meta);
 }
 
 function usePrompt(prompt) {
@@ -315,7 +342,7 @@ async function submitQuestion() {
 
     try {
         const { data } = await axios.post(
-            route('quests.proposals.clarify.ask', [props.quest.route_key, props.offer.id]),
+            route('quests.proposals.clarify.ask', [props.quest.route_key, offerRouteKey()]),
             {
                 body,
                 prompt_key: questionPromptKey.value,
@@ -350,7 +377,7 @@ async function submitAnswer(messageId) {
 
     try {
         const { data } = await axios.post(
-            route('quests.proposals.clarify.answer', [props.quest.route_key, props.offer.id]),
+            route('quests.proposals.clarify.answer', [props.quest.route_key, offerRouteKey()]),
             {
                 body: answerDrafts[messageId] || '',
                 reply_to_message_id: messageId,
@@ -382,11 +409,16 @@ function bindRealtime() {
 
     const channelName = `proposal-clarifications.${threadState.id}`;
     echoChannel = echo.private(channelName);
-    echoChannel.listen('.clarification.message.sent', (payload) => {
+    const ingestRealtimeMessage = (payload) => {
         if (payload?.message) {
-            ingestMessage(payload.message, payload.thread);
+            updateMessage(payload.message, payload.thread);
         }
-    });
+    };
+
+    echoChannel.listen('.clarification.message.sent', ingestRealtimeMessage);
+    echoChannel.listen('clarification.message.sent', ingestRealtimeMessage);
+    echoChannel.listen('.clarification.message.updated', ingestRealtimeMessage);
+    echoChannel.listen('clarification.message.updated', ingestRealtimeMessage);
 
     return true;
 }
@@ -395,7 +427,7 @@ async function pollForUpdates() {
     try {
         const lastId = threadState.messages.reduce((max, m) => Math.max(max, Number(m.id) || 0), 0);
         const { data } = await axios.get(
-            route('quests.proposals.clarify', [props.quest.route_key, props.offer.id]),
+            route('quests.proposals.clarify', [props.quest.route_key, offerRouteKey()]),
             {
                 headers: { Accept: 'application/json' },
                 params: { after_id: lastId || undefined },

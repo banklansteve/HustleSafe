@@ -1,3 +1,5 @@
+import { formatClientDate, questCompletionSchedule } from '@/utils/questCompletionSchedule';
+
 const START_TIMING_HINTS = {
     urgent_48h: 'Client wants work to start within 48 hours.',
     this_week: 'Client wants work to start this week.',
@@ -5,37 +7,6 @@ const START_TIMING_HINTS = {
     flexible: 'Client is flexible on when work starts.',
     window_shopping: 'Client has not picked a firm start date yet.',
 };
-
-function formatClientDate(iso) {
-    if (!iso || typeof iso !== 'string') {
-        return null;
-    }
-    try {
-        return new Date(`${iso}T12:00:00`).toLocaleDateString('en-NG', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-        });
-    } catch {
-        return iso;
-    }
-}
-
-function formatBudget(minor) {
-    const n = Math.round(Number(minor) || 0) / 100;
-
-    return `₦${n.toLocaleString('en-NG')}`;
-}
-
-function specifiedPreference(preferences, key) {
-    if (!Array.isArray(preferences)) {
-        return null;
-    }
-
-    const row = preferences.find((p) => p.key === key && p.is_specified);
-
-    return row ?? null;
-}
 
 /**
  * Short, plain-English hints for proposal form fields based on what the client entered on the quest.
@@ -64,14 +35,18 @@ export function buildQuestClientExpectationHints(quest) {
         hints.plannedStart = START_TIMING_HINTS[quest.start_timing];
     }
 
-    const finish = formatClientDate(quest.estimated_delivery_date);
-    const hardDeadline = formatClientDate(quest.delivery_deadline);
-    if (finish) {
-        hints.plannedFinish = hardDeadline
-            ? `Client plans to finish by ${finish} (deadline ${hardDeadline}).`
-            : `Client plans to finish around ${finish}.`;
-    } else if (hardDeadline) {
-        hints.plannedFinish = `Client set a delivery deadline of ${hardDeadline}.`;
+    const schedule = questCompletionSchedule(quest);
+    const planned = formatClientDate(schedule?.planned_finish_date ?? quest.estimated_delivery_date);
+    const hard = formatClientDate(schedule?.hard_deadline_date ?? quest.delivery_deadline);
+
+    if (planned && hard) {
+        hints.plannedFinish = planned === hard
+            ? `Client target finish and hard deadline: ${planned}.`
+            : `Client target finish ${planned}. Hard deadline (must not slip past): ${hard}.`;
+    } else if (hard) {
+        hints.plannedFinish = `Client set a hard delivery deadline of ${hard}.`;
+    } else if (planned) {
+        hints.plannedFinish = `Client target finish is around ${planned}.`;
     }
 
     const days = Number(quest.estimated_completion_days);
@@ -103,6 +78,22 @@ export function buildQuestClientExpectationHints(quest) {
     }
 
     return hints;
+}
+
+function formatBudget(minor) {
+    const n = Math.round(Number(minor) || 0) / 100;
+
+    return `₦${n.toLocaleString('en-NG')}`;
+}
+
+function specifiedPreference(preferences, key) {
+    if (!Array.isArray(preferences)) {
+        return null;
+    }
+
+    const row = preferences.find((p) => p.key === key && p.is_specified);
+
+    return row ?? null;
 }
 
 export function clientSpecifiedRevisionRounds(quest) {

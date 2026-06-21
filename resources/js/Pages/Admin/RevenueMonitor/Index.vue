@@ -96,6 +96,37 @@
                         </AdminPanel>
                     </div>
 
+                    <AdminPanel eyebrow="Top spenders" title="Top 10 contributors by revenue stream">
+                        <p class="-mt-1 mb-3 text-xs font-semibold" :class="shell.cardMuted">
+                            Highest-paying users for {{ period.label }}. Switch the period above to re-rank.
+                        </p>
+                        <div class="grid gap-4 lg:grid-cols-3">
+                            <div v-for="group in top_spenders" :key="group.key" class="rounded-2xl border p-4" :class="shell.card">
+                                <div class="flex items-baseline justify-between gap-2">
+                                    <p class="text-[10px] font-black uppercase tracking-wider" :class="shell.label">{{ group.label }}</p>
+                                    <span class="text-[10px] font-bold uppercase text-slate-400">{{ group.attribution }}</span>
+                                </div>
+                                <ol v-if="group.spenders.length" class="mt-3 space-y-2">
+                                    <li
+                                        v-for="(spender, i) in group.spenders"
+                                        :key="spender.user_id"
+                                        class="flex items-center justify-between gap-2"
+                                    >
+                                        <span class="flex min-w-0 items-center gap-2">
+                                            <span class="w-4 shrink-0 text-xs font-black text-slate-400">{{ i + 1 }}</span>
+                                            <span class="truncate text-sm font-bold" :class="shell.cardTitle">{{ spender.name }}</span>
+                                        </span>
+                                        <span class="shrink-0 text-right">
+                                            <span class="block text-sm font-black">{{ spender.total_display }}</span>
+                                            <span class="block text-[10px] font-bold text-slate-500">{{ spender.transactions }} txn</span>
+                                        </span>
+                                    </li>
+                                </ol>
+                                <p v-else class="mt-3 text-xs font-semibold" :class="shell.cardMuted">No revenue in this period.</p>
+                            </div>
+                        </div>
+                    </AdminPanel>
+
                     <AdminPanel eyebrow="Transactions" title="Transaction-level details">
                         <div class="mb-4 flex flex-wrap gap-2">
                             <select v-model="filters.revenue_type" class="rounded-xl border px-3 py-2 text-xs font-bold" :class="shell.input" @change="reloadTable">
@@ -154,7 +185,7 @@
                                                 <div v-if="detailLoading" class="text-sm font-semibold text-slate-500">Loading detail…</div>
                                                 <div v-else class="grid gap-2 text-sm">
                                                     <template v-if="rowDetail.type === 'premium'">
-                                                        <p><strong>Subscriber:</strong> @{{ rowDetail.subscriber?.username }} (Tier {{ rowDetail.subscriber?.verification_tier }})</p>
+                                                        <p><strong>Subscriber:</strong> {{ rowDetail.subscriber?.name }} (Tier {{ rowDetail.subscriber?.verification_tier }})</p>
                                                         <p><strong>Plan:</strong> {{ rowDetail.plan }}</p>
                                                         <p><strong>Charge:</strong> {{ rowDetail.charge_display }}</p>
                                                         <p><strong>Processor fee:</strong> {{ rowDetail.processor_fee_display }}</p>
@@ -163,7 +194,7 @@
                                                     </template>
                                                     <template v-else-if="rowDetail.type === 'boost'">
                                                         <p><strong>Quest:</strong> {{ rowDetail.quest?.title }} ({{ rowDetail.quest?.reference_code }})</p>
-                                                        <p><strong>Client:</strong> @{{ rowDetail.client?.username }}</p>
+                                                        <p><strong>Client:</strong> {{ rowDetail.client?.name }}</p>
                                                         <p><strong>Tier:</strong> {{ rowDetail.tier }}</p>
                                                         <p><strong>Period:</strong> {{ rowDetail.boost_period || '—' }}</p>
                                                         <p><strong>Proposals:</strong> {{ rowDetail.proposals_received }}</p>
@@ -171,6 +202,8 @@
                                                     </template>
                                                     <template v-else-if="rowDetail.type === 'platform_fee'">
                                                         <p><strong>Quest:</strong> {{ rowDetail.quest?.title }}</p>
+                                                        <p><strong>Client:</strong> {{ rowDetail.client?.name }}</p>
+                                                        <p><strong>Freelancer:</strong> {{ rowDetail.freelancer?.name }}</p>
                                                         <p><strong>Contract value:</strong> {{ rowDetail.contract_value_display }}</p>
                                                         <p><strong>Platform fee:</strong> {{ rowDetail.platform_fee_display }} ({{ rowDetail.fee_percent }}%)</p>
                                                         <p><strong>Earned:</strong> {{ formatWhen(rowDetail.earned_at) }}</p>
@@ -245,6 +278,7 @@ const props = defineProps({
     sidebar: { type: Object, required: true },
     transactions: { type: Object, required: true },
     trend_insights: { type: Object, required: true },
+    top_spenders: { type: Array, default: () => [] },
 });
 
 const { shell, chartMode, isDark } = useInjectedAdminTheme();

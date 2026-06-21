@@ -55,6 +55,7 @@ class QuestPreferenceService
      * @return list<array{
      *   key: string,
      *   label: string,
+     *   hint: string|null,
      *   display_value: string,
      *   is_specified: bool,
      *   id: int,
@@ -70,15 +71,37 @@ class QuestPreferenceService
 
         $rows = [];
         foreach ($fields as $key => $definition) {
+            if (! empty($definition['show_when'])) {
+                continue;
+            }
+
             $pref = $stored->get($key);
             $isSpecified = (bool) ($pref?->is_specified);
+            $display = $isSpecified
+                ? $this->formatDisplayValue($pref?->preference_value, $definition)
+                : __('Not specified');
+
+            if ($isSpecified && $key === 'session_frequency') {
+                $freq = $pref?->preference_value;
+                if ($freq === 'weekly') {
+                    $count = $stored->get('sessions_per_week')?->preference_value;
+                    if ($count) {
+                        $display .= ' ('.$count.'× '.__('per week').')';
+                    }
+                } elseif ($freq === 'monthly') {
+                    $count = $stored->get('sessions_per_month')?->preference_value;
+                    if ($count) {
+                        $display .= ' ('.$count.'× '.__('per month').')';
+                    }
+                }
+            }
+
             $rows[] = [
                 'id' => (int) ($pref?->id ?? 0),
                 'key' => $key,
                 'label' => (string) ($definition['label'] ?? $key),
-                'display_value' => $isSpecified
-                    ? $this->formatDisplayValue($pref?->preference_value, $definition)
-                    : __('Not specified'),
+                'hint' => isset($definition['hint']) ? (string) $definition['hint'] : null,
+                'display_value' => $display,
                 'is_specified' => $isSpecified,
             ];
         }

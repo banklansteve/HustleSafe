@@ -154,6 +154,19 @@ final class UserActivityPatrolDetailService
                 'Policy violation — payments must stay on-platform',
                 'May indicate attempt to bypass escrow fees or commit fraud',
             ],
+            UserActivityAnomalyType::EscrowRoundTripping => [
+                'Strong money-laundering signal — escrow funded then released with no deliverables or real conversation',
+                'Check whether payee accounts share IP / KYC documents with this client (self-funded payouts)',
+                'Hold further payouts and escalate to financial review before clearing',
+            ],
+            UserActivityAnomalyType::SharedKycDocument => [
+                'Same identity document is attached to multiple accounts — likely duplicate / synthetic accounts',
+                'Investigate linked accounts for collusion, escrow round-tripping, or ban evasion',
+            ],
+            UserActivityAnomalyType::SharedIpAccounts => [
+                'Multiple accounts operate from the same network — possible multi-accounting or collusion',
+                'Cross-reference with shared KYC documents and escrow transaction patterns',
+            ],
             default => ['Review activity context and related flags before taking action'],
         };
 

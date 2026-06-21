@@ -4,6 +4,7 @@ namespace App\Services\Contracts;
 
 use App\Enums\ContractAmendmentType;
 use App\Enums\ContractStatus;
+use App\Enums\DeliveryDateAdjustmentType;
 use App\Enums\DeliveryExtensionReasonCategory;
 use App\Enums\DeliveryExtensionStatus;
 use App\Jobs\ProcessDeliveryExtensionSubmissionJob;
@@ -25,13 +26,18 @@ use Illuminate\Validation\ValidationException;
 
 class ContractDeliveryExtensionService
 {
+    /** Total date-change requests (extensions + earlier finishes) allowed per contract. */
     public const MAX_EXTENSIONS = 2;
+
+    public const MAX_DATE_ADJUSTMENTS = 2;
 
     public const CLIENT_RESPONSE_HOURS = 48;
 
     public const COUNTER_RESPONSE_HOURS = 24;
 
     public const MAX_EXTENSION_DAYS = 14;
+
+    public const MAX_REDUCTION_DAYS = 14;
 
     public const PROMPT_AMBER_HOURS = 48;
 
@@ -57,17 +63,9 @@ class ContractDeliveryExtensionService
         }
 
         $proposed = Carbon::parse($data['proposed_delivery_date'], config('app.timezone'))->startOfDay();
-        $maxDate = $originalDate->copy()->addDays(self::MAX_EXTENSION_DAYS);
+        $adjustmentType = DeliveryDateAdjustmentType::from($data['adjustment_type'] ?? DeliveryDateAdjustmentType::Extension->value);
 
-        if ($proposed->lte($originalDate)) {
-            throw ValidationException::withMessages(['proposed_delivery_date' => __('The new date must be after the current agreed deadline.')]);
-        }
-
-        if ($proposed->gt($maxDate)) {
-            throw ValidationException::withMessages([
-                'proposed_delivery_date' => __('The extension cannot exceed :days days beyond the current deadline.', ['days' => self::MAX_EXTENSION_DAYS]),
-            ]);
-        }
+        $this->assertProposedDate($originalDate, $proposed, $adjustmentType);
 
         $reasonCategory = DeliveryExtensionReasonCategory::from($data['reason_category']);
         $clientAttributed = $reasonCategory === DeliveryExtensionReasonCategory::ClientRequestedChanges;
@@ -80,16 +78,17 @@ class ContractDeliveryExtensionService
 
         $attachments = $this->storeProgressAttachments($contract, $data['progress_attachments'] ?? []);
 
-        $extension = DB::transaction(function () use ($contract, $freelancer, $data, $originalDate, $proposed, $reasonCategory, $clientAttributed, $attachments, $request): QuestContractDeliveryExtension {
+        $extension = DB::transaction(function () use ($contract, $freelancer, $data, $originalDate, $proposed, $adjustmentType, $reasonCategory, $clientAttributed, $attachments, $request): QuestContractDeliveryExtension {
             $extensionNumber = $contract->delivery_extension_count + 1;
 
-            if ($extensionNumber > self::MAX_EXTENSIONS) {
-                throw ValidationException::withMessages(['contract' => __('This contract has reached the extension limit.')]);
+            if ($extensionNumber > self::MAX_DATE_ADJUSTMENTS) {
+                throw ValidationException::withMessages(['contract' => __('You have used all :max date-change requests on this job.', ['max' => self::MAX_DATE_ADJUSTMENTS])]);
             }
 
             $extension = QuestContractDeliveryExtension::query()->create([
                 'quest_contract_id' => $contract->id,
                 'extension_number' => $extensionNumber,
+                'adjustment_type' => $adjustmentType,
                 'requested_by_user_id' => $freelancer->id,
                 'reason_category' => $reasonCategory,
                 'explanation' => $data['explanation'],
@@ -114,6 +113,7 @@ class ContractDeliveryExtensionService
             $this->events->log($contract, 'contract.extension_requested', $freelancer, [
                 'extension_id' => $extension->id,
                 'extension_number' => $extensionNumber,
+                'adjustment_type' => $adjustmentType->value,
                 'proposed_date' => $proposed->toDateString(),
                 'reason_category' => $reasonCategory->value,
             ], $request);
@@ -215,10 +215,17 @@ class ContractDeliveryExtensionService
         $counter = Carbon::parse($counterDate, config('app.timezone'))->startOfDay();
         $original = $extension->original_delivery_date->copy()->startOfDay();
         $proposed = $extension->proposed_delivery_date->copy()->startOfDay();
+        $adjustmentType = $extension->adjustment_type ?? DeliveryDateAdjustmentType::Extension;
 
-        if ($counter->lte($original) || $counter->gt($proposed)) {
+        if ($adjustmentType === DeliveryDateAdjustmentType::Reduction) {
+            if ($counter->lt($proposed) || $counter->gt($original)) {
+                throw ValidationException::withMessages([
+                    'counter_proposed_date' => __('Pick a date between their earlier date and the current finish date.'),
+                ]);
+            }
+        } elseif ($counter->lte($original) || $counter->gt($proposed)) {
             throw ValidationException::withMessages([
-                'counter_proposed_date' => __('Counter date must fall between the original deadline and the freelancer\'s requested date.'),
+                'counter_proposed_date' => __('Pick a date between the current finish date and the date they asked for.'),
             ]);
         }
 
@@ -348,9 +355,9 @@ class ContractDeliveryExtensionService
         if ($count >= $limit) {
             return [
                 'can_request' => false,
-                'button_label' => __('Extension limit reached'),
+                'button_label' => __('No date changes left'),
                 'button_tone' => 'disabled',
-                'reason' => __('No further delivery extensions are available on this contract.'),
+                'reason' => __('You have used all :max date-change requests on this job.', ['max' => $limit]),
                 'seconds_until_deadline' => null,
                 'extension_count' => $count,
                 'extension_limit' => $limit,
@@ -360,9 +367,9 @@ class ContractDeliveryExtensionService
         if ($contract->status !== ContractStatus::Active) {
             return [
                 'can_request' => false,
-                'button_label' => __('Request delivery extension'),
+                'button_label' => __('Change finish date'),
                 'button_tone' => 'disabled',
-                'reason' => __('Extensions are only available on active contracts.'),
+                'reason' => __('Date changes are only available while the job is active.'),
                 'seconds_until_deadline' => null,
                 'extension_count' => $count,
                 'extension_limit' => $limit,
@@ -372,9 +379,9 @@ class ContractDeliveryExtensionService
         if ($contract->pending_extension_id !== null) {
             return [
                 'can_request' => false,
-                'button_label' => __('Extension request pending'),
+                'button_label' => __('Date change pending'),
                 'button_tone' => 'disabled',
-                'reason' => __('A delivery extension is already awaiting a response.'),
+                'reason' => __('A date-change request is already waiting for a reply.'),
                 'seconds_until_deadline' => null,
                 'extension_count' => $count,
                 'extension_limit' => $limit,
@@ -385,9 +392,9 @@ class ContractDeliveryExtensionService
         if ($deadline === null || now()->gte($deadline->copy()->endOfDay())) {
             return [
                 'can_request' => false,
-                'button_label' => __('Request delivery extension'),
+                'button_label' => __('Change finish date'),
                 'button_tone' => 'disabled',
-                'reason' => __('The agreed delivery date has passed.'),
+                'reason' => __('The finish date has already passed.'),
                 'seconds_until_deadline' => null,
                 'extension_count' => $count,
                 'extension_limit' => $limit,
@@ -400,7 +407,7 @@ class ContractDeliveryExtensionService
 
         return [
             'can_request' => true,
-            'button_label' => __('Request delivery extension'),
+            'button_label' => __('Change finish date'),
             'button_tone' => $tone,
             'reason' => null,
             'seconds_until_deadline' => $secondsUntil,
@@ -521,10 +528,14 @@ class ContractDeliveryExtensionService
 
         $quest = $contract->quest;
         if ($quest !== null) {
-            $quest->update([
+            $updates = [
                 'due_at' => $newDate->copy()->endOfDay(),
                 'estimated_delivery_date' => $newDate->toDateString(),
-            ]);
+            ];
+            if ($quest->delivery_deadline !== null) {
+                $updates['delivery_deadline'] = $newDate->toDateString();
+            }
+            $quest->update($updates);
         }
     }
 
@@ -542,16 +553,51 @@ class ContractDeliveryExtensionService
             abort(403);
         }
 
-        if ($contract->delivery_extension_count >= self::MAX_EXTENSIONS) {
-            throw ValidationException::withMessages(['contract' => __('This contract has reached the extension limit of :max.', ['max' => self::MAX_EXTENSIONS])]);
+        if ($contract->delivery_extension_count >= self::MAX_DATE_ADJUSTMENTS) {
+            throw ValidationException::withMessages(['contract' => __('You have used all :max date-change requests on this job.', ['max' => self::MAX_DATE_ADJUSTMENTS])]);
         }
 
         if ($contract->pending_extension_id !== null) {
-            throw ValidationException::withMessages(['contract' => __('An extension request is already pending.')]);
+            throw ValidationException::withMessages(['contract' => __('A date-change request is already waiting for a reply.')]);
         }
 
         if ($contract->status !== ContractStatus::Active) {
-            throw ValidationException::withMessages(['contract' => __('Extensions can only be requested on active contracts.')]);
+            throw ValidationException::withMessages(['contract' => __('Date changes are only available while the job is active.')]);
+        }
+    }
+
+    private function assertProposedDate(Carbon $originalDate, Carbon $proposed, DeliveryDateAdjustmentType $type): void
+    {
+        $today = now()->startOfDay();
+
+        if ($proposed->lt($today)) {
+            throw ValidationException::withMessages(['proposed_delivery_date' => __('The new finish date cannot be in the past.')]);
+        }
+
+        if ($type === DeliveryDateAdjustmentType::Extension) {
+            if ($proposed->lte($originalDate)) {
+                throw ValidationException::withMessages(['proposed_delivery_date' => __('To ask for more time, pick a date after the current finish date.')]);
+            }
+
+            $maxDate = $originalDate->copy()->addDays(self::MAX_EXTENSION_DAYS);
+            if ($proposed->gt($maxDate)) {
+                throw ValidationException::withMessages([
+                    'proposed_delivery_date' => __('You can only extend up to :days extra days at a time.', ['days' => self::MAX_EXTENSION_DAYS]),
+                ]);
+            }
+
+            return;
+        }
+
+        if ($proposed->gte($originalDate)) {
+            throw ValidationException::withMessages(['proposed_delivery_date' => __('To finish sooner, pick a date before the current finish date.')]);
+        }
+
+        $minDate = $originalDate->copy()->subDays(self::MAX_REDUCTION_DAYS);
+        if ($proposed->lt($minDate)) {
+            throw ValidationException::withMessages([
+                'proposed_delivery_date' => __('You can only move the finish date up to :days days earlier at a time.', ['days' => self::MAX_REDUCTION_DAYS]),
+            ]);
         }
     }
 

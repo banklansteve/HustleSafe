@@ -13,11 +13,11 @@ enum DeliveryExtensionReasonCategory: string
     public function label(): string
     {
         return match ($this) {
-            self::ScopeLargerThanEstimated => __('Scope was larger than estimated'),
-            self::PersonalOrHealth => __('Personal or health circumstances'),
-            self::ClientRequestedChanges => __('Client-requested changes increased workload'),
-            self::TechnicalOrAccess => __('Technical or access issues'),
-            self::Other => __('Other'),
+            self::ScopeLargerThanEstimated => __('The job turned out bigger than expected'),
+            self::PersonalOrHealth => __('Personal or health issue'),
+            self::ClientRequestedChanges => __('The client asked for extra work'),
+            self::TechnicalOrAccess => __('Could not access site or materials on time'),
+            self::Other => __('Other reason'),
         };
     }
 

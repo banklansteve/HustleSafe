@@ -11,6 +11,7 @@ use App\Services\Proposals\ProposalCompletenessScoreService;
 use App\Services\Proposals\ProposalShortlistService;
 use App\Services\Verification\VerificationEngineService;
 use App\Support\PlatformSettings;
+use App\Support\ProposalMoneyCalculator;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -100,10 +101,13 @@ class QuestClientProposalsController extends Controller
 
         return [
             'id' => $o->id,
+            'reference_code' => $o->reference_code,
+            'route_key' => $o->getRouteKey(),
             'status' => $o->status,
             'is_shortlisted' => $o->status === 'shortlisted',
             'created_at' => $o->created_at?->timezone('Africa/Lagos')->toIso8601String(),
-            'quoted_amount_minor' => (int) ($o->quoted_amount_minor ?? 0),
+            'quoted_amount_minor' => ProposalMoneyCalculator::quoteTotalMinor($o->pricing_snapshot ?? []),
+            'escrow_total_minor' => ProposalMoneyCalculator::escrowTotalMinor($o->pricing_snapshot ?? []),
             'shortlisted_at' => $o->shortlisted_at?->timezone('Africa/Lagos')->toIso8601String(),
             'completeness_score' => $completeness->score($o),
             'timeline_days' => $durationDays,
@@ -119,7 +123,7 @@ class QuestClientProposalsController extends Controller
                 'headline' => $freelancer->headline,
                 'is_pro' => $proMembership->isPro($freelancer),
             ] : null,
-            'show_url' => route('quests.proposals.show', [$quest->getRouteKey(), $o->id]),
+            'show_url' => route('quests.proposals.show', [$quest->getRouteKey(), $o]),
             'clarification' => ($client ?? $quest->client)
                 ? app(ProposalClarificationInboxService::class)->badgeForOffer($o, $client ?? $quest->client)
                 : null,

@@ -66,7 +66,7 @@ class StaffResponseTemplateSeeder extends Seeder
                 'category' => 'trust',
                 'title' => 'Off-platform payment — policy reminder',
                 'subject' => 'Important: keep payments on HustleSafe',
-                'body' => "Hi :name,\n\nOur systems flagged language in a recent conversation that may relate to off-platform payment.\n\nAll payments must go through HustleSafe escrow — this protects you and the other party. Repeated attempts to move deals off-platform can result in account restrictions.\n\nIf this was a misunderstanding, reply and we'll clarify. If you need help funding escrow on “:quest_title”, we're happy to assist.",
+                'body' => "Hi :name,\n\nOur systems flagged language in a recent conversation that may relate to off-platform payment.\n\nAll payments must go through HustleSafe escrow — this protects you and the other party. Repeated attempts to move deals off-platform can result in account restrictions.\n\nIf this was a misunderstanding, reply from your Policy notices page and we'll clarify. If you need help funding escrow on “:quest_title”, we're happy to assist.",
                 'policy_tags' => ['trust', 'payments', 'policy', 'warning'],
                 'sort_order' => 60,
             ],

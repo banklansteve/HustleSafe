@@ -3,7 +3,9 @@
 namespace App\Http\Requests\Quests;
 
 use App\Enums\QuestAvailabilityNeed;
+use App\Enums\QuestEngagementMode;
 use App\Enums\QuestFreelancerLocationPref;
+use App\Enums\QuestInstallmentFrequency;
 use App\Enums\QuestProjectType;
 use App\Enums\QuestStartTiming;
 use App\Enums\QuestTeamSize;
@@ -17,6 +19,7 @@ use App\Services\QuestFormFieldProfileService;
 use App\Support\PlatformSettings;
 use App\Services\Verification\VerificationEngineService;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 
 class StoreQuestRequest extends FormRequest
@@ -79,6 +82,14 @@ class StoreQuestRequest extends FormRequest
             'estimated_completion_days' => ['required', 'integer', 'min:1', 'max:365'],
             'estimated_delivery_date' => ['nullable', 'date', 'after_or_equal:today'],
             'project_type' => ['nullable', Rule::enum(QuestProjectType::class)],
+            'engagement_mode' => ['nullable', Rule::enum(QuestEngagementMode::class)],
+            'installment_frequency' => ['nullable', Rule::enum(QuestInstallmentFrequency::class)],
+            'contract_duration_months' => [
+                'nullable',
+                'integer',
+                Rule::in(array_keys(config('recurring_engagement.contract_duration_options', []))),
+            ],
+            'contract_renewal_preference' => ['nullable', 'string', Rule::in(['extend', 'continue', 'republish', 'decide_later'])],
             'auto_listing_expiry_days' => [
                 Rule::requiredIf(fn () => $this->boolean('publish_now', true)),
                 'nullable',
@@ -142,6 +153,19 @@ class StoreQuestRequest extends FormRequest
             $profiles = app(QuestFormFieldProfileService::class);
             $profile = $profiles->profileForLeafCategoryId((int) $this->input('quest_category_id', 0));
             $category = QuestCategory::query()->with('parent')->find((int) $this->input('quest_category_id', 0));
+            $recurring = app(\App\Services\Quest\QuestRecurringEngagementService::class);
+            $isRecurring = ($this->input('engagement_mode') ?? QuestEngagementMode::OneTime->value) === QuestEngagementMode::RecurringInstallment->value;
+
+            try {
+                $recurring->assertCreateDataValid($this->all(), $category);
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                foreach ($e->errors() as $field => $messages) {
+                    foreach ($messages as $message) {
+                        $v->errors()->add($field, $message);
+                    }
+                }
+            }
+
             $budget = (int) $this->input('budget_amount_minor', 0);
             $guardrail = $category?->budget_guardrails_enabled ? $category : ($category?->parent?->budget_guardrails_enabled ? $category->parent : null);
             if ($guardrail && (($guardrail->min_budget_minor && $budget < $guardrail->min_budget_minor) || ($guardrail->max_budget_minor && $budget > $guardrail->max_budget_minor))) {
@@ -159,7 +183,8 @@ class StoreQuestRequest extends FormRequest
             $finish = $this->input('estimated_delivery_date');
             $sched = $this->input('scheduled_start_date');
             if (
-                $finish
+                ! $isRecurring
+                && $finish
                 && $this->input('start_timing') === QuestStartTiming::Scheduled->value
                 && $sched
                 && strcmp((string) $finish, (string) $sched) < 0
@@ -167,6 +192,21 @@ class StoreQuestRequest extends FormRequest
                 $v->errors()->add(
                     'estimated_delivery_date',
                     __('Planned finish must be on or after the planned start date.')
+                );
+            }
+
+            $hardDeadline = $this->input('delivery_deadline');
+            if (! $isRecurring && $hardDeadline && $finish && strcmp((string) $hardDeadline, (string) $finish) < 0) {
+                $v->errors()->add(
+                    'delivery_deadline',
+                    __('Delivery deadline must be on or after the planned finish date.')
+                );
+            }
+
+            if (! $isRecurring && $hardDeadline && $sched && strcmp((string) $hardDeadline, (string) $sched) < 0) {
+                $v->errors()->add(
+                    'delivery_deadline',
+                    __('Delivery deadline must be on or after the planned start date.')
                 );
             }
 
@@ -195,6 +235,15 @@ class StoreQuestRequest extends FormRequest
             if ($this->input('visibility') === QuestVisibility::InviteOnly->value
                 && (! is_array($this->input('tagged_freelancer_ids')) || count($this->input('tagged_freelancer_ids')) < 1)) {
                 $v->errors()->add('tagged_freelancer_ids', __('Invite-only quests need at least one tagged freelancer.'));
+            }
+
+            $prefs = Arr::wrap($this->input('preferences', []));
+            $freq = (string) ($prefs['session_frequency'] ?? '');
+            if ($freq === 'weekly' && empty($prefs['sessions_per_week'])) {
+                $v->errors()->add('preferences.sessions_per_week', __('Enter how many sessions per week.'));
+            }
+            if ($freq === 'monthly' && empty($prefs['sessions_per_month'])) {
+                $v->errors()->add('preferences.sessions_per_month', __('Enter how many sessions per month.'));
             }
 
             $ids = $this->input('tagged_freelancer_ids', []);

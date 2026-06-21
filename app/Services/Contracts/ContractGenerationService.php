@@ -28,7 +28,7 @@ class ContractGenerationService
         private readonly ContractEventLogger $events,
     ) {}
 
-    public function generateFromAward(Quest $quest, QuestOffer $offer, ?Request $request = null): QuestContract
+    public function generateFromAward(Quest $quest, QuestOffer $offer, ?Request $request = null, bool $silent = false): QuestContract
     {
         if (QuestContract::query()->where('quest_offer_id', $offer->id)->exists()) {
             return QuestContract::query()->where('quest_offer_id', $offer->id)->firstOrFail();
@@ -73,6 +73,7 @@ class ContractGenerationService
 
         $financial = [
             'total_minor' => $totalMinor,
+            'grand_total_minor' => $totalMinor,
             'total_label' => $this->money($totalMinor),
             'platform_fee_minor' => $platformFeeMinor,
             'platform_fee_label' => $this->money($platformFeeMinor),
@@ -143,9 +144,10 @@ class ContractGenerationService
             $deliveryDate,
             $expiryHours,
             $request,
+            $silent,
         ): QuestContract {
             $contract = QuestContract::query()->create([
-                'reference_code' => $this->references->next(),
+                'reference_code' => $this->references->nextForQuest($quest),
                 'quest_id' => $quest->id,
                 'quest_offer_id' => $offer->id,
                 'client_id' => $quest->client_id,
@@ -181,10 +183,13 @@ class ContractGenerationService
 
             $this->events->log($contract, 'contract.generated', null, [
                 'reference' => $contract->reference_code,
+                'backfill' => $silent,
             ], $request);
 
-            $quest->client?->notify(new ContractPendingEscrowClientNotification($contract));
-            $offer->freelancer?->notify(new ContractPendingEscrowFreelancerNotification($contract));
+            if (! $silent) {
+                $quest->client?->notify(new ContractPendingEscrowClientNotification($contract));
+                $offer->freelancer?->notify(new ContractPendingEscrowFreelancerNotification($contract));
+            }
 
             return $contract->fresh(['deliverables', 'milestones', 'amendments']);
         });

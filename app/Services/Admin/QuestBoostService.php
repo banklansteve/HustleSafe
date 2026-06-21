@@ -87,7 +87,9 @@ final class QuestBoostService
         $tier = QuestBoostTier::from($payment->tier);
         $clientBoosts = app(\App\Services\Quest\ClientQuestBoostService::class);
 
-        if ($clientBoosts->hasActiveBoost($quest)) {
+        // Allow a follow-on ("re-boost") purchase only when the active boost is near expiry;
+        // otherwise block a second concurrent boost.
+        if ($clientBoosts->hasActiveBoost($quest) && ! $clientBoosts->isWithinReboostWindow($quest)) {
             throw ValidationException::withMessages([
                 'quest' => [__('This quest already has an active boost.')],
             ]);
@@ -96,8 +98,9 @@ final class QuestBoostService
         $clientBoosts->assertTierAllowed($quest, $tier);
 
         return DB::transaction(function () use ($payment, $quest, $client, $tier, $clientBoosts, $paystackPayload): QuestBoost {
-            $startsAt = now();
-            $endsAt = $clientBoosts->resolveBoostEndsAt($quest, $tier);
+            // Re-boosts queue right after the current boost ends so coverage is seamless.
+            $startsAt = $clientBoosts->boostAnchor($quest);
+            $endsAt = $clientBoosts->resolveBoostEndsAt($quest, $tier, $startsAt);
             $costMinor = (int) $payment->amount_minor;
 
             $boost = QuestBoost::query()->create([

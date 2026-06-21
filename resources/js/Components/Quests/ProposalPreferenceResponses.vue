@@ -5,10 +5,10 @@
     >
         <div>
             <h3 class="font-display text-lg font-bold text-slate-900">
-                Respond to client preferences
+                Respond to the client&apos;s preferences
             </h3>
             <p class="mt-1 text-sm font-semibold text-slate-600">
-                Address each preference below. You can accept, propose an alternative, ask for clarification, or write a custom response.
+                Each item below is a question the client answered when posting the quest. Review what they chose, then say whether you can meet it, propose an alternative, or ask for clarification.
             </p>
         </div>
 
@@ -18,8 +18,12 @@
             class="rounded-2xl border border-white bg-white p-4 shadow-sm ring-1 ring-slate-100"
         >
             <p class="text-sm font-black text-slate-900">{{ pref.label }}</p>
-            <p class="mt-1 text-xs font-semibold text-slate-600">
-                Client specified: {{ pref.display_value }}
+            <p v-if="pref.hint" class="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                {{ pref.hint }}
+            </p>
+            <p class="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-100">
+                <span class="font-black text-slate-900">Client specified:</span>
+                {{ pref.display_value }}
             </p>
 
             <div class="mt-3 space-y-2">

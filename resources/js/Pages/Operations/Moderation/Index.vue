@@ -6,7 +6,7 @@
             class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-gradient-to-r from-rose-50 via-white to-amber-50/60 px-4 py-3 ring-1 ring-rose-100"
         >
             <div>
-                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-rose-800">Conversation monitoring</p>
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-rose-800">Trust review</p>
                 <p class="mt-1 text-sm font-semibold text-slate-800">
                     {{ conversation_monitoring_summary.moderation_queue }} flagged conversation{{ conversation_monitoring_summary.moderation_queue === 1 ? '' : 's' }} awaiting review
                 </p>
@@ -209,6 +209,81 @@
                 </section>
 
                 <OperationsContextStats :heading="slideTitle" :stats="moderationStats" :chips="moderationChips" :links="moderationLinks" />
+
+                <section
+                    v-if="activeModule === 'quests'"
+                    class="rounded-xl border border-slate-200 bg-white p-4"
+                >
+                    <div class="flex items-center justify-between gap-2">
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                            Proposals ({{ questProposals.length }})
+                        </p>
+                        <span v-if="detail.proposals?.summary?.average" class="text-[10px] font-bold uppercase text-slate-400">
+                            Avg {{ detail.proposals.summary.average }}
+                        </span>
+                    </div>
+
+                    <ul v-if="questProposals.length" class="mt-3 space-y-2">
+                        <li v-for="proposal in questProposals" :key="proposal.id">
+                            <button
+                                type="button"
+                                class="flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5 text-left transition hover:border-primary-300 hover:bg-primary-50/50"
+                                @click="openProposalFromQuest(proposal)"
+                            >
+                                <span class="min-w-0">
+                                    <span class="block truncate text-sm font-bold text-slate-900">
+                                        {{ proposal.freelancer?.name || `Freelancer #${proposal.freelancer?.id ?? '—'}` }}
+                                    </span>
+                                    <span class="mt-0.5 block text-[11px] font-semibold text-slate-500">
+                                        {{ proposal.reference_code || `Proposal #${proposal.id}` }} · {{ proposal.quoted_amount }}
+                                    </span>
+                                </span>
+                                <span class="inline-flex items-center gap-2">
+                                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-700">
+                                        {{ labelize(proposal.status) }}
+                                    </span>
+                                    <span class="text-[10px] font-black uppercase text-primary-700">Open ›</span>
+                                </span>
+                            </button>
+                        </li>
+                    </ul>
+                    <p v-else class="mt-3 text-xs font-semibold text-slate-400">No proposals submitted on this quest yet.</p>
+
+                    <div v-if="detail.escrow?.has_contract" class="mt-4 border-t border-slate-100 pt-4">
+                        <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Contract</p>
+                        <div class="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5">
+                            <span class="min-w-0">
+                                <span class="block truncate text-sm font-bold text-slate-900">
+                                    {{ detail.escrow.contract?.reference_code || 'Active contract' }}
+                                </span>
+                                <span class="mt-0.5 block text-[11px] font-semibold text-slate-500">
+                                    {{ labelize(detail.escrow.contract?.status) || '—' }}
+                                    <template v-if="detail.escrow.contract?.escrow_status"> · Escrow {{ labelize(detail.escrow.contract.escrow_status) }}</template>
+                                </span>
+                            </span>
+                            <span class="inline-flex flex-wrap items-center gap-2">
+                                <a
+                                    v-if="route_prefix === 'admin' && detail.escrow.contract?.admin_url"
+                                    :href="detail.escrow.contract.admin_url"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="inline-flex items-center gap-1 rounded-full bg-emerald-700 px-3 py-1.5 text-[10px] font-black uppercase text-white transition hover:bg-emerald-800"
+                                >
+                                    View contract ↗
+                                </a>
+                                <a
+                                    v-if="detail.escrow.contract?.receipt_url"
+                                    :href="detail.escrow.contract.receipt_url"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase text-emerald-800 transition hover:bg-emerald-50"
+                                >
+                                    Receipt ↗
+                                </a>
+                            </span>
+                        </div>
+                    </div>
+                </section>
 
                 <section
                     v-if="activeModule === 'quests' && detail.health"
@@ -896,6 +971,8 @@ const moderationChips = computed(() => {
     return chips;
 });
 
+const questProposals = computed(() => detail.value?.proposals?.items ?? []);
+
 const questProposalFreelancers = computed(() => {
     const items = detail.value?.proposals?.items ?? [];
     const excluded = new Set(['withdrawn', 'declined']);
@@ -1150,6 +1227,23 @@ async function openDetail(row) {
     } finally {
         detailLoading.value = false;
     }
+}
+
+async function openProposalFromQuest(proposal) {
+    if (!proposal?.id) {
+        return;
+    }
+
+    if (activeModule.value !== 'proposals') {
+        activeModule.value = 'proposals';
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    await openDetail({
+        id: proposal.id,
+        title: proposal.reference_code || `Proposal #${proposal.id}`,
+        reference_code: proposal.reference_code,
+    });
 }
 
 async function runAction(key, request, successMessage, after) {

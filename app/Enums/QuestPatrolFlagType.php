@@ -22,6 +22,9 @@ enum QuestPatrolFlagType: string
     case WinRateAnomaly = 'win_rate_anomaly';
     case InstantAward = 'instant_award';
     case PriceAnomaly = 'price_anomaly';
+    case SuspiciousEscrowRelease = 'suspicious_escrow_release';
+    case RepeatCounterpartyTransactions = 'repeat_counterparty_transactions';
+    case CircularPayment = 'circular_payment';
 
     public function label(): string
     {
@@ -44,16 +47,21 @@ enum QuestPatrolFlagType: string
             self::WinRateAnomaly => 'Win Rate Anomaly',
             self::InstantAward => 'Instant Award',
             self::PriceAnomaly => 'Price Anomaly',
+            self::SuspiciousEscrowRelease => 'Suspicious Escrow Release',
+            self::RepeatCounterpartyTransactions => 'Repeat Counterparty Transactions',
+            self::CircularPayment => 'Circular Payment Pattern',
         };
     }
 
     public function defaultSeverity(): string
     {
         return match ($this) {
-            self::BudgetAnomalyHigh, self::TierMismatch, self::InstantCompletion, self::WinRateAnomaly, self::InstantAward => 'high',
+            self::BudgetAnomalyHigh, self::TierMismatch, self::InstantCompletion, self::WinRateAnomaly, self::InstantAward,
+            self::SuspiciousEscrowRelease, self::CircularPayment => 'high',
             self::BoostSpam, self::DuplicateBoost, self::RapidBoostAfterAward, self::DuplicateQuest, self::CategoryShift,
             self::NewAccountUnfamiliarCategory, self::LocationMismatch, self::PriceMismatch, self::ScopeMismatch,
-            self::VelocitySpike, self::TemplateSpam, self::PriceAnomaly, self::BudgetAnomalyLow => 'medium',
+            self::VelocitySpike, self::TemplateSpam, self::PriceAnomaly, self::BudgetAnomalyLow,
+            self::RepeatCounterpartyTransactions => 'medium',
         };
     }
 }

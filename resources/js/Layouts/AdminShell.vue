@@ -946,7 +946,7 @@ const navGroups = [
             { label: 'Premium & Boost Patrol', href: route('admin.premium-patrol.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/premium-patrol') },
             { label: 'User activity patrol', href: route('admin.user-activity-patrol.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/user-activity-patrol') },
             { label: 'Content Moderation', href: route('admin.content-moderation.index'), icon: ShieldCheckIcon, match: (p) => p.startsWith('/admin/content-moderation') },
-            { label: 'Conversation monitoring', href: route('admin.conversation-monitoring.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/conversation-monitoring') },
+            { label: 'Trust review', href: route('admin.conversation-monitoring.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/conversation-monitoring') },
             { label: 'Proactive outreach', href: route('admin.outreach.index'), icon: ChatBubbleLeftRightIcon, match: (p) => p.startsWith('/admin/outreach') },
             { label: 'Response templates', href: route('admin.response-templates.index'), icon: DocumentTextIcon, match: (p) => p.startsWith('/admin/response-templates') },
         ],
@@ -956,6 +956,7 @@ const navGroups = [
         collapsible: true,
         items: [
             { label: 'Quests', href: route('admin.quests.index'), icon: BriefcaseIcon, match: (p) => p.startsWith('/admin/quests') },
+            { label: 'Contracts', href: route('admin.contract-management.index'), icon: DocumentTextIcon, match: (p) => p.startsWith('/admin/contract-management') },
             { label: 'Proposals', href: route('admin.proposals.index'), icon: ClipboardDocumentCheckIcon, match: (p) => p.startsWith('/admin/proposals') },
             { label: 'Categories', href: route('admin.categories.index'), icon: Squares2X2Icon, match: (p) => p.startsWith('/admin/categories') },
             { label: 'Users', href: route('admin.users.index'), icon: UsersIcon, match: (p) => p.startsWith('/admin/users') },

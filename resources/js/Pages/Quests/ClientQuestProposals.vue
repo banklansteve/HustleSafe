@@ -387,7 +387,7 @@ function toggleShortlist(p) {
     };
 
     axios
-        .post(route('quests.proposals.toggle-shortlist', [props.quest.route_key, p.id]), {}, {
+        .post(route('quests.proposals.toggle-shortlist', [props.quest.route_key, p.route_key ?? p.id]), {}, {
             headers: { Accept: 'application/json' },
         })
         .then(({ data }) => {

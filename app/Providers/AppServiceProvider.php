@@ -57,6 +57,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(QuestOffer::class, QuestOfferPolicy::class);
         Gate::policy(QuestDispute::class, QuestDisputePolicy::class);
 
+        Route::pattern('offer', '[0-9A-Za-z\-]+');
+
         Route::bind('contact', function (?string $value) {
             if ($value === null || $value === '') {
                 return null;

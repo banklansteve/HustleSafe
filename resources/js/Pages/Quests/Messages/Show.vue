@@ -65,6 +65,7 @@
                                 :body="m.body"
                                 :is-redacted="m.is_redacted"
                                 :redaction-label="m.redaction_label"
+                                :inverted="m.sender.is_me"
                                 class="mt-1"
                             />
                             <p class="mt-1 text-[10px] font-bold opacity-70">
@@ -245,15 +246,58 @@ const fieldError = computed(() => {
     return errors.value?.message ?? '';
 });
 
-function appendIfNew(raw) {
-    const m = normalizeMessage(raw);
-    if (messages.value.some((x) => Number(x.id) === Number(m.id))) {
+function applyMessage(raw) {
+    const message = normalizeMessage({ ...raw, pending: false });
+    const id = message.id;
+    const numericId = Number(id);
+    const isNumericId = Number.isFinite(numericId) && !String(id).startsWith('pending-');
+    const isOwnMessage = Number(message.sender?.id) === Number(viewerId.value);
+
+    const existing = isNumericId
+        ? messages.value.find((row) => Number(row.id) === numericId)
+        : null;
+
+    if (existing?.is_redacted && !message.is_redacted) {
+        messages.value = messages.value.filter((row) => !(String(row.id).startsWith('pending-') && Number(row.sender?.id) === Number(viewerId.value)));
+
         return;
     }
-    messages.value = [...messages.value, m];
-    if (!m.sender.is_me) {
+
+    if (isOwnMessage && isNumericId && existing && !message.is_redacted && !existing.is_redacted) {
+        messages.value = messages.value.filter((row) => !(String(row.id).startsWith('pending-') && Number(row.sender?.id) === Number(viewerId.value)));
+
+        return;
+    }
+
+    let next = [...messages.value];
+
+    if (isOwnMessage) {
+        next = next.filter((row) => !String(row.id).startsWith('pending-'));
+    }
+
+    if (isNumericId) {
+        const index = next.findIndex((row) => Number(row.id) === numericId);
+        if (index !== -1) {
+            next[index] = { ...next[index], ...message, pending: false };
+            messages.value = next;
+
+            if (!message.sender?.is_me) {
+                threadPresence.markNow();
+            }
+
+            void scrollThreadToEnd({ smooth: true });
+
+            return;
+        }
+    }
+
+    next.push(message);
+    messages.value = next;
+
+    if (!message.sender?.is_me) {
         threadPresence.markNow();
     }
+
     void scrollThreadToEnd({ smooth: true });
 }
 
@@ -291,18 +335,51 @@ async function scrollThreadToEnd({ smooth = false } = {}) {
 
 async function send() {
     errors.value = {};
+    const draft = body.value.trim();
+    if (!draft) {
+        return;
+    }
+
+    const optimisticId = `pending-${Date.now()}`;
+    const pageUser = page.props.auth?.user;
+    const optimistic = normalizeMessage({
+        id: optimisticId,
+        body: draft,
+        is_redacted: false,
+        redaction_label: null,
+        pending: true,
+        created_at: new Date().toISOString(),
+        sender: {
+            id: pageUser?.id,
+            name: pageUser?.name,
+            first_name: pageUser?.first_name,
+            slug: pageUser?.slug,
+            avatar_url: pageUser?.avatar_url,
+            profile_url: pageUser?.profile_url ?? null,
+            is_me: true,
+        },
+    });
+
+    messages.value = [...messages.value, optimistic];
+    body.value = '';
+    void scrollThreadToEnd({ smooth: true });
+
     sending.value = true;
     try {
         const { data } = await axios.post(
             props.post_url,
-            { body: body.value },
+            { body: draft },
             { headers: { Accept: 'application/json' } },
         );
+
         if (data?.message) {
-            appendIfNew(data.message);
+            applyMessage(data.message);
+        } else {
+            messages.value = messages.value.filter((x) => String(x.id) !== optimisticId);
         }
-        body.value = '';
     } catch (e) {
+        messages.value = messages.value.filter((x) => String(x.id) !== optimisticId);
+        body.value = draft;
         const status = e.response?.status;
         const d = e.response?.data;
         if (status === 422) {
@@ -365,11 +442,16 @@ function bindEchoForThread(threadId) {
     }
     subscribedThreadId = threadId;
     const channel = echo.private(`quest-threads.${threadId}`);
-    channel.listen('.message.sent', (payload) => {
+    const ingestRealtimeMessage = (payload) => {
         if (payload?.message) {
-            appendIfNew(payload.message);
+            applyMessage(payload.message);
         }
-    });
+    };
+
+    channel.listen('.message.sent', ingestRealtimeMessage);
+    channel.listen('message.sent', ingestRealtimeMessage);
+    channel.listen('.message.updated', ingestRealtimeMessage);
+    channel.listen('message.updated', ingestRealtimeMessage);
     channel.listen('.typing', applyTyping);
 }
 

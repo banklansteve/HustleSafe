@@ -168,6 +168,13 @@ class AccountHubController extends Controller
                 'id' => $c->id,
                 'name' => $c->name,
             ])->values()->all(),
+            'skills' => $isFreelancer
+                ? array_values(array_filter(array_map(
+                    fn ($s) => trim((string) $s),
+                    (array) ($user->public_profile_settings['skills'] ?? []),
+                )))
+                : [],
+            'skillsSuggestUrl' => $isFreelancer ? route('account.skills.suggest') : null,
             'credentials' => $user->freelancerCredentials->map(fn ($c) => [
                 'id' => $c->id,
                 'credential_type' => $c->credential_type,

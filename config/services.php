@@ -61,4 +61,17 @@ return [
         'api_key' => env('GIPHY_API_KEY'),
     ],
 
+    /*
+    | Anthropic (Claude) — in-house AI helper used for quest description suggestions
+    | and other assistive features. Set ANTHROPIC_API_KEY to enable; pick your model
+    | with ANTHROPIC_MODEL (e.g. claude-sonnet-4-20250514).
+    */
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514'),
+        'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS', 1500),
+        'base_url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
+        'version' => env('ANTHROPIC_VERSION', '2023-06-01'),
+    ],
+
 ];

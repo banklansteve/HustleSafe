@@ -26,10 +26,14 @@ class QuestBoostController extends Controller
 
         if ($payload['stub_mode'] ?? false) {
             $this->payments->verifyAndActivate($payload['reference']);
+            $payment = \App\Models\QuestBoostPayment::query()
+                ->where('paystack_reference', $payload['reference'])
+                ->with('questBoost')
+                ->first();
 
             return redirect()
                 ->route('quests.show', $quest)
-                ->with('success', __('Quest boosted successfully (sandbox mode).'))
+                ->with('success', $this->followOnSuccessMessage($payment))
                 ->withFragment('boost-quest');
         }
 
@@ -43,6 +47,19 @@ class QuestBoostController extends Controller
         $this->clientBoosts->dismissUpsell($quest, $request->user());
 
         return back();
+    }
+
+    private function followOnSuccessMessage(?\App\Models\QuestBoostPayment $payment): string
+    {
+        $boost = $payment?->questBoost;
+        if ($boost !== null && $boost->starts_at !== null && $boost->starts_at->isFuture()) {
+            return __('Follow-on boost confirmed. Your current boost runs until :current, then your new boost runs until :extended.', [
+                'current' => $boost->starts_at->timezone('Africa/Lagos')->format('j M Y, g:i A'),
+                'extended' => $boost->ends_at?->timezone('Africa/Lagos')->format('j M Y, g:i A') ?? '—',
+            ]);
+        }
+
+        return __('Payment confirmed — your quest is now boosted!');
     }
 
     public function callback(Request $request): RedirectResponse
@@ -64,7 +81,7 @@ class QuestBoostController extends Controller
 
         return redirect()
             ->route('quests.show', $quest)
-            ->with('success', __('Payment confirmed — your quest is now boosted!'))
+            ->with('success', $this->followOnSuccessMessage($payment->fresh(['questBoost'])))
             ->withFragment('boost-quest');
     }
 }

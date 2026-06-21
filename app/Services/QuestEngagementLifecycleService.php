@@ -9,6 +9,7 @@ use App\Models\QuestLifecycleEmailLog;
 use App\Models\User;
 use App\Notifications\QuestAutoCompletedNotification;
 use App\Notifications\QuestLifecycleEngagementNotification;
+use App\Services\Quest\QuestCompletionScheduleService;
 use App\Support\EscrowAutoReleasePolicy;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -73,7 +74,7 @@ class QuestEngagementLifecycleService
                     __('Quick check-in on “:title”', ['title' => $quest->title]),
                     [
                         __('We hope the quest is going smoothly.'),
-                        __('If anything is unclear, use the quest thread so everything stays documented on-platform.'),
+                        __('Submit your deliverable from the proposal page when work is ready.'),
                         __('If you hit a blocker, message the client early — you can still open a dispute from the quest if something goes wrong.'),
                     ],
                     route('quests.messages.show', [$quest->getRouteKey()], absolute: true),
@@ -88,11 +89,11 @@ class QuestEngagementLifecycleService
                     __('How is “:title” going?', ['title' => $quest->title]),
                     [
                         __('This is a friendly pulse check while escrow is active.'),
-                        __('When deliverables meet the brief, mark the job complete from the quest page.'),
+                        __('You will review and approve deliverables after the freelancer submits work.'),
                         __('If something is off, open a dispute early — waiting usually makes resolution harder.'),
                     ],
-                    route('quests.show', [$quest->getRouteKey()], absolute: true),
-                    __('Open quest'),
+                    route('quests.proposals.show', [$quest, $quest->acceptedOffer], absolute: true),
+                    __('Open proposal'),
                     route('quests.disputes.create', [$quest->getRouteKey()], absolute: true),
                 );
             }
@@ -112,6 +113,105 @@ class QuestEngagementLifecycleService
             return $sent;
         }
 
+        if ($quest->delivered_at === null) {
+            return $sent + $this->processEngagementEmailsLegacyAfterDue($quest);
+        }
+
+        return $sent + $this->processReviewWindowEmails($quest);
+    }
+
+    protected function processReviewWindowEmails(Quest $quest): int
+    {
+        $sent = 0;
+        $client = $quest->client;
+        if (! $client || $quest->delivered_at === null) {
+            return 0;
+        }
+
+        $now = now();
+        $reviewDeadline = $quest->delivery_review_deadline_at
+            ?? EscrowAutoReleasePolicy::releaseAt($quest->delivered_at);
+
+        if ($now->gte($reviewDeadline)) {
+            return 0;
+        }
+
+        $releaseHours = EscrowAutoReleasePolicy::releaseHours();
+        $questUrl = route('quests.proposals.show', [$quest, $quest->acceptedOffer], absolute: true);
+        $disputeUrl = route('quests.disputes.create', [$quest->getRouteKey()], absolute: true);
+
+        if ($now->gte($quest->delivered_at)) {
+            $sent += $this->sendLifecycleEmail(
+                $quest,
+                $client,
+                'client_review_due_on_submit',
+                __('Deliverable submitted — review “:title”', ['title' => $quest->title]),
+                [
+                    __('The freelancer submitted work for your review.'),
+                    __('Approve if it meets the brief, request revisions, or open a dispute if something is wrong.'),
+                    __('If you take no action and no dispute is open, escrow may auto-release :hours hours after submission.', [
+                        'hours' => $releaseHours,
+                    ]),
+                ],
+                $questUrl,
+                __('Review deliverable'),
+                $disputeUrl,
+            );
+        }
+
+        if ($now->gte($quest->delivered_at->copy()->addHours(24))) {
+            $remaining = (int) max(0, $now->diffInHours($reviewDeadline, false));
+            $sent += $this->sendLifecycleEmail(
+                $quest,
+                $client,
+                'client_review_24h_after_submit',
+                __('Reminder: review deliverable — “:title”', ['title' => $quest->title]),
+                [
+                    __('It has been 24 hours since the freelancer submitted work.'),
+                    __('Approve, request revisions, or open a dispute.'),
+                    __('Auto-release may occur in about :hours hours if no dispute is open.', ['hours' => $remaining]),
+                ],
+                $questUrl,
+                __('Review now'),
+                $disputeUrl,
+            );
+        }
+
+        if ($now->gte($quest->delivered_at->copy()->addHours(48))) {
+            $remaining = (int) max(0, $now->diffInHours($reviewDeadline, false));
+            $sent += $this->sendLifecycleEmail(
+                $quest,
+                $client,
+                'client_review_48h_after_submit',
+                __('Final review reminder — “:title”', ['title' => $quest->title]),
+                [
+                    __('This is your final reminder before the automatic review window closes.'),
+                    __('Approve now if satisfied, or open a dispute immediately.'),
+                    __('Auto-release may occur in about :hours hours.', ['hours' => $remaining]),
+                ],
+                $questUrl,
+                __('Review now'),
+                $disputeUrl,
+            );
+        }
+
+        return $sent;
+    }
+
+    protected function processEngagementEmailsLegacyAfterDue(Quest $quest): int
+    {
+        $sent = 0;
+        $client = $quest->client;
+        if (! $client || $quest->delivered_at !== null) {
+            return 0;
+        }
+
+        $due = $this->expectedCompletionAt($quest);
+        if ($due === null || now()->lt($due)) {
+            return 0;
+        }
+
+        $now = now();
         $releaseHours = EscrowAutoReleasePolicy::releaseHours();
         $questUrl = route('quests.show', [$quest->getRouteKey()], absolute: true);
         $disputeUrl = route('quests.disputes.create', [$quest->getRouteKey()], absolute: true);
@@ -120,53 +220,14 @@ class QuestEngagementLifecycleService
             $sent += $this->sendLifecycleEmail(
                 $quest,
                 $client,
-                'client_auto_release_due_day',
-                __('Agreed delivery date — review “:title”', ['title' => $quest->title]),
+                'client_work_deadline_passed',
+                __('Work deadline passed — “:title”', ['title' => $quest->title]),
                 [
-                    __('Today is the agreed delivery date for this quest.'),
-                    __('If the work meets the brief, mark the job complete. If something is wrong, message the freelancer or open a dispute.'),
-                    __('If you take no action, escrow may auto-release to the freelancer :hours hours after the agreed delivery date.', [
-                        'hours' => $releaseHours,
-                    ]),
+                    __('The agreed delivery date has passed and no deliverable has been submitted yet.'),
+                    __('Message the freelancer for a status update or open a dispute if needed.'),
                 ],
                 $questUrl,
-                __('Review quest'),
-                $disputeUrl,
-            );
-        }
-
-        if ($now->gte($due->copy()->addHours(24))) {
-            $remaining = EscrowAutoReleasePolicy::hoursRemaining($due, $now);
-            $sent += $this->sendLifecycleEmail(
-                $quest,
-                $client,
-                'client_auto_release_24h',
-                __('Reminder: review “:title”', ['title' => $quest->title]),
-                [
-                    __('It has been 24 hours since the agreed delivery date and this quest is still open.'),
-                    __('Mark the job complete if you are satisfied, or open a dispute if something is not right.'),
-                    __('Escrow may auto-release in about :hours hours if no dispute is opened.', ['hours' => $remaining]),
-                ],
-                $questUrl,
-                __('Mark complete or dispute'),
-                $disputeUrl,
-            );
-        }
-
-        if ($now->gte($due->copy()->addHours(36))) {
-            $remaining = EscrowAutoReleasePolicy::hoursRemaining($due, $now);
-            $sent += $this->sendLifecycleEmail(
-                $quest,
-                $client,
-                'client_auto_release_36h_final',
-                __('Final reminder before auto-release — “:title”', ['title' => $quest->title]),
-                [
-                    __('This is your final scheduled reminder before the automatic escrow release window closes.'),
-                    __('Mark complete now if the deliverables meet the brief, or open a dispute immediately with clear facts.'),
-                    __('If no dispute is open, escrow may release in about :hours hours.', ['hours' => $remaining]),
-                ],
-                $questUrl,
-                __('Review now'),
+                __('Open quest'),
                 $disputeUrl,
             );
         }
@@ -216,24 +277,7 @@ class QuestEngagementLifecycleService
 
     public function expectedCompletionAt(Quest $quest): ?Carbon
     {
-        if ($quest->due_at) {
-            return $quest->due_at->copy()->timezone(config('app.timezone'));
-        }
-
-        if ($quest->estimated_delivery_date) {
-            return Carbon::parse($quest->estimated_delivery_date, config('app.timezone'))->endOfDay();
-        }
-
-        $quest->loadMissing('acceptedOffer');
-        if ($quest->acceptedOffer?->planned_finish_date) {
-            return Carbon::parse($quest->acceptedOffer->planned_finish_date, config('app.timezone'))->endOfDay();
-        }
-
-        if ($quest->estimated_completion_days && $quest->escrow_funded_at) {
-            return $quest->escrow_funded_at->copy()->addDays((int) $quest->estimated_completion_days);
-        }
-
-        return null;
+        return app(QuestCompletionScheduleService::class)->engagementAnchorAt($quest);
     }
 
     protected function hasBlockingDispute(Quest $quest): bool
@@ -256,7 +300,7 @@ class QuestEngagementLifecycleService
             return false;
         }
 
-        if ($quest->escrow_status !== 'funded') {
+        if ($quest->escrow_status !== 'funded' && $quest->escrow_status !== 'partially_released') {
             return false;
         }
 
@@ -264,12 +308,14 @@ class QuestEngagementLifecycleService
             return false;
         }
 
-        $due = $this->expectedCompletionAt($quest);
-        if ($due === null) {
+        if ($quest->delivered_at === null) {
             return false;
         }
 
-        if (now()->lt(EscrowAutoReleasePolicy::releaseAt($due))) {
+        $reviewDeadline = $quest->delivery_review_deadline_at
+            ?? EscrowAutoReleasePolicy::releaseAt($quest->delivered_at);
+
+        if (now()->lt($reviewDeadline)) {
             return false;
         }
 
@@ -293,13 +339,21 @@ class QuestEngagementLifecycleService
         $quest->loadMissing('acceptedOffer', 'client', 'freelancer');
 
         if ($quest->delivery_acknowledged_at === null) {
-            $quest->update([
-                'delivery_acknowledged_at' => now(),
-                'delivery_acknowledged_by' => null,
-            ]);
+            $recurring = app(\App\Services\Quest\QuestRecurringEngagementService::class);
+            if ($recurring->isRecurring($quest)) {
+                $installment = $recurring->currentInstallment($quest);
+                if ($installment !== null) {
+                    $recurring->markInstallmentAutoApproved($quest, $installment);
+                }
+            } else {
+                $quest->update([
+                    'delivery_acknowledged_at' => now(),
+                    'delivery_acknowledged_by' => null,
+                ]);
+            }
             $quest->refresh();
             $logger->record($quest, 'auto_delivery_acknowledged', null, null, [
-                'reason' => 'auto_release_after_agreed_delivery',
+                'reason' => 'auto_release_after_review_window',
                 'hours' => EscrowAutoReleasePolicy::releaseHours(),
             ]);
         }
@@ -313,14 +367,29 @@ class QuestEngagementLifecycleService
         }
 
         $releaseHours = EscrowAutoReleasePolicy::releaseHours();
+        $recurring = app(\App\Services\Quest\QuestRecurringEngagementService::class);
 
         try {
-            app(\App\Services\Payments\EscrowPaymentService::class)
-                ->releaseEscrowToWallet($quest, null, __('Auto-released :hours hours after agreed delivery date', ['hours' => $releaseHours]));
+            $result = $recurring->processApprovedRelease(
+                $quest->fresh(),
+                null,
+                __('Auto-released :hours hours after deliverable submission review window', ['hours' => $releaseHours]),
+                'auto_release_review_window',
+            );
         } catch (\Throwable $e) {
             report($e);
 
             return false;
+        }
+
+        if (! $result['quest_completed']) {
+            $logger->record($quest->fresh(), 'installment_auto_released', null, null, [
+                'installment_number' => $result['installment_number'],
+                'amount_minor' => $result['amount_minor'],
+                'closure_type' => 'auto_installment_release',
+            ]);
+
+            return true;
         }
 
         $payoutMinor = (int) ($quest->acceptedOffer?->quoted_amount_minor ?? $quest->budget_amount_minor ?? 0);

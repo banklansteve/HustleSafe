@@ -19,7 +19,7 @@
 </head>
 <body>
     <h1>{{ __('Proposal summary') }}</h1>
-    <p class="muted">{{ config('app.name') }} · {{ $quest->reference_code ?? $quest->uuid }} · {{ now()->timezone('Africa/Lagos')->format('M j, Y H:i') }}</p>
+    <p class="muted">{{ config('app.name') }} · {{ $offer->reference_code ?? $offer->uuid }} · Quest {{ $quest->reference_code ?? $quest->uuid }} · {{ now()->timezone('Africa/Lagos')->format('M j, Y H:i') }}</p>
 
     <h2>{{ __('Quest') }}</h2>
     <div class="box">

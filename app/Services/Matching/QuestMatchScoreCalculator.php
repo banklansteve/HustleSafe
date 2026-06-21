@@ -6,6 +6,7 @@ use App\Models\FreelancerMetric;
 use App\Models\Quest;
 use App\Models\User;
 use App\Services\Freelancer\FreelancerProSubscriptionService;
+use App\Services\Quest\QuestCompletionScheduleService;
 use App\Services\Verification\VerificationEngineService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Arr;
@@ -15,6 +16,7 @@ class QuestMatchScoreCalculator
     public function __construct(
         protected VerificationEngineService $verificationEngine,
         protected FreelancerProSubscriptionService $freelancerPro,
+        protected QuestRemoteMatchPolicy $remoteMatchPolicy,
     ) {}
 
     /**
@@ -33,12 +35,22 @@ class QuestMatchScoreCalculator
      */
     public function score(User $freelancer, Quest $quest, ?FreelancerMetric $metrics = null): array
     {
-        $weights = config('quest_matching.weights', []);
+        $locationAgnostic = $this->remoteMatchPolicy->isLocationAgnostic($quest);
+        $weights = $locationAgnostic
+            ? config('quest_matching.remote_weights', config('quest_matching.weights', []))
+            : config('quest_matching.weights', []);
         $metrics ??= FreelancerMetric::query()->where('user_id', $freelancer->id)->first();
 
         $locationTier = 'unknown';
         $passesSkillsGate = true;
-        $location = $this->locationScore($freelancer, $quest, $locationTier);
+
+        if ($locationAgnostic) {
+            $locationTier = 'remote';
+            $location = (float) config('quest_matching.remote_location_score', 100);
+        } else {
+            $location = $this->locationScore($freelancer, $quest, $locationTier);
+        }
+
         $skills = $this->skillsScore($freelancer, $quest, $metrics, $passesSkillsGate);
         $budget = $this->budgetAlignmentScore($quest, $metrics);
         $tierQuality = $this->tierQualityScore($freelancer, $metrics);
@@ -82,8 +94,8 @@ class QuestMatchScoreCalculator
 
         $total = min(100, max(0, $weighted + array_sum($bonuses) - array_sum($penalties)));
 
-        $reasons = $this->buildReasons($components, $locationTier, $passesSkillsGate, $passesLanguageGate);
-        $breakdownLines = $this->buildBreakdownLines($components, $locationTier);
+        $reasons = $this->buildReasons($components, $locationTier, $passesSkillsGate, $passesLanguageGate, $locationAgnostic);
+        $breakdownLines = $this->buildBreakdownLines($components, $locationTier, $locationAgnostic);
 
         return [
             'total' => round($total, 2),
@@ -101,6 +113,10 @@ class QuestMatchScoreCalculator
 
     public function locationTierFor(User $freelancer, Quest $quest): string
     {
+        if ($this->remoteMatchPolicy->isLocationAgnostic($quest)) {
+            return 'remote';
+        }
+
         $tier = 'unknown';
         $this->locationScore($freelancer, $quest, $tier);
 
@@ -239,7 +255,7 @@ class QuestMatchScoreCalculator
 
     protected function urgencyBonusApplies(Quest $quest, ?FreelancerMetric $metrics): bool
     {
-        $due = $quest->due_at ?? $quest->estimated_delivery_date;
+        $due = $quest->due_at ?? app(QuestCompletionScheduleService::class)->urgencyAnchorAt($quest);
         if (! $due instanceof CarbonInterface || ! $due->isFuture()) {
             return false;
         }
@@ -278,16 +294,20 @@ class QuestMatchScoreCalculator
      * @param  array<string, float>  $components
      * @return list<string>
      */
-    protected function buildReasons(array $components, string $locationTier, bool $skillsPass, bool $languagePass): array
+    protected function buildReasons(array $components, string $locationTier, bool $skillsPass, bool $languagePass, bool $locationAgnostic = false): array
     {
         $reasons = [];
 
-        $reasons[] = match ($locationTier) {
-            'same_lga' => __('Same LGA as your profile — top local match.'),
-            'same_state' => __('Same state — strong regional fit.'),
-            'different_state' => __('Different state — still in your category.'),
-            default => __('Nationwide listing — location open.'),
-        };
+        if ($locationAgnostic || $locationTier === 'remote') {
+            $reasons[] = __('Online-friendly brief — matched on skills and category, not location.');
+        } else {
+            $reasons[] = match ($locationTier) {
+                'same_lga' => __('Same LGA as your profile — top local match.'),
+                'same_state' => __('Same state — strong regional fit.'),
+                'different_state' => __('Different state — still in your category.'),
+                default => __('Nationwide listing — location open.'),
+            };
+        }
 
         if ($skillsPass && ($components['skills'] ?? 0) >= 80) {
             $reasons[] = __('Your listed skills align with this brief.');
@@ -314,12 +334,21 @@ class QuestMatchScoreCalculator
      * @param  array<string, float>  $components
      * @return list<string>
      */
-    protected function buildBreakdownLines(array $components, string $locationTier): array
+    protected function buildBreakdownLines(array $components, string $locationTier, bool $locationAgnostic = false): array
     {
         $lines = [];
-        $lines[] = ($components['location'] ?? 0) >= 70
-            ? '✓ '.__('Your location')
-            : '○ '.__('Location stretch');
+
+        if ($locationAgnostic || $locationTier === 'remote') {
+            $lines[] = '✓ '.__('Online work — location not scored');
+        } else {
+            $lines[] = ($components['location'] ?? 0) >= 70
+                ? '✓ '.__('Your location')
+                : '○ '.__('Location stretch');
+
+            if ($locationTier === 'same_lga') {
+                $lines[0] = '✓ '.__('Same LGA');
+            }
+        }
 
         $lines[] = ($components['skills'] ?? 0) >= 50
             ? '✓ '.__('Your skills')
@@ -336,10 +365,6 @@ class QuestMatchScoreCalculator
         $lines[] = ($components['activity'] ?? 0) >= 60
             ? '✓ '.__('Active recently')
             : '○ '.__('Send proposals to stay visible');
-
-        if ($locationTier === 'same_lga') {
-            $lines[0] = '✓ '.__('Same LGA');
-        }
 
         return $lines;
     }

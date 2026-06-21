@@ -29,11 +29,16 @@ final class QuestCommerceUi
         return [
             'show_fund_button' => (bool) ($isClient && $isAccepted && $awaiting && $mutualAward),
             'funding_post_url' => ($isClient && $isAccepted && $awaiting && $mutualAward)
-                ? route('quests.proposals.funding-intent.store', [$quest->getRouteKey(), $offer->id])
+                ? route('quests.proposals.funding-intent.store', [$quest->getRouteKey(), $offer])
                 : null,
             'award_awaiting_freelancer' => $offer->status === 'pending_award',
             'award_mutually_confirmed' => $mutualAward,
+            'can_cancel_award' => (bool) ($isClient && app(\App\Services\Proposals\ProposalAwardCancellationService::class)->canCancel($quest, $offer)),
+            'cancel_award_url' => ($isClient && app(\App\Services\Proposals\ProposalAwardCancellationService::class)->canCancel($quest, $offer))
+                ? route('quests.proposals.cancel-award', [$quest->getRouteKey(), $offer])
+                : null,
             'completion' => EscrowReleasePolicy::uiPayload($quest, $viewer),
+            'delivery_lifecycle' => app(\App\Services\Quest\QuestDeliveryLifecycleService::class)->uiPayload($quest, $viewer),
         ];
     }
 

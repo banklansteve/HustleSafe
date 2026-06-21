@@ -292,6 +292,7 @@ class QuestListingExpiryService
                 'start_timing' => $source->start_timing,
                 'estimated_completion_days' => $source->estimated_completion_days,
                 'estimated_delivery_date' => $source->estimated_delivery_date,
+                'delivery_deadline' => $source->delivery_deadline,
                 'site_visits_allowed' => $source->site_visits_allowed,
                 'site_access_level' => $source->site_access_level,
                 'pets_on_site' => $source->pets_on_site,

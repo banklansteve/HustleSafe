@@ -242,7 +242,7 @@ class DashboardListController extends Controller
         if ($row instanceof QuestOffer) {
             $quest = $row->quest;
             $routeKey = $quest ? ($quest->slug ?: $quest->uuid) : null;
-            $href = $routeKey ? route('quests.proposals.show', [$routeKey, $row->id]) : null;
+            $href = $routeKey ? route('quests.proposals.show', [$routeKey, $row]) : null;
             $quotedMinor = (int) ($row->quoted_amount_minor ?? 0);
 
             return [

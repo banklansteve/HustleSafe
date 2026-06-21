@@ -3,6 +3,7 @@
 namespace App\Services\Contracts;
 
 use App\Enums\ContractStatus;
+use App\Enums\DeliveryDateAdjustmentType;
 use App\Enums\DeliveryExtensionReasonCategory;
 use App\Enums\DeliveryExtensionStatus;
 use App\Models\Quest;
@@ -216,7 +217,7 @@ class ContractPresentationService
             : [];
 
         $proposalUrl = ($quest !== null && $contract->offer !== null)
-            ? route('quests.proposals.show', [$quest->getRouteKey(), $contract->offer->id])
+            ? route('quests.proposals.show', [$quest->getRouteKey(), $contract->offer])
             : null;
 
         return [
@@ -351,8 +352,8 @@ class ContractPresentationService
             'extension_limit' => $limit,
             'extension_badge' => $count > 0
                 ? ($count >= $limit
-                    ? __('Extension :count of :limit — No further extensions available', ['count' => $count, 'limit' => $limit])
-                    : __('Extension :count of :limit used', ['count' => $count, 'limit' => $limit]))
+                    ? __(':count of :limit date changes used — none left', ['count' => $count, 'limit' => $limit])
+                    : __(':count of :limit date changes used', ['count' => $count, 'limit' => $limit]))
                 : null,
             'history' => collect($extensions)->map(fn (array $row) => [
                 'extension_number' => $row['extension_number'] ?? null,
@@ -381,13 +382,19 @@ class ContractPresentationService
 
         $payload = [
             'freelancer_button' => $button,
+            'adjustment_types' => DeliveryDateAdjustmentType::options(),
             'reason_categories' => DeliveryExtensionReasonCategory::options(),
             'max_extension_days' => ContractDeliveryExtensionService::MAX_EXTENSION_DAYS,
+            'max_reduction_days' => ContractDeliveryExtensionService::MAX_REDUCTION_DAYS,
             'messages_url' => route('contracts.extensions.messages', $contract->reference_code),
             'summary' => [
                 'extension_count' => (int) $contract->delivery_extension_count,
                 'extension_limit' => $limit,
                 'remaining' => max(0, $limit - (int) $contract->delivery_extension_count),
+                'adjustment_limit_label' => __(':used of :max date changes used', [
+                    'used' => (int) $contract->delivery_extension_count,
+                    'max' => $limit,
+                ]),
                 'current_deadline_label' => $contract->agreed_delivery_date?->format('j M Y'),
                 'original_deadline_label' => $original ? \Carbon\Carbon::parse($original)->format('j M Y') : null,
                 'has_pending' => $pending !== null,
@@ -445,6 +452,8 @@ class ContractPresentationService
         $row = [
             'id' => $ext->id,
             'extension_number' => $ext->extension_number,
+            'adjustment_type' => ($ext->adjustment_type ?? DeliveryDateAdjustmentType::Extension)->value,
+            'adjustment_type_label' => ($ext->adjustment_type ?? DeliveryDateAdjustmentType::Extension)->label(),
             'status' => $ext->status->value,
             'status_label' => $ext->status->label(),
             'is_active' => $isActive,

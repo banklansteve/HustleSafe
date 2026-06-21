@@ -112,6 +112,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('premium-patrol:scan-anomalies')->hourly();
         $schedule->command('quest-patrol:scan')->hourly();
         $schedule->command('quest-patrol:daily-digest')->dailyAt('08:00');
+        $schedule->command('contracts:sync-registry')->hourly();
+        $schedule->command('contracts:patrol-scan')->hourly();
         $schedule->command('user-activity-patrol:scan-anomalies')->hourly();
         $schedule->command('freelancer-metrics:refresh')->everySixHours();
         $schedule->command('financial:generate-monthly-reports')->monthlyOn(1, '02:00');

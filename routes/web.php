@@ -10,6 +10,7 @@ use App\Http\Controllers\ContractController;
 use App\Http\Controllers\AccountPresenceController;
 use App\Http\Controllers\AccountQuestCategoriesController;
 use App\Http\Controllers\AccountSecurityController;
+use App\Http\Controllers\AccountSkillSuggestController;
 use App\Http\Controllers\AccountUpdateController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardListController;
@@ -43,8 +44,10 @@ use App\Http\Controllers\QuestDisputeMessageController;
 use App\Http\Controllers\QuestDisputeMutualResolveController;
 use App\Http\Controllers\QuestDisputeSettlementController;
 use App\Http\Controllers\FreelancerProposalsController;
+use App\Http\Controllers\QuestBrowseController;
 use App\Http\Controllers\QuestExploreController;
 use App\Http\Controllers\QuestFieldProfileController;
+use App\Http\Controllers\QuestDescriptionSuggestionController;
 use App\Http\Controllers\QuestSkillSuggestController;
 use App\Http\Controllers\QuestFileController;
 use App\Http\Controllers\QuestInviteController;
@@ -168,6 +171,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->whereIn('source', ['conversation', 'sanction'])
         ->middleware('throttle:60,1')
         ->name('account.policy-notices.acknowledge');
+    Route::post('/account/policy-notices/conversation/{id}/reply', [UserPolicyNoticesController::class, 'reply'])
+        ->middleware('throttle:20,1')
+        ->name('account.policy-notices.reply');
     Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
     Route::post('/wallet/bank-accounts', [WalletController::class, 'storeBankAccount'])->middleware('throttle:20,1')->name('wallet.bank-accounts.store');
     Route::post('/wallet/withdraw', [WalletController::class, 'withdraw'])->middleware('throttle:10,1')->name('wallet.withdraw');
@@ -177,6 +183,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('freelancer')
         ->name('account.power-hours');
     Route::patch('/account/visibility', [AccountUpdateController::class, 'visibility'])->name('account.visibility');
+    Route::patch('/account/skills', [AccountUpdateController::class, 'skills'])
+        ->middleware('freelancer')
+        ->name('account.skills.update');
+    Route::get('/account/skills/suggest', AccountSkillSuggestController::class)
+        ->middleware(['freelancer', 'throttle:60,1'])
+        ->name('account.skills.suggest');
     Route::patch('/account/credentials/{freelancerCredential}', FreelancerCredentialVisibilityController::class)
         ->whereNumber('freelancerCredential')
         ->name('account.credentials.visibility');
@@ -242,6 +254,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('disputes.mutual-resolve.store');
 
     Route::get('/quests/explore', QuestExploreController::class)->name('quests.explore');
+    Route::get('/quests/browse', QuestBrowseController::class)
+        ->middleware('freelancer')
+        ->name('quests.browse');
     Route::get('/quests', [QuestController::class, 'index'])->name('quests.index');
     Route::get('/quests/create', [QuestController::class, 'create'])->name('quests.create');
     Route::post('/quests', [QuestController::class, 'store'])->name('quests.store');
@@ -251,6 +266,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('throttle:60,1')
         ->name('quests.skills.suggest');
     Route::get('/quests/budget-guidance', QuestBudgetGuidanceController::class)->name('quests.budget-guidance');
+    Route::post('/quests/description-suggestions', QuestDescriptionSuggestionController::class)
+        ->middleware('throttle:10,1')
+        ->name('quests.description-suggestions');
     Route::post('/quests/wizard/validate-step', [QuestWizardController::class, 'validateStep'])
         ->middleware('throttle:60,1')
         ->name('quests.wizard.validate-step');
@@ -279,50 +297,60 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('quests.proposals.create');
     Route::get('/quests/{quest}/proposals/{offer}/edit', [QuestProposalController::class, 'edit'])
         ->middleware('freelancer')
-        ->whereNumber('offer')
         ->name('quests.proposals.edit');
     Route::patch('/quests/{quest}/proposals/{offer}', [QuestOfferController::class, 'update'])
         ->middleware(['freelancer', 'throttle:15,1'])
-        ->whereNumber('offer')
         ->name('quests.proposals.update');
     Route::post('/quests/{quest}/proposals/{offer}/toggle-shortlist', [QuestProposalLifecycleController::class, 'toggleShortlist'])
         ->middleware('throttle:60,1')
-        ->whereNumber('offer')
         ->name('quests.proposals.toggle-shortlist');
     Route::post('/quests/{quest}/proposals/{offer}/decline', [QuestProposalLifecycleController::class, 'decline'])
         ->middleware('throttle:20,1')
-        ->whereNumber('offer')
         ->name('quests.proposals.decline');
     Route::post('/quests/{quest}/proposals/{offer}/accept', [QuestProposalLifecycleController::class, 'accept'])
         ->middleware('throttle:10,1')
-        ->whereNumber('offer')
         ->name('quests.proposals.accept');
     Route::post('/quests/{quest}/proposals/{offer}/confirm-award', [QuestProposalLifecycleController::class, 'confirmAward'])
         ->middleware(['freelancer', 'throttle:10,1'])
-        ->whereNumber('offer')
         ->name('quests.proposals.confirm-award');
+    Route::post('/quests/{quest}/proposals/{offer}/cancel-award', [QuestProposalLifecycleController::class, 'cancelAward'])
+        ->middleware('throttle:10,1')
+        ->name('quests.proposals.cancel-award');
     Route::get('/quests/{quest}/proposals/{offer}/clarify', [ProposalClarificationController::class, 'show'])
-        ->whereNumber('offer')
         ->name('quests.proposals.clarify');
     Route::post('/quests/{quest}/proposals/{offer}/clarify/ask', [ProposalClarificationController::class, 'ask'])
         ->middleware('throttle:30,1')
-        ->whereNumber('offer')
         ->name('quests.proposals.clarify.ask');
     Route::post('/quests/{quest}/proposals/{offer}/clarify/answer', [ProposalClarificationController::class, 'answer'])
         ->middleware(['freelancer', 'throttle:30,1'])
-        ->whereNumber('offer')
         ->name('quests.proposals.clarify.answer');
     Route::post('/quests/{quest}/proposals/{offer}/escrow-funded', [QuestProposalLifecycleController::class, 'markEscrowFunded'])
         ->middleware('throttle:10,1')
-        ->whereNumber('offer')
         ->name('quests.proposals.escrow-funded');
     Route::post('/quests/{quest}/proposals/{offer}/funding-intent', [QuestProposalFundingIntentController::class, 'store'])
         ->middleware('throttle:20,1')
-        ->whereNumber('offer')
         ->name('quests.proposals.funding-intent.store');
     Route::post('/quests/{quest}/acknowledge-delivery', [QuestCompletionController::class, 'acknowledgeDelivery'])
         ->middleware('throttle:10,1')
         ->name('quests.acknowledge-delivery');
+    Route::post('/quests/{quest}/delivery-submissions', [\App\Http\Controllers\QuestDeliverySubmissionController::class, 'store'])
+        ->middleware(['freelancer', 'throttle:10,1'])
+        ->name('quests.delivery-submissions.store');
+    Route::post('/quests/{quest}/delivery/approve', [\App\Http\Controllers\QuestDeliverySubmissionController::class, 'approve'])
+        ->middleware('throttle:10,1')
+        ->name('quests.delivery.approve');
+    Route::post('/quests/{quest}/delivery/request-revision', [\App\Http\Controllers\QuestDeliverySubmissionController::class, 'requestRevision'])
+        ->middleware('throttle:10,1')
+        ->name('quests.delivery.request-revision');
+    Route::post('/quests/{quest}/contract-renewal/extend', [\App\Http\Controllers\QuestContractRenewalController::class, 'extend'])
+        ->middleware('throttle:10,1')
+        ->name('quests.contract-renewal.extend');
+    Route::post('/quests/{quest}/contract-renewal/continue', [\App\Http\Controllers\QuestContractRenewalController::class, 'continueWithFreelancer'])
+        ->middleware('throttle:10,1')
+        ->name('quests.contract-renewal.continue');
+    Route::post('/quests/{quest}/contract-renewal/republish', [\App\Http\Controllers\QuestContractRenewalController::class, 'republish'])
+        ->middleware('throttle:10,1')
+        ->name('quests.contract-renewal.republish');
     Route::post('/quests/{quest}/release-funds', [QuestCompletionController::class, 'releaseFunds'])
         ->middleware('throttle:10,1')
         ->name('quests.release-funds');
@@ -331,13 +359,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('quests.complete');
     Route::post('/quests/{quest}/proposals/{offer}/withdraw', [QuestProposalLifecycleController::class, 'withdraw'])
         ->middleware(['freelancer', 'throttle:10,1'])
-        ->whereNumber('offer')
         ->name('quests.proposals.withdraw');
     Route::get('/quests/{quest}/proposals/{offer}/pdf', QuestProposalPdfController::class)
-        ->whereNumber('offer')
         ->name('quests.proposals.pdf');
     Route::get('/quests/{quest}/proposals/{offer}', [QuestProposalController::class, 'show'])
-        ->whereNumber('offer')
         ->name('quests.proposals.show');
     Route::get('/quests/{quest}/disputes/create', [QuestDisputeController::class, 'create'])->name('quests.disputes.create');
     Route::post('/quests/{quest}/disputes', [QuestDisputeController::class, 'store'])
@@ -359,7 +384,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('quests.reports.store');
     Route::post('/quests/{quest}/proposals/{offer}/reports', [QuestContentReportController::class, 'storeProposal'])
         ->middleware('throttle:20,1')
-        ->whereNumber('offer')
         ->name('quests.proposals.reports.store');
 
     Route::patch('/quests/{quest}', [QuestController::class, 'update'])->name('quests.update');

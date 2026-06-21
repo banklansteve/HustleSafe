@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Account\AccountDetailsUpdateRequest;
 use App\Http\Requests\Account\AccountPowerHoursUpdateRequest;
+use App\Http\Requests\Account\AccountSkillsUpdateRequest;
 use App\Http\Requests\Account\AccountVisibilityUpdateRequest;
+use App\Services\Matching\FreelancerMetricsService;
+use App\Services\Quest\QuestSkillDictionaryService;
 use App\Jobs\ScanContentForModerationJob;
 use App\Models\User;
 use App\Services\PowerHoursService;
@@ -42,6 +45,62 @@ class AccountUpdateController extends Controller
         $trustScores->recalculate($user->fresh());
 
         return redirect()->route('account.show', ['tab' => 'visibility'])->with('success', __('Public visibility saved.'));
+    }
+
+    public function skills(
+        AccountSkillsUpdateRequest $request,
+        FreelancerMetricsService $metrics,
+        TrustScoreOrchestrator $trustScores,
+        QuestSkillDictionaryService $dictionary,
+    ): RedirectResponse {
+        $user = $request->user();
+        $user->loadMissing('questCategoryPreferences:id');
+
+        $categoryIds = $user->questCategoryPreferences->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        $rawSkills = collect($request->validated()['skills'] ?? [])
+            ->map(fn ($skill) => trim((string) $skill))
+            ->filter()
+            ->unique(fn ($skill) => mb_strtolower($skill))
+            ->take(30)
+            ->values()
+            ->all();
+
+        $skills = [];
+        $invalid = [];
+
+        foreach ($rawSkills as $skill) {
+            $canonical = $dictionary->resolveCanonical($skill, $categoryIds);
+            if ($canonical === null) {
+                $invalid[] = $skill;
+
+                continue;
+            }
+
+            $skills[] = $canonical;
+        }
+
+        if ($invalid !== []) {
+            return redirect()
+                ->route('account.show', ['tab' => 'overview'])
+                ->withErrors([
+                    'skills' => __('Pick skills from the suggestions list so they match client quest requirements. Not recognized: :list', [
+                        'list' => implode(', ', array_slice($invalid, 0, 5)),
+                    ]),
+                ]);
+        }
+
+        $settings = $user->public_profile_settings ?? [];
+        $settings['skills'] = $skills;
+        $user->public_profile_settings = $settings;
+        $user->save();
+
+        // Refresh matching metrics immediately so new skills affect quest matching now,
+        // instead of waiting for the periodic metrics refresh.
+        $metrics->refresh($user->fresh());
+        $trustScores->recalculate($user->fresh());
+
+        return redirect()->route('account.show', ['tab' => 'overview'])->with('success', __('Skills updated.'));
     }
 
     public function powerHours(AccountPowerHoursUpdateRequest $request, PowerHoursService $powerHours, TrustScoreOrchestrator $trustScores): RedirectResponse

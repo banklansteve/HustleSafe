@@ -69,7 +69,19 @@ final class EscrowReleasePolicy
             return false;
         }
 
-        return $quest->delivery_acknowledged_at === null;
+        if ($quest->delivery_acknowledged_at !== null) {
+            return false;
+        }
+
+        if ($quest->delivered_at === null) {
+            return false;
+        }
+
+        if ($quest->delivery_revision_requested_at !== null) {
+            return false;
+        }
+
+        return true;
     }
 
     public static function canReleaseFunds(Quest $quest, ?User $actor = null): bool
@@ -100,7 +112,7 @@ final class EscrowReleasePolicy
         }
 
         if ($quest->delivery_acknowledged_at === null) {
-            return __('Confirm delivery first before releasing escrow.');
+            return __('Approve the deliverable after the freelancer submits work.');
         }
 
         if (self::isReleaseHeld($quest) && ! EscrowReleaseCooldown::actorMayBypass($actor)) {
@@ -131,6 +143,14 @@ final class EscrowReleasePolicy
         $acknowledged = $quest->delivery_acknowledged_at !== null;
         $eligibleAt = EscrowReleaseCooldown::releaseEligibleAt($quest);
 
+        $lifecycle = app(\App\Services\Quest\QuestDeliveryLifecycleService::class);
+        $stage = $lifecycle->stage($quest);
+        $showDeliveryPanel = $isClient && $inProgress && $funded
+            && in_array($stage->value, [
+                \App\Enums\EscrowDeliveryStage::AwaitingReview->value,
+                \App\Enums\EscrowDeliveryStage::ApprovedReleasing->value,
+            ], true);
+
         return [
             'cooldown_hours' => EscrowReleaseCooldown::cooldownHours(),
             'release_eligible_at' => $eligibleAt?->toIso8601String(),
@@ -145,7 +165,7 @@ final class EscrowReleasePolicy
             'release_hold_until' => $quest->release_hold_until?->toIso8601String(),
             'can_acknowledge_delivery' => self::canAcknowledgeDelivery($quest, $viewer),
             'can_release_funds' => $isClient && $inProgress && $funded && self::canReleaseFunds($quest, $viewer),
-            'show_completion_section' => $isClient && $inProgress && $funded,
+            'show_completion_section' => $showDeliveryPanel,
             'blocked_release_reason' => $isClient && $acknowledged && ! self::canReleaseFunds($quest, $viewer)
                 ? self::blockedReleaseReason($quest, $viewer)
                 : null,

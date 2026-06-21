@@ -32,7 +32,7 @@ class QuestProposalPdfController extends Controller
 
         $pdf = Pdf::loadHTML($html)->setPaper('a4');
 
-        $filename = 'hustlesafe-proposal-'.Str::slug($quest->title).'-'.$offer->id.'.pdf';
+        $filename = 'hustlesafe-proposal-'.($offer->reference_code ?: $offer->uuid).'.pdf';
 
         return $pdf->download($filename);
     }

@@ -69,6 +69,14 @@ class UpdateQuestRequest extends FormRequest
                 );
             }
 
+            $hardDeadline = $this->input('delivery_deadline');
+            if ($hardDeadline && $finish && strcmp((string) $hardDeadline, (string) $finish) < 0) {
+                $v->errors()->add(
+                    'delivery_deadline',
+                    __('Delivery deadline must be on or after the planned finish date.')
+                );
+            }
+
             if ($this->has('description')) {
                 $plain = trim(html_entity_decode(strip_tags((string) $this->input('description', ''))));
                 if ($plain === '') {
@@ -131,6 +139,7 @@ class UpdateQuestRequest extends FormRequest
             'scheduled_start_date' => ['nullable', 'date'],
             'estimated_completion_days' => ['sometimes', 'integer', 'min:1', 'max:365'],
             'estimated_delivery_date' => ['nullable', 'date'],
+            'delivery_deadline' => ['nullable', 'date'],
             'visibility' => ['sometimes', Rule::enum(QuestVisibility::class)],
             'freelancer_location_pref' => ['sometimes', Rule::enum(QuestFreelancerLocationPref::class)],
             'availability_need' => ['nullable', Rule::enum(QuestAvailabilityNeed::class)],

@@ -110,10 +110,14 @@ class QuestController extends Controller
             'posting_limits' => $postingLimits,
             'fieldProfileUrl' => route('quests.field-profile'),
             'skillsSuggestUrl' => route('quests.skills.suggest'),
+            'aiSuggestUrl' => route('quests.description-suggestions'),
+            'aiDescriptionEnabled' => true,
+            'aiUsesClaude' => app(\App\Services\Quest\QuestDescriptionAiService::class)->usesClaude(),
             'freelancersYouFollow' => $this->questCreateFreelancerNetworkFollowing($user),
             'freelancersFollowingYou' => $this->questCreateFreelancerNetworkFollowers($user),
             'quest_stats_hints' => $this->questCreateStatsHints(),
             'proposal_deadline_bounds' => PlatformSettings::proposalDeadlineBounds(),
+            'traffic_source_options' => config('marketing.traffic_sources', []),
         ]);
     }
 
@@ -158,8 +162,12 @@ class QuestController extends Controller
 
         $uploadedFiles = array_values(array_filter($request->file('files', [])));
 
-        $quest = DB::transaction(function () use ($request, $user, $data, $status, $tagged, $slug, $publish, $trafficUtm, $questFiles, $uploadedFiles, $qualityGate, $listingExpiry): Quest {
-            $dueAt = now()->addDays((int) $data['estimated_completion_days']);
+        $quest = DB::transaction(function () use ($request, $user, $data, $status, $tagged, $slug, $publish, $trafficUtm, $questFiles, $uploadedFiles, $qualityGate, $listingExpiry, $category): Quest {
+            $schedule = app(\App\Services\Quest\QuestCompletionScheduleService::class);
+            $recurringAttrs = app(\App\Services\Quest\QuestRecurringEngagementService::class)
+                ->normalizeCreateAttributes($data, $category);
+            $merged = array_merge($data, $recurringAttrs);
+            $dueAt = $schedule->initialDueAtFromCreateData($merged);
 
             $listingDays = $publish
                 ? $listingExpiry->resolveDaysForCreate(isset($data['auto_listing_expiry_days']) ? (int) $data['auto_listing_expiry_days'] : null)
@@ -192,6 +200,16 @@ class QuestController extends Controller
                 'project_type' => isset($data['project_type']) && $data['project_type']
                     ? QuestProjectType::from($data['project_type'])
                     : null,
+                'engagement_mode' => $recurringAttrs['engagement_mode'],
+                'installment_frequency' => $recurringAttrs['installment_frequency'],
+                'contract_duration_months' => $recurringAttrs['contract_duration_months'],
+                'installment_count' => $recurringAttrs['installment_count'],
+                'installment_amount_minor' => $recurringAttrs['installment_amount_minor'],
+                'contract_starts_at' => $recurringAttrs['contract_starts_at'] ?? null,
+                'contract_ends_at' => $recurringAttrs['contract_ends_at'] ?? null,
+                'contract_renewal_preference' => ($data['engagement_mode'] ?? 'one_time') === \App\Enums\QuestEngagementMode::RecurringInstallment->value
+                    ? ($data['contract_renewal_preference'] ?? null)
+                    : null,
                 'estimated_hours' => $data['estimated_hours'] ?? null,
                 'team_size' => isset($data['team_size']) && $data['team_size']
                     ? QuestTeamSize::from($data['team_size'])
@@ -207,8 +225,8 @@ class QuestController extends Controller
                 'budget_amount_minor' => $data['budget_amount_minor'],
                 'start_timing' => QuestStartTiming::from($data['start_timing']),
                 'estimated_completion_days' => $data['estimated_completion_days'],
-                'estimated_delivery_date' => $data['estimated_delivery_date'] ?? null,
-                'delivery_deadline' => $data['delivery_deadline'] ?? null,
+                'estimated_delivery_date' => $recurringAttrs['estimated_delivery_date'] ?? ($data['estimated_delivery_date'] ?? null),
+                'delivery_deadline' => $recurringAttrs['delivery_deadline'] ?? ($data['delivery_deadline'] ?? null),
                 'required_skills' => array_values(array_filter($data['required_skills'] ?? [])),
                 'site_visits_allowed' => $request->boolean('site_visits_allowed'),
                 'site_access_level' => $data['site_access_level'] ?? null,
@@ -399,7 +417,10 @@ class QuestController extends Controller
 
         $topFreelancers = [];
         $freelancerMatchStats = ['total' => 0, 'label' => null];
-        if ($isQuestOwner) {
+        if ($isQuestOwner
+            && $quest->status === QuestStatus::Open
+            && $quest->accepted_quest_offer_id === null
+            && $quest->pending_award_offer_id === null) {
             $matchResult = app(\App\Services\Matching\QuestFreelancerMatcher::class)->recommendationsForQuest(
                 $quest,
                 (int) config('quest_matching.client_recommendations_limit', 5),
@@ -619,7 +640,11 @@ class QuestController extends Controller
 
         if ($days !== null) {
             $quest->estimated_completion_days = (int) $days;
-            $quest->due_at = now()->addDays((int) $days);
+            $quest->due_at = app(\App\Services\Quest\QuestCompletionScheduleService::class)->initialDueAtFromCreateData([
+                'estimated_completion_days' => (int) $days,
+                'estimated_delivery_date' => $quest->estimated_delivery_date?->toDateString(),
+                'delivery_deadline' => $quest->delivery_deadline?->toDateString(),
+            ]);
         }
 
         $quest->save();
@@ -1004,6 +1029,7 @@ class QuestController extends Controller
             'traffic_utm' => $showInternalCodes ? $quest->traffic_utm : null,
             'estimated_delivery_date' => $quest->estimated_delivery_date?->toDateString(),
             'delivery_deadline' => $quest->delivery_deadline?->toDateString(),
+            'completion_schedule' => $quest->completionSchedulePayload(),
             'created_at' => $quest->created_at?->timezone('Africa/Lagos')->toIso8601String(),
             'updated_at' => $quest->updated_at?->timezone('Africa/Lagos')->toIso8601String(),
             'required_skills' => $quest->required_skills ?? [],

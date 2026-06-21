@@ -8,9 +8,66 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class QuestOffer extends Model
 {
+    protected static function booted(): void
+    {
+        static::creating(function (QuestOffer $offer): void {
+            if (empty($offer->uuid)) {
+                $offer->uuid = (string) Str::uuid();
+            }
+            if (empty($offer->reference_code)) {
+                $quest = $offer->relationLoaded('quest')
+                    ? $offer->quest
+                    : Quest::query()->find($offer->quest_id);
+
+                if ($quest !== null) {
+                    $offer->reference_code = app(\App\Services\Proposals\ProposalReferenceGenerator::class)
+                        ->nextForQuest($quest);
+                }
+            }
+        });
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
+    public function getRouteKey(): mixed
+    {
+        return $this->uuid;
+    }
+
+    /**
+     * Resolve by UUID (canonical). Numeric IDs still resolve for legacy bookmarks.
+     *
+     * @param  mixed  $value
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        if ($field !== null) {
+            return static::query()->where($field, $value)->firstOrFail();
+        }
+
+        return static::query()
+            ->where(function ($q) use ($value): void {
+                $q->where('uuid', $value);
+
+                if (is_string($value) && str_contains($value, '-')) {
+                    $normalized = \App\Support\References\HustleSafeReferenceAlphabet::normalize($value);
+                    $q->orWhere('reference_code', $normalized);
+                }
+
+                if (is_numeric($value) && (int) $value > 0) {
+                    $q->orWhere('id', (int) $value);
+                }
+            })
+            ->firstOrFail();
+    }
+
     protected $fillable = [
         'quest_id',
         'freelancer_id',
@@ -29,6 +86,7 @@ class QuestOffer extends Model
         'estimated_duration_days',
         'corrections_included',
         'corrections_rounds',
+        'accepts_installment_terms',
         'progress_report_frequency',
         'progress_report_frequency_note',
         'materials',
@@ -61,6 +119,7 @@ class QuestOffer extends Model
             'planned_start_date' => 'date',
             'planned_finish_date' => 'date',
             'corrections_included' => 'boolean',
+            'accepts_installment_terms' => 'boolean',
             'accepted_at' => 'datetime',
             'declined_at' => 'datetime',
             'withdrawn_at' => 'datetime',

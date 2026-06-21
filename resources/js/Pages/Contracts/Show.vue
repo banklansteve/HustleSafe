@@ -339,7 +339,7 @@
                         class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-[10px] font-black uppercase tracking-wide text-amber-950 hover:bg-amber-100"
                         @click="scrollToDeliveryExtension"
                     >
-                        {{ autoRelease.has_pending_extension ? 'Review extension request' : 'Delivery extension' }}
+                        {{ autoRelease.has_pending_extension ? 'Reply to date change' : 'Change finish date' }}
                     </button>
                 </div>
                 <p v-if="autoRelease.dispute_block_reason" class="mt-2 text-[10px] font-semibold text-slate-500">{{ autoRelease.dispute_block_reason }}</p>
@@ -353,17 +353,17 @@
                 <div class="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-4 sm:px-5">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Delivery timeline</p>
-                            <h2 class="font-display mt-1 text-lg font-black text-slate-900">Delivery extensions</h2>
+                            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Finish date</p>
+                            <h2 class="font-display mt-1 text-lg font-black text-slate-900">Change finish date</h2>
                             <p class="mt-1 text-xs font-semibold text-slate-600">
-                                Freelancers request extensions; clients approve before deadlines change. Auto-release pauses while a request is open.
+                                Workers can ask for more time or to finish sooner. You must approve before the date changes.
                             </p>
                         </div>
                         <div class="text-right text-xs font-semibold text-slate-600">
                             <p class="font-black text-slate-900">{{ delivery_extension.summary?.current_deadline_label || '—' }}</p>
                             <p>Current deadline</p>
                             <p class="mt-2 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                                {{ delivery_extension.summary?.extension_count || 0 }} / {{ delivery_extension.summary?.extension_limit || 2 }} used
+                                {{ delivery_extension.summary?.adjustment_limit_label || `${delivery_extension.summary?.extension_count || 0} / ${delivery_extension.summary?.extension_limit || 2} used` }}
                             </p>
                         </div>
                     </div>
@@ -376,8 +376,10 @@
                     >
                         <div class="flex flex-wrap items-start justify-between gap-2">
                             <div>
-                                <p class="text-[10px] font-black uppercase tracking-wide text-amber-900">Action required</p>
-                                <h3 class="font-display text-base font-black text-amber-950">New extension request</h3>
+                                <p class="text-[10px] font-black uppercase tracking-wide text-amber-900">Your reply needed</p>
+                                <h3 class="font-display text-base font-black text-amber-950">
+                                    {{ delivery_extension.pending.adjustment_type_label || 'Date change' }} request
+                                </h3>
                             </div>
                             <span class="rounded-full bg-amber-200/90 px-2.5 py-1 text-[10px] font-black uppercase text-amber-950">
                                 #{{ delivery_extension.pending.extension_number }}
@@ -405,7 +407,7 @@
                         <p v-if="delivery_extension.pending.progress_note" class="mt-2 text-xs font-semibold text-amber-900">
                             Progress: {{ delivery_extension.pending.progress_note }}
                         </p>
-                        <p class="mt-2 text-[11px] font-semibold text-amber-800">No response within 48 hours auto-approves this extension.</p>
+                        <p class="mt-2 text-[11px] font-semibold text-amber-800">If you do not reply within 48 hours, the new date is accepted automatically.</p>
                         <div v-if="showCounterForm" class="mt-4">
                             <label class="text-xs font-black uppercase text-amber-900">Counter-proposed date</label>
                             <input v-model="extensionRespondForm.counter_proposed_date" type="date" class="mt-1 w-full rounded-xl border-amber-200 text-sm shadow-sm" />
@@ -485,14 +487,14 @@
                     </div>
 
                     <p v-else-if="!delivery_extension.pending && !delivery_extension.pending_counter" class="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-6 text-center text-sm font-semibold text-slate-500">
-                        No delivery extensions yet.
-                        <span v-if="role.is_freelancer"> Request one if you need more time — your client must approve before the deadline changes.</span>
-                        <span v-else> Your freelancer can request an extension when more time is needed.</span>
+                        No finish-date changes yet.
+                        <span v-if="role.is_freelancer"> You can ask for more time or to finish sooner — your client must agree first.</span>
+                        <span v-else> Your worker can request a new finish date when needed.</span>
                     </p>
 
                     <div v-if="role.is_freelancer" class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
                         <p class="text-xs font-semibold text-slate-600">
-                            {{ delivery_extension.summary?.remaining || 0 }} extension(s) remaining on this contract.
+                            {{ delivery_extension.summary?.remaining || 0 }} date change(s) left on this job.
                         </p>
                         <button
                             v-if="delivery_extension.freelancer_button?.can_request"
@@ -510,7 +512,7 @@
                             class="inline-flex cursor-not-allowed items-center rounded-full bg-slate-200 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-500"
                             :title="delivery_extension.freelancer_button?.reason || ''"
                         >
-                            {{ delivery_extension.freelancer_button?.button_label || 'Request delivery extension' }}
+                            {{ delivery_extension.freelancer_button?.button_label || 'Change finish date' }}
                         </button>
                     </div>
                 </div>
@@ -739,12 +741,36 @@
         <Teleport to="body">
             <div v-if="showExtensionForm" class="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/50 p-4 backdrop-blur-[2px] sm:items-center" @click.self="showExtensionForm = false">
                 <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6">
-                    <h3 class="font-display text-lg font-black text-slate-900">Request delivery extension</h3>
-                    <p class="mt-1 text-xs font-semibold text-slate-600">Extension {{ (delivery_extension.freelancer_button.extension_count || 0) + 1 }} of {{ delivery_extension.freelancer_button.extension_limit || 2 }}</p>
+                    <h3 class="font-display text-lg font-black text-slate-900">Change finish date</h3>
+                    <p class="mt-1 text-xs font-semibold text-slate-600">
+                        Request {{ (delivery_extension.freelancer_button?.extension_count || 0) + 1 }} of {{ delivery_extension.freelancer_button?.extension_limit || 2 }}
+                    </p>
                     <form class="mt-4 space-y-3" @submit.prevent="submitExtension">
                         <div>
-                            <label class="text-xs font-black uppercase text-slate-500">New proposed delivery date</label>
+                            <label class="text-xs font-black uppercase text-slate-500">What do you need?</label>
+                            <div class="mt-2 flex flex-wrap gap-2">
+                                <label
+                                    v-for="opt in delivery_extension.adjustment_types"
+                                    :key="opt.value"
+                                    class="inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold"
+                                    :class="extensionForm.adjustment_type === opt.value ? 'border-primary-400 bg-primary-50 text-primary-900' : 'border-slate-200 bg-white text-slate-700'"
+                                >
+                                    <input v-model="extensionForm.adjustment_type" type="radio" :value="opt.value" class="sr-only" />
+                                    {{ opt.label }}
+                                </label>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-xs font-black uppercase text-slate-500">New finish date</label>
                             <input v-model="extensionForm.proposed_delivery_date" type="date" class="mt-1 w-full rounded-xl border-slate-200 text-sm shadow-sm" required />
+                            <p class="mt-1 text-[10px] font-semibold text-slate-500">
+                                <template v-if="extensionForm.adjustment_type === 'reduction'">
+                                    Pick a date before the current finish date (up to {{ delivery_extension.max_reduction_days || 14 }} days earlier).
+                                </template>
+                                <template v-else>
+                                    Pick a date after the current finish date (up to {{ delivery_extension.max_extension_days || 14 }} days later).
+                                </template>
+                            </p>
                         </div>
                         <div>
                             <label class="text-xs font-black uppercase text-slate-500">Reason category</label>
@@ -915,6 +941,7 @@ const amendmentForm = useForm({
 });
 
 const extensionForm = useForm({
+    adjustment_type: 'extension',
     proposed_delivery_date: '',
     reason_category: 'scope_larger_than_estimated',
     explanation: '',

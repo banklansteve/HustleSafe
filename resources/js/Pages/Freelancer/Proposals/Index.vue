@@ -6,10 +6,10 @@
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <BackChevronLink :href="route('dashboard')" aria-label="Back to dashboard" />
                 <Link
-                    :href="route('quests.explore')"
+                    :href="route('quests.browse')"
                     class="inline-flex items-center rounded-full border border-primary-200 bg-primary-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-primary-900 shadow-sm hover:bg-primary-100"
                 >
-                    Browse quests
+                    Find quests
                 </Link>
             </div>
 
@@ -183,10 +183,16 @@
                     When you pitch on open quests, they appear here with live status and client view counts.
                 </p>
                 <Link
-                    :href="route('quests.explore')"
+                    :href="route('quests.browse')"
                     class="mt-6 inline-flex items-center rounded-full bg-primary-600 px-6 py-3 text-sm font-black text-white shadow-lg hover:bg-primary-700"
                 >
-                    Explore matched quests
+                    Browse open quests
+                </Link>
+                <Link
+                    :href="route('quests.explore')"
+                    class="mt-3 inline-flex items-center text-sm font-bold text-primary-700 underline decoration-primary-300 underline-offset-4 hover:text-primary-900"
+                >
+                    Or see matched quests for you
                 </Link>
             </div>
 

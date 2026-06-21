@@ -158,4 +158,23 @@ class AdminConversationMonitoringController extends Controller
 
         return response()->json(['message' => 'Term removed.']);
     }
+
+    public function destroyReview(Request $request, ConversationThreadReview $review): JsonResponse
+    {
+        $this->service->deleteReview($review, $request->user());
+
+        return response()->json(['message' => 'Review record deleted.']);
+    }
+
+    public function bulkDestroyReviews(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'review_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'review_ids.*' => ['integer', 'exists:conversation_thread_reviews,id'],
+        ]);
+
+        $count = $this->service->bulkDeleteReviews($data['review_ids'], $request->user());
+
+        return response()->json(['message' => __('Deleted :count review record(s).', ['count' => $count]), 'deleted' => $count]);
+    }
 }

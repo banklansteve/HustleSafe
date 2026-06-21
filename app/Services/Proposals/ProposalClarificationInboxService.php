@@ -161,7 +161,7 @@ final class ProposalClarificationInboxService
             'preview' => $preview,
             'latest_at' => $latestMessage->created_at?->toIso8601String(),
             'clarify_url' => route('quests.proposals.clarify', [$quest, $offer]),
-            'proposal_url' => route('quests.proposals.show', [$quest->getRouteKey(), $offer->id]),
+            'proposal_url' => route('quests.proposals.show', [$quest->getRouteKey(), $offer]),
             'tone' => $tone,
             'thread_status' => $thread->status,
         ];

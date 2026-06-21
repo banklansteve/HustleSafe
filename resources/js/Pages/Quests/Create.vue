@@ -2,7 +2,7 @@
     <AppShell>
         <Head title="Create quest" />
 
-        <div class="mx-auto w-full max-w-3xl">
+        <div class="mx-auto w-full max-w-6xl">
             <div class="rounded-[2rem] bg-gradient-to-br from-primary-800 via-slate-900 to-slate-950 px-6 py-10 text-white shadow-xl ring-1 ring-white/10 sm:px-10">
                 <div class="flex flex-wrap items-end justify-between gap-4">
                     <div>
@@ -25,122 +25,129 @@
                 </div>
             </div>
 
-            <div
-                v-if="postingLimits"
-                class="mt-6 overflow-hidden rounded-2xl border border-amber-200/90 bg-gradient-to-br from-amber-50/95 via-white to-primary-50/40 shadow-sm ring-1 ring-amber-100/80"
-                role="region"
-                aria-label="Quest budget and verification limits"
-            >
-                <div class="border-b border-amber-100/80 bg-white/60 px-4 py-3 sm:px-5">
-                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-900/80">
-                        Before you start
-                    </p>
-                    <p class="mt-1 text-sm font-bold leading-snug text-slate-900">
-                        Know your quest budget limit and what unlocks the next tier
-                    </p>
-                </div>
-                <div class="grid gap-4 px-4 py-4 sm:grid-cols-2 sm:px-5 sm:py-5">
-                    <div class="rounded-xl border border-white/80 bg-white/90 p-4 shadow-sm ring-1 ring-slate-100">
-                        <p class="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                            Your limit now
-                        </p>
-                        <p class="mt-1 text-xs font-bold text-primary-800">
-                            {{ postingLimits.current_label }}
-                        </p>
-                        <p class="mt-2 text-2xl font-black tabular-nums text-slate-900">
-                            {{ postingLimits.limit_formatted }}
-                        </p>
-                        <p
-                            v-if="postingLimits.limit_capped && postingLimits.earned_limit_formatted"
-                            class="mt-2 text-xs font-semibold leading-relaxed text-amber-900"
-                        >
-                            Your earned tier allows {{ postingLimits.earned_limit_formatted }}; an admin custom cap applies.
-                        </p>
-                        <p
-                            v-else-if="!postingLimits.can_post"
-                            class="mt-2 text-xs font-semibold leading-relaxed text-rose-800"
-                        >
-                            <template v-if="postingLimits.restricted">
-                                Your account is temporarily restricted from posting quests.
-                            </template>
-                            <template v-else>
-                                You cannot post a quest yet — complete verification below to unlock posting.
-                            </template>
-                        </p>
-                        <p v-else class="mt-2 text-xs font-semibold leading-relaxed text-slate-600">
-                            Maximum budget you can set on this quest at your current verification level.
-                        </p>
-                    </div>
-                    <div
-                        v-if="postingLimits.next_level_label && postingLimits.next_level_limit_formatted"
-                        class="rounded-xl border border-primary-100/80 bg-primary-50/50 p-4 shadow-sm ring-1 ring-primary-100/60"
-                    >
-                        <p class="text-[10px] font-black uppercase tracking-wider text-primary-800">
-                            Next tier
-                        </p>
-                        <p class="mt-1 text-xs font-bold text-primary-900">
-                            {{ postingLimits.next_level_label }}
-                        </p>
-                        <p class="mt-2 text-2xl font-black tabular-nums text-slate-900">
-                            up to {{ postingLimits.next_level_limit_formatted }}
-                        </p>
-                        <p class="mt-2 text-xs font-semibold leading-relaxed text-slate-600">
-                            Complete the steps below to raise your posting limit before you reach the budget step.
-                        </p>
-                    </div>
-                    <div
-                        v-else-if="postingLimits.at_max_level"
-                        class="rounded-xl border border-emerald-100/80 bg-emerald-50/40 p-4 shadow-sm ring-1 ring-emerald-100/60"
-                    >
-                        <p class="text-[10px] font-black uppercase tracking-wider text-emerald-800">
-                            Highest tier
-                        </p>
-                        <p class="mt-2 text-sm font-semibold leading-relaxed text-slate-700">
-                            You are at the top verification level for clients. Platform maximum per quest is
-                            {{ postingLimits.platform_max_formatted }}.
-                        </p>
-                    </div>
-                </div>
-                <div
-                    v-if="postingLimits.next_unlock_hint || postingLimits.missing_requirements?.length"
-                    class="border-t border-amber-100/80 px-4 py-4 sm:px-5"
+            <div :class="postingLimits ? 'mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start lg:gap-8' : 'mt-6'">
+                <aside
+                    v-if="postingLimits"
+                    class="order-first lg:order-last lg:sticky lg:top-6"
+                    role="region"
+                    aria-label="Quest budget and verification limits"
                 >
-                    <p
-                        v-if="postingLimits.next_unlock_title"
-                        class="text-xs font-black uppercase tracking-wide text-slate-500"
-                    >
-                        To unlock {{ postingLimits.next_level_label || 'the next level' }}
-                    </p>
-                    <p
-                        v-if="postingLimits.next_unlock_hint"
-                        class="mt-2 text-sm font-semibold leading-relaxed text-slate-800"
-                    >
-                        {{ postingLimits.next_unlock_hint }}
-                    </p>
-                    <ul
-                        v-if="postingLimits.missing_requirements?.length"
-                        class="mt-3 space-y-2"
-                    >
-                        <li
-                            v-for="item in postingLimits.missing_requirements"
-                            :key="item"
-                            class="flex items-start gap-2 text-sm font-semibold text-slate-800"
-                        >
-                            <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary-600" aria-hidden="true" />
-                            <span>{{ item }}</span>
-                        </li>
-                    </ul>
-                    <Link
-                        :href="postingLimits.verifications_url || route('verifications.index')"
-                        class="mt-4 inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white transition hover:bg-slate-800"
-                    >
-                        Open verifications
-                    </Link>
-                </div>
-            </div>
+                    <div class="overflow-hidden rounded-2xl border border-amber-200/90 bg-gradient-to-br from-amber-50/95 via-white to-primary-50/40 shadow-sm ring-1 ring-amber-100/80">
+                        <div class="border-b border-amber-100/80 bg-white/60 px-4 py-2.5">
+                            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-900/80">
+                                Before you start
+                            </p>
+                            <p class="mt-0.5 text-xs font-bold leading-snug text-slate-900">
+                                Your budget limit &amp; next tier
+                            </p>
+                        </div>
+                        <div class="space-y-3 p-3 sm:p-4">
+                            <div class="rounded-xl border border-white/80 bg-white/90 p-3 shadow-sm ring-1 ring-slate-100">
+                                <div class="flex items-baseline justify-between gap-2">
+                                    <p class="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                        Your limit now
+                                    </p>
+                                    <p class="text-[11px] font-bold text-primary-800">
+                                        {{ postingLimits.current_label }}
+                                    </p>
+                                </div>
+                                <p class="mt-1 text-xl font-black tabular-nums text-slate-900">
+                                    {{ postingLimits.limit_formatted }}
+                                </p>
+                                <p
+                                    v-if="postingLimits.limit_capped && postingLimits.earned_limit_formatted"
+                                    class="mt-1.5 text-[11px] font-semibold leading-relaxed text-amber-900"
+                                >
+                                    Earned tier allows {{ postingLimits.earned_limit_formatted }}; an admin custom cap applies.
+                                </p>
+                                <p
+                                    v-else-if="!postingLimits.can_post"
+                                    class="mt-1.5 text-[11px] font-semibold leading-relaxed text-rose-800"
+                                >
+                                    <template v-if="postingLimits.restricted">
+                                        Your account is temporarily restricted from posting quests.
+                                    </template>
+                                    <template v-else>
+                                        You cannot post yet — complete verification to unlock posting.
+                                    </template>
+                                </p>
+                                <p v-else class="mt-1.5 text-[11px] font-semibold leading-relaxed text-slate-600">
+                                    Maximum budget at your current verification level.
+                                </p>
+                            </div>
 
+                            <div
+                                v-if="postingLimits.next_level_label && postingLimits.next_level_limit_formatted"
+                                class="rounded-xl border border-primary-100/80 bg-primary-50/50 p-3 shadow-sm ring-1 ring-primary-100/60"
+                            >
+                                <div class="flex items-baseline justify-between gap-2">
+                                    <p class="text-[10px] font-black uppercase tracking-wider text-primary-800">
+                                        Next tier
+                                    </p>
+                                    <p class="text-[11px] font-bold text-primary-900">
+                                        {{ postingLimits.next_level_label }}
+                                    </p>
+                                </div>
+                                <p class="mt-1 text-lg font-black tabular-nums text-slate-900">
+                                    up to {{ postingLimits.next_level_limit_formatted }}
+                                </p>
+                            </div>
+                            <div
+                                v-else-if="postingLimits.at_max_level"
+                                class="rounded-xl border border-emerald-100/80 bg-emerald-50/40 p-3 shadow-sm ring-1 ring-emerald-100/60"
+                            >
+                                <p class="text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                                    Highest tier
+                                </p>
+                                <p class="mt-1 text-[11px] font-semibold leading-relaxed text-slate-700">
+                                    Top client verification level. Platform maximum per quest is
+                                    {{ postingLimits.platform_max_formatted }}.
+                                </p>
+                            </div>
+
+                            <div
+                                v-if="postingLimits.next_unlock_hint || postingLimits.missing_requirements?.length"
+                                class="rounded-xl border border-amber-100/80 bg-white/70 p-3"
+                            >
+                                <p
+                                    v-if="postingLimits.next_unlock_title"
+                                    class="text-[10px] font-black uppercase tracking-wide text-slate-500"
+                                >
+                                    To unlock {{ postingLimits.next_level_label || 'the next level' }}
+                                </p>
+                                <p
+                                    v-if="postingLimits.next_unlock_hint"
+                                    class="mt-1 text-[11px] font-semibold leading-relaxed text-slate-700"
+                                >
+                                    {{ postingLimits.next_unlock_hint }}
+                                </p>
+                                <ul
+                                    v-if="postingLimits.missing_requirements?.length"
+                                    class="mt-2 space-y-1.5"
+                                >
+                                    <li
+                                        v-for="item in postingLimits.missing_requirements"
+                                        :key="item"
+                                        class="flex items-start gap-2 text-[11px] font-semibold text-slate-700"
+                                    >
+                                        <span class="mt-1 h-1 w-1 shrink-0 rounded-full bg-primary-600" aria-hidden="true" />
+                                        <span>{{ item }}</span>
+                                    </li>
+                                </ul>
+                                <Link
+                                    :href="postingLimits.verifications_url || route('verifications.index')"
+                                    class="mt-3 inline-flex items-center rounded-full bg-slate-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white transition hover:bg-slate-800"
+                                >
+                                    Open verifications
+                                </Link>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+
+                <div class="min-w-0">
             <div
-                class="mt-6 rounded-2xl border border-slate-200/90 bg-white px-4 py-4 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-slate-100 sm:px-5"
+                class="rounded-2xl border border-slate-200/90 bg-white px-4 py-4 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-slate-100 sm:px-5"
                 role="region"
                 aria-label="Disputes and escrow"
             >
@@ -244,11 +251,66 @@
                                     <InputError class="mt-2" :message="form.errors.required_skills" />
                                 </div>
                                 <div>
-                                    <div class="flex items-center gap-1">
-                                        <InputLabel for="description" value="Description" />
-                                        <FieldHint
-                                            text="The more context you share, the better proposals you will get. Aim for enough detail that a freelancer could start without guessing."
-                                        />
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <div class="flex items-center gap-1">
+                                            <InputLabel for="description" value="Description" />
+                                            <FieldHint
+                                                text="The more context you share, the better proposals you will get. Aim for enough detail that a freelancer could start without guessing."
+                                            />
+                                        </div>
+                                        <button
+                                            v-if="aiDescriptionEnabled"
+                                            type="button"
+                                            class="inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-primary-800 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                            :disabled="aiLoading || !aiCanSuggest"
+                                            :title="aiCanSuggest ? 'Draft a description with AI' : 'Add a title and pick a subcategory first'"
+                                            @click="suggestDescription"
+                                        >
+                                            <span v-if="aiLoading" class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-300 border-t-primary-700" />
+                                            <span v-else aria-hidden="true">✦</span>
+                                            {{ aiLoading ? 'Drafting…' : 'Suggest with AI' }}
+                                        </button>
+                                    </div>
+
+                                    <div
+                                        v-if="aiError"
+                                        class="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-semibold text-rose-800"
+                                    >
+                                        {{ aiError }}
+                                    </div>
+
+                                    <div
+                                        v-if="aiSuggestions.length"
+                                        class="mt-3 space-y-3 rounded-2xl border border-primary-200 bg-gradient-to-br from-primary-50/80 via-white to-teal-50/50 p-4 ring-1 ring-primary-100"
+                                    >
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-primary-800">
+                                                Description drafts — pick one, then edit freely
+                                            </p>
+                                            <button type="button" class="text-[10px] font-black uppercase tracking-wide text-slate-500 hover:text-slate-700" @click="aiSuggestions = []">
+                                                Dismiss
+                                            </button>
+                                        </div>
+                                        <article
+                                            v-for="(suggestion, idx) in aiSuggestions"
+                                            :key="idx"
+                                            class="rounded-xl border border-slate-100 bg-white/90 p-3 shadow-sm"
+                                        >
+                                            <div class="flex items-center justify-between gap-2">
+                                                <span class="rounded-full bg-primary-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-primary-800">{{ suggestion.label }}</span>
+                                                <button
+                                                    type="button"
+                                                    class="rounded-lg bg-primary-700 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white transition hover:bg-primary-800"
+                                                    @click="applySuggestion(suggestion)"
+                                                >
+                                                    Use this
+                                                </button>
+                                            </div>
+                                            <p class="mt-2 whitespace-pre-line text-xs font-medium leading-relaxed text-slate-700">{{ suggestion.text }}</p>
+                                        </article>
+                                        <p class="text-[10px] font-semibold text-slate-500">
+                                            {{ aiUsesClaude ? 'Drafts are generated with Claude — review and edit before publishing.' : 'Drafts are generated in-app from your title and category — review and edit before publishing.' }}
+                                        </p>
                                     </div>
                                     <div
                                         class="mt-3 rounded-2xl border border-primary-100/90 bg-gradient-to-br from-primary-50/95 via-white to-teal-50/50 p-4 shadow-sm ring-1 ring-primary-100/60"
@@ -259,20 +321,22 @@
                                             <div class="min-w-0">
                                                 <p class="text-sm font-bold text-slate-900">Give freelancers enough to go on</p>
                                                 <ul class="mt-2 list-inside list-disc space-y-1.5 text-xs font-semibold leading-relaxed text-slate-600">
-                                                    <li>What outcome you need and how you will measure success</li>
-                                                    <li>Deliverables, formats, brand or technical constraints</li>
-                                                    <li>Timeline expectations, meetings, and collaboration style</li>
-                                                    <li>Links, references, or files you will attach on the last step</li>
+                                                    <li>What needs to be done — specific tasks, areas, or deliverables</li>
+                                                    <li>What is in scope vs out of scope for this job</li>
+                                                    <li>How you will judge the work complete (quality or success criteria)</li>
+                                                    <li>Context, references, or files you will attach on the last step</li>
                                                 </ul>
                                             </div>
                                         </div>
                                     </div>
-                                    <QuestRichDescriptionEditor
+                                    <UiTextarea
                                         id="description"
                                         v-model="form.description"
                                         class="mt-3"
                                         placeholder="Describe the quest in detail…"
                                         :invalid="!!form.errors.description"
+                                        :min-rows="3"
+                                        :max-rows="20"
                                     />
                                     <InputError class="mt-2" :message="form.errors.description" />
                                 </div>
@@ -320,10 +384,25 @@
                                 </div>
                                 <div>
                                     <div class="flex items-center gap-1">
-                                        <InputLabel for="traffic_source" value="Traffic source (optional)" />
-                                        <FieldHint text="How you found HustleSafe or this posting flow — for your own tracking only." />
+                                        <InputLabel for="traffic_source_key" value="How did you find us? (optional)" />
+                                        <FieldHint text="Helps us understand which channels bring clients to HustleSafe." />
                                     </div>
-                                    <TextInput id="traffic_source" v-model="form.traffic_source" type="text" class="mt-2 w-full rounded-xl border-slate-200 shadow-sm" placeholder="e.g. instagram, newsletter" />
+                                    <UiSelect
+                                        id="traffic_source_key"
+                                        v-model="form.traffic_source_key"
+                                        class="mt-2"
+                                        :options="trafficSourceOptions"
+                                        placeholder="Select a source"
+                                    />
+                                    <TextInput
+                                        v-if="form.traffic_source_key === 'other'"
+                                        id="traffic_source_other"
+                                        v-model="form.traffic_source_other"
+                                        type="text"
+                                        class="mt-2 w-full rounded-xl border-slate-200 shadow-sm"
+                                        placeholder="Tell us where you heard about us"
+                                    />
+                                    <InputError class="mt-2" :message="form.errors.traffic_source" />
                                 </div>
                                 <p class="text-xs font-semibold leading-relaxed text-slate-600">
                                     If you share special links to this quest, the three fields below help you see which posts or partners send the best visitors. They are optional — you can leave them blank.
@@ -362,6 +441,9 @@
                             <h2 class="font-display text-xl font-bold text-slate-900">
                                 Location
                             </h2>
+                            <p class="mt-2 rounded-xl border border-sky-100 bg-sky-50/80 px-4 py-3 text-xs font-semibold leading-relaxed text-sky-950 ring-1 ring-sky-100">
+                                State, LGA, and city/area are enough for freelancers to judge travel and fit. Do not post street addresses, gate codes, or phone numbers here — share exact details in-app only after you award a proposal.
+                            </p>
                             <div class="mt-6 grid gap-5 sm:grid-cols-2">
                                 <div>
                                     <div class="flex items-center gap-1">
@@ -419,7 +501,65 @@
                                     <UiSelect v-model="form.start_timing" class="mt-2" :options="startTimingOptionsUi" />
                                     <InputError class="mt-2" :message="form.errors.start_timing" />
                                 </div>
-                                <div v-if="form.start_timing === 'scheduled'">
+                                <div v-if="fieldProfile.recurring_engagement?.eligible" class="space-y-4 rounded-2xl border border-violet-100 bg-violet-50/50 p-4 ring-1 ring-violet-100">
+                                    <div>
+                                        <InputLabel value="How will this job run?" />
+                                        <p class="mt-1 text-xs font-semibold leading-relaxed text-violet-950/80">
+                                            {{ fieldProfile.recurring_engagement.explainer }}
+                                        </p>
+                                    </div>
+                                    <div class="grid gap-2 sm:grid-cols-2">
+                                        <label
+                                            class="flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition"
+                                            :class="form.engagement_mode === 'one_time' ? 'border-primary-300 bg-white ring-2 ring-primary-200' : 'border-slate-200 bg-white/80'"
+                                        >
+                                            <input v-model="form.engagement_mode" type="radio" value="one_time" class="mt-1 text-primary-600" />
+                                            <span>
+                                                <span class="block font-black text-slate-900">One-time job</span>
+                                                <span class="mt-0.5 block text-xs font-medium text-slate-600">Pay once when the work is done.</span>
+                                            </span>
+                                        </label>
+                                        <label
+                                            class="flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition"
+                                            :class="form.engagement_mode === 'recurring_installment' ? 'border-primary-300 bg-white ring-2 ring-primary-200' : 'border-slate-200 bg-white/80'"
+                                        >
+                                            <input v-model="form.engagement_mode" type="radio" value="recurring_installment" class="mt-1 text-primary-600" />
+                                            <span>
+                                                <span class="block font-black text-slate-900">Ongoing — paid in installments</span>
+                                                <span class="mt-0.5 block text-xs font-medium text-slate-600">Full escrow upfront; worker paid weekly or monthly.</span>
+                                            </span>
+                                        </label>
+                                    </div>
+                                    <template v-if="isRecurringEngagement">
+                                        <div class="grid gap-4 sm:grid-cols-2">
+                                            <div>
+                                                <InputLabel value="Contract length" />
+                                                <UiSelect
+                                                    v-model="form.contract_duration_months"
+                                                    class="mt-2"
+                                                    :options="contractDurationOptions"
+                                                    placeholder="How long the work runs"
+                                                />
+                                                <InputError class="mt-2" :message="form.errors.contract_duration_months" />
+                                            </div>
+                                            <div>
+                                                <InputLabel value="How often the worker gets paid" />
+                                                <UiSelect
+                                                    v-model="form.installment_frequency"
+                                                    class="mt-2"
+                                                    :options="installmentFrequencyOptions"
+                                                    placeholder="Weekly or monthly"
+                                                />
+                                                <InputError class="mt-2" :message="form.errors.installment_frequency" />
+                                            </div>
+                                        </div>
+                                        <p class="rounded-xl border border-violet-200/80 bg-white/70 px-3 py-2.5 text-xs font-semibold leading-relaxed text-violet-950">
+                                            You fund the full budget into escrow before work starts. After each period, the worker submits progress, you approve, and that slice is paid out. First payout is about {{ fieldProfile.recurring_engagement.first_period_days }} days after work starts.
+                                        </p>
+                                    </template>
+                                    <InputError :message="form.errors.engagement_mode" />
+                                </div>
+                                <div v-if="form.start_timing === 'scheduled' || isRecurringEngagement">
                                     <div class="flex items-center gap-1">
                                         <InputLabel for="sched" value="Planned start date" />
                                         <FieldHint text="First day you expect work to begin — used for scheduling only." />
@@ -427,7 +567,7 @@
                                     <PremiumDatePicker id="sched" v-model="form.scheduled_start_date" class="mt-2" placeholder="Pick start date" />
                                     <InputError class="mt-2" :message="form.errors.scheduled_start_date" />
                                 </div>
-                                <div>
+                                <div v-if="!isRecurringEngagement">
                                     <div class="flex items-center gap-1">
                                         <InputLabel for="ecd" value="Estimated duration (days)" />
                                         <FieldHint text="Rough time to complete the work — not how long proposals stay open." />
@@ -446,33 +586,36 @@
                                         {{ completionGuidanceCopy }}
                                     </p>
                                 </div>
-                                <div>
+                                <div v-if="!isRecurringEngagement">
                                     <div class="flex items-center gap-1">
                                         <InputLabel for="edd" value="Planned finish date (optional)" />
-                                        <FieldHint text="Target date for the full deliverable — complements the duration above." />
+                                        <FieldHint text="Soft target — when you hope the work is done. Used for planning and matching; not a hard cutoff." />
                                     </div>
                                     <PremiumDatePicker
                                         id="edd"
                                         v-model="form.estimated_delivery_date"
                                         class="mt-2"
-                                        placeholder="Optional finish date"
+                                        placeholder="Optional target finish"
                                         :min="finishDateMin"
                                     />
                                     <InputError class="mt-2" :message="form.errors.estimated_delivery_date" />
                                 </div>
-                                <div>
+                                <div v-if="!isRecurringEngagement">
                                     <div class="flex items-center gap-1">
                                         <InputLabel for="delivery_deadline" value="Delivery deadline (optional)" />
-                                        <FieldHint text="Hard cutoff date for finished work, if you have one." />
+                                        <FieldHint text="Hard cutoff — finished work must be delivered by this date. Drives escrow reminders and auto-release if set." />
                                     </div>
                                     <PremiumDatePicker
                                         id="delivery_deadline"
                                         v-model="form.delivery_deadline"
                                         class="mt-2"
-                                        placeholder="Date only — no time"
-                                        :min="todayIso"
+                                        placeholder="Latest acceptable delivery date"
+                                        :min="deadlineDateMin"
                                     />
                                     <InputError class="mt-2" :message="form.errors.delivery_deadline" />
+                                </div>
+                                <div v-if="isRecurringEngagement" class="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3 text-xs font-semibold leading-relaxed text-slate-700">
+                                    Contract end date is set from the length you chose — not a single delivery date. Workers are paid in {{ installmentFrequencyLabel }} slices until the contract ends.
                                 </div>
                                 <div class="rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/90 to-white p-4 ring-1 ring-slate-100 sm:p-5">
                                     <div class="flex flex-wrap items-end justify-between gap-2">
@@ -630,29 +773,63 @@
                                 Tags, files, and launch options — admins manage featured boosts after a quest is live.
                             </p>
                             <div class="mt-6 space-y-5">
-                                <div>
-                                    <div class="flex items-center gap-1">
-                                        <InputLabel for="exp" value="Proposal deadline (days)" />
-                                        <FieldHint :text="`How long freelancers can submit proposals after publish (${proposalDeadlineBounds.min}–${proposalDeadlineBounds.max} days). Default ${proposalDeadlineBounds.default} days.`" />
+                                <div class="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 ring-1 ring-slate-100 sm:p-5">
+                                    <p class="text-xs font-black uppercase tracking-wide text-slate-600">Proposal settings</p>
+                                    <p class="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                                        How long the quest stays open for proposals, and an optional cap on how many you receive.
+                                    </p>
+                                    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                                        <div>
+                                            <div class="flex items-center gap-1">
+                                                <InputLabel for="exp" value="Open for proposals (days)" />
+                                                <FieldHint :text="`How long freelancers can submit proposals after publish (${proposalDeadlineBounds.min}–${proposalDeadlineBounds.max} days). Default ${proposalDeadlineBounds.default} days.`" />
+                                            </div>
+                                            <input
+                                                id="exp"
+                                                v-model.number="form.auto_listing_expiry_days"
+                                                type="number"
+                                                :min="proposalDeadlineBounds.min"
+                                                :max="proposalDeadlineBounds.max"
+                                                required
+                                                class="mt-2 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm"
+                                                :placeholder="String(proposalDeadlineBounds.default)"
+                                            />
+                                            <InputError class="mt-2" :message="form.errors.auto_listing_expiry_days" />
+                                        </div>
+                                        <div>
+                                            <div class="flex items-center gap-1">
+                                                <InputLabel for="maxo" value="Max proposals (optional)" />
+                                                <FieldHint text="Cap how many proposals you'll accept — leave blank for no limit." />
+                                            </div>
+                                            <input id="maxo" v-model.number="form.max_offers" type="number" min="1" max="200" class="mt-2 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm" placeholder="No limit" />
+                                        </div>
                                     </div>
-                                    <input
-                                        id="exp"
-                                        v-model.number="form.auto_listing_expiry_days"
-                                        type="number"
-                                        :min="proposalDeadlineBounds.min"
-                                        :max="proposalDeadlineBounds.max"
-                                        required
-                                        class="mt-2 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm"
-                                        :placeholder="String(proposalDeadlineBounds.default)"
-                                    />
-                                    <InputError class="mt-2" :message="form.errors.auto_listing_expiry_days" />
                                 </div>
-                                <div>
-                                    <div class="flex items-center gap-1">
-                                        <InputLabel for="maxo" value="Max proposals (optional)" />
-                                        <FieldHint text="Limit how many freelancers can apply — leave blank for no cap." />
+                                <div
+                                    v-if="isRecurringEngagement && fieldProfile.recurring_engagement?.renewal_explainer"
+                                    class="rounded-2xl border border-amber-100 bg-amber-50/70 p-4 ring-1 ring-amber-100"
+                                >
+                                    <p class="text-xs font-black uppercase tracking-wide text-amber-900">
+                                        {{ fieldProfile.recurring_engagement.renewal_explainer.title }}
+                                    </p>
+                                    <p class="mt-2 text-xs font-semibold leading-relaxed text-amber-950/90">
+                                        {{ fieldProfile.recurring_engagement.renewal_explainer.body }}
+                                    </p>
+                                    <div class="mt-3 space-y-2">
+                                        <label
+                                            v-for="option in fieldProfile.recurring_engagement.renewal_explainer.options"
+                                            :key="option.key"
+                                            class="flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 text-xs"
+                                            :class="form.contract_renewal_preference === option.key ? 'border-amber-400 bg-white ring-2 ring-amber-200' : 'border-white/80 bg-white/80'"
+                                        >
+                                            <input v-model="form.contract_renewal_preference" type="radio" :value="option.key" class="mt-0.5 text-amber-700" />
+                                            <span>
+                                                <span class="block font-black text-slate-900">{{ option.label }}</span>
+                                                <span class="mt-1 block font-semibold leading-relaxed text-slate-600">{{ option.detail }}</span>
+                                            </span>
+                                        </label>
                                     </div>
-                                    <input id="maxo" v-model.number="form.max_offers" type="number" min="1" max="200" class="mt-2 w-full rounded-xl border-slate-200 text-sm font-semibold shadow-sm" />
+                                    <InputError class="mt-2" :message="form.errors.contract_renewal_preference" />
                                 </div>
                                 <div v-if="freelancerNetworkGroups.length">
                                     <div class="flex items-center gap-1">
@@ -862,6 +1039,8 @@
                     </div>
                 </div>
             </form>
+                </div>
+            </div>
         </div>
     </AppShell>
 </template>
@@ -873,7 +1052,7 @@ import UiMultiSelect from '@/Components/Ui/UiMultiSelect.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
 import SkillTagInput from '@/Components/Quests/SkillTagInput.vue';
 import QuestPreferenceFields from '@/Components/Quests/QuestPreferenceFields.vue';
-import QuestRichDescriptionEditor from '@/Components/Quests/QuestRichDescriptionEditor.vue';
+import UiTextarea from '@/Components/Ui/UiTextarea.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
@@ -884,7 +1063,7 @@ import axios from 'axios';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useQuestCreateDraft } from '@/composables/useQuestCreateDraft';
 import { validateQuestCreateStep, resolveQuestCreateSubmitErrors } from '@/utils/questCreateClientValidation';
-import { htmlToPlainText } from '@/utils/htmlPlainText';
+import { plainTextToDescriptionHtml } from '@/utils/htmlPlainText';
 
 const props = defineProps({
     locations: { type: Array, required: true },
@@ -899,6 +1078,9 @@ const props = defineProps({
     minBudgetMinor: { type: Number, default: 0 },
     fieldProfileUrl: { type: String, required: true },
     skillsSuggestUrl: { type: String, required: true },
+    aiSuggestUrl: { type: String, default: '' },
+    aiDescriptionEnabled: { type: Boolean, default: true },
+    aiUsesClaude: { type: Boolean, default: false },
     freelancersYouFollow: { type: Array, default: () => [] },
     freelancersFollowingYou: { type: Array, default: () => [] },
     quest_stats_hints: {
@@ -913,6 +1095,7 @@ const props = defineProps({
         type: Object,
         default: () => ({ min: 1, max: 60, default: 14, extension_max: 14, warning_hours: 48 }),
     },
+    traffic_source_options: { type: Array, default: () => [] },
 });
 
 const page = usePage();
@@ -941,6 +1124,46 @@ let fileRowKey = 0;
 const parentCategoryId = ref(0);
 const preferenceProfile = ref({});
 const todayIso = new Date().toISOString().slice(0, 10);
+
+const aiLoading = ref(false);
+const aiError = ref('');
+const aiSuggestions = ref([]);
+const aiCanSuggest = computed(() => Boolean(form.title?.trim()) && Boolean(form.quest_category_id));
+
+async function suggestDescription() {
+    if (!aiCanSuggest.value || aiLoading.value || !props.aiSuggestUrl) {
+        return;
+    }
+    aiLoading.value = true;
+    aiError.value = '';
+    try {
+        const { data } = await axios.post(props.aiSuggestUrl, {
+            title: form.title.trim(),
+            quest_category_id: form.quest_category_id || null,
+        });
+        if (data?.available === false) {
+            aiError.value = data.message || 'Description suggestions are not available right now.';
+            aiSuggestions.value = [];
+
+            return;
+        }
+        aiSuggestions.value = Array.isArray(data?.suggestions) ? data.suggestions : [];
+        if (!aiSuggestions.value.length) {
+            aiError.value = data?.message || 'No suggestions were returned. Try again.';
+        }
+    } catch (error) {
+        aiError.value = error?.response?.data?.message || 'Could not generate suggestions. Please try again.';
+        aiSuggestions.value = [];
+    } finally {
+        aiLoading.value = false;
+    }
+}
+
+function applySuggestion(suggestion) {
+    form.description = String(suggestion.text || '').trim();
+    aiSuggestions.value = [];
+    aiError.value = '';
+}
 
 const fieldProfile = reactive({
     show_site_visit: false,
@@ -1019,6 +1242,10 @@ const form = useForm({
     estimated_completion_days: 14,
     estimated_delivery_date: '',
     delivery_deadline: '',
+    engagement_mode: 'one_time',
+    installment_frequency: 'monthly',
+    contract_duration_months: 6,
+    contract_renewal_preference: 'decide_later',
     required_skills: [],
     preferences: {},
     budget_amount_minor: 10_000,
@@ -1031,7 +1258,8 @@ const form = useForm({
     pets_detail: '',
     auto_listing_expiry_days: props.proposal_deadline_bounds?.default ?? 14,
     max_offers: null,
-    traffic_source: '',
+    traffic_source_key: '',
+    traffic_source_other: '',
     publish_now: true,
     accepted_terms: false,
     tagged_freelancer_ids: [],
@@ -1062,12 +1290,67 @@ const lgaSelectOptions = computed(() => lgaOptions.value.map((lg) => ({ value: l
 
 const completionDayOptions = computed(() => completionPresets.map((d) => ({ value: d, label: `${d} days` })));
 
+const isRecurringEngagement = computed(() => form.engagement_mode === 'recurring_installment');
+
+const contractDurationOptions = computed(() => fieldProfile.recurring_engagement?.contract_duration_options ?? []);
+
+const installmentFrequencyOptions = computed(() => fieldProfile.recurring_engagement?.frequencies ?? []);
+
+const installmentFrequencyLabel = computed(() => {
+    const hit = installmentFrequencyOptions.value.find((o) => o.value === form.installment_frequency);
+
+    return hit?.label?.toLowerCase() || 'period';
+});
+
+const trafficSourceOptions = computed(() =>
+    (props.traffic_source_options || []).map((o) => ({ value: o.value, label: o.label })),
+);
+
+const renewalPreferenceLabel = computed(() => {
+    const options = fieldProfile.recurring_engagement?.renewal_explainer?.options ?? [];
+    const hit = options.find((o) => o.key === form.contract_renewal_preference);
+
+    return hit?.label ?? '—';
+});
+
+function resolvedTrafficSource() {
+    if (!form.traffic_source_key) {
+        return null;
+    }
+    if (form.traffic_source_key === 'other') {
+        return String(form.traffic_source_other || '').trim() || null;
+    }
+    const hit = props.traffic_source_options.find((o) => o.value === form.traffic_source_key);
+
+    return hit?.label ?? form.traffic_source_key;
+}
+
+watch(isRecurringEngagement, (on) => {
+    if (on && form.start_timing === 'flexible') {
+        form.start_timing = 'scheduled';
+    }
+    if (on && !form.scheduled_start_date) {
+        form.scheduled_start_date = todayIso;
+    }
+    if (on && !form.contract_duration_months && contractDurationOptions.value.length) {
+        form.contract_duration_months = contractDurationOptions.value[0].value;
+    }
+});
+
 const finishDateMin = computed(() => {
     if (form.start_timing === 'scheduled' && form.scheduled_start_date) {
         return form.scheduled_start_date;
     }
 
-    return '';
+    return todayIso;
+});
+
+const deadlineDateMin = computed(() => {
+    if (form.estimated_delivery_date) {
+        return form.estimated_delivery_date;
+    }
+
+    return finishDateMin.value || todayIso;
 });
 
 watch(
@@ -1080,6 +1363,19 @@ watch(
             && form.estimated_delivery_date < form.scheduled_start_date
         ) {
             form.estimated_delivery_date = form.scheduled_start_date;
+        }
+    },
+);
+
+watch(
+    () => [form.estimated_delivery_date, form.delivery_deadline],
+    () => {
+        if (
+            form.estimated_delivery_date
+            && form.delivery_deadline
+            && form.delivery_deadline < form.estimated_delivery_date
+        ) {
+            form.delivery_deadline = form.estimated_delivery_date;
         }
     },
 );
@@ -1345,7 +1641,7 @@ const previewBlocks = computed(() => {
                 {
                     label: 'Description',
                     value: (() => {
-                        const plain = htmlToPlainText(form.description);
+                        const plain = String(form.description || '').trim();
                         return plain ? `${plain.slice(0, 220)}${plain.length > 220 ? '…' : ''}` : '—';
                     })(),
                 },
@@ -1360,7 +1656,7 @@ const previewBlocks = computed(() => {
                 ...(fieldProfile.show_availability
                     ? [{ label: 'Availability', value: optionLabel(availabilityOptions, form.availability_need) }]
                     : []),
-                { label: 'Traffic source', value: String(form.traffic_source || '').trim() || '—' },
+                { label: 'How did you find us?', value: resolvedTrafficSource() || '—' },
                 { label: 'Campaign tracking', value: [utm.utm_source, utm.utm_medium, utm.utm_campaign].filter(Boolean).join(' · ') || '—' },
             ],
         },
@@ -1378,11 +1674,20 @@ const previewBlocks = computed(() => {
             title: 'Schedule & budget',
             rows: [
                 { label: 'Start', value: timing },
-                ...(form.start_timing === 'scheduled'
+                ...(form.start_timing === 'scheduled' || isRecurringEngagement.value
                     ? [{ label: 'Start date', value: String(form.scheduled_start_date || '').trim() || '—' }]
                     : []),
-                { label: 'Estimated duration', value: `${form.estimated_completion_days} days` },
-                { label: 'Planned finish', value: String(form.estimated_delivery_date || '').trim() || '—' },
+                ...(isRecurringEngagement.value
+                    ? [
+                          { label: 'Job type', value: 'Ongoing — paid in installments' },
+                          { label: 'Contract length', value: `${form.contract_duration_months} months` },
+                          { label: 'Payment frequency', value: installmentFrequencyLabel.value },
+                      ]
+                    : [
+                          { label: 'Estimated duration', value: `${form.estimated_completion_days} days` },
+                          { label: 'Planned finish', value: String(form.estimated_delivery_date || '').trim() || '—' },
+                          { label: 'Delivery deadline', value: String(form.delivery_deadline || '').trim() || '—' },
+                      ]),
                 { label: 'Budget cap', value: formatNgn(form.budget_amount_minor) },
             ],
         },
@@ -1413,8 +1718,11 @@ const previewBlocks = computed(() => {
             id: 6,
             title: 'Launch',
             rows: [
-                { label: 'Proposal deadline (days)', value: String(form.auto_listing_expiry_days ?? proposalDeadlineBounds.default) },
-                { label: 'Max proposals', value: form.max_offers != null && form.max_offers !== '' ? String(form.max_offers) : '—' },
+                { label: 'Open for proposals (days)', value: String(form.auto_listing_expiry_days ?? proposalDeadlineBounds.default) },
+                { label: 'Max proposals', value: form.max_offers != null && form.max_offers !== '' ? String(form.max_offers) : 'No limit' },
+                ...(isRecurringEngagement.value
+                    ? [{ label: 'When contract ends', value: renewalPreferenceLabel.value }]
+                    : []),
                 { label: 'Tagged freelancers', value: taggedDisplay.value.map((t) => t.label).join(', ') || '—' },
                 { label: 'Files', value: form.files?.length ? `${form.files.length} attached` : 'None' },
             ],
@@ -1792,6 +2100,7 @@ onUnmounted(() => {
 function buildSubmitPayload(data) {
     const payload = {
         ...data,
+        description: plainTextToDescriptionHtml(data.description),
         publish_now: !!data.publish_now,
         accepted_terms: !!data.accepted_terms,
         traffic_utm: buildPayload().traffic_utm,
@@ -1802,13 +2111,22 @@ function buildSubmitPayload(data) {
         team_size: fieldProfile.show_team_size ? (data.team_size || null) : null,
         auto_listing_expiry_days: data.auto_listing_expiry_days ?? props.proposal_deadline_bounds?.default ?? 14,
         max_offers: data.max_offers || null,
-        traffic_source: data.traffic_source?.trim() || null,
+        traffic_source: resolvedTrafficSource(),
         estimated_delivery_date: data.estimated_delivery_date || null,
         delivery_deadline: data.delivery_deadline || null,
         required_skills: data.required_skills || [],
         preferences: data.preferences || {},
         scheduled_start_date: data.scheduled_start_date || null,
+        engagement_mode: data.engagement_mode || 'one_time',
+        installment_frequency: isRecurringEngagement.value ? data.installment_frequency : null,
+        contract_duration_months: isRecurringEngagement.value ? Number(data.contract_duration_months) : null,
+        contract_renewal_preference: isRecurringEngagement.value ? data.contract_renewal_preference : null,
     };
+
+    if (isRecurringEngagement.value) {
+        payload.estimated_delivery_date = null;
+        payload.delivery_deadline = null;
+    }
 
     payload.site_visits_allowed = false;
 

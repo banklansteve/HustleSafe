@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Operations;
 use App\Http\Controllers\Controller;
 use App\Models\ConversationSystematicEscalation;
 use App\Models\ConversationThreadReview;
-use App\Models\User;
 use App\Services\ConversationMonitoring\ConversationMonitoringAdminService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -82,20 +81,7 @@ class OperationsConversationMonitoringController extends Controller
         $data = $request->validate(['note' => ['required', 'string', 'min:8', 'max:2000']]);
         $this->service->escalateToSuperAdmin($review, $request->user(), (string) $data['note']);
 
-        return response()->json(['message' => 'Escalated to Super Admin for permanent ban review.']);
-    }
-
-    public function suspendUser(Request $request, ConversationThreadReview $review): JsonResponse
-    {
-        $data = $request->validate([
-            'user_id' => ['required', 'integer', 'exists:users,id'],
-            'note' => ['nullable', 'string', 'max:2000'],
-        ]);
-
-        $target = User::query()->findOrFail((int) $data['user_id']);
-        $this->service->suspendUser($request->user(), $target, $review, $data['note'] ?? null);
-
-        return response()->json(['message' => 'User suspended.']);
+        return response()->json(['message' => 'Escalated to Super Admin for review.']);
     }
 
     public function flagRisk(ConversationThreadReview $review): JsonResponse

@@ -12,12 +12,14 @@ use App\Models\UserFollow;
 use App\Services\Admin\QuestBoostService;
 use App\Services\Matching\FreelancerMetricsService;
 use App\Services\Matching\QuestMatchScoreCalculator;
+use App\Services\Matching\QuestRemoteMatchPolicy;
 use App\Services\Verification\VerificationEngineService;
 use Illuminate\Support\Collection;
 
 /**
  * Ranks open quests for freelancers: exact category gate, tier/budget/active-job gates,
- * then weighted location → skills → budget → tier quality → activity scoring.
+ * then weighted scoring. On-site jobs weight location heavily; online-friendly jobs
+ * score on skills, budget, tier quality, and activity instead.
  */
 class QuestMatchingService
 {
@@ -25,6 +27,7 @@ class QuestMatchingService
         protected QuestMatchScoreCalculator $scoreCalculator,
         protected FreelancerMetricsService $metricsService,
         protected VerificationEngineService $verificationEngine,
+        protected QuestRemoteMatchPolicy $remoteMatchPolicy,
     ) {}
 
     /**
@@ -39,7 +42,10 @@ class QuestMatchingService
      */
     public function rankedOpenQuestsForFreelancer(User $freelancer, int $limit = 12): Collection
     {
-        $prefIds = $freelancer->questCategoryPreferences()->pluck('quest_categories.id')->all();
+        $prefIds = array_values(array_unique(array_map(
+            'intval',
+            $freelancer->questCategoryPreferences()->pluck('quest_categories.id')->all()
+        )));
         if ($prefIds === []) {
             return $this->fallbackOpenQuests($limit);
         }
@@ -96,15 +102,35 @@ class QuestMatchingService
             ];
         })->filter();
 
+        $scored = $this->dedupeScoredRows($scored);
+
         return $scored
-            ->sortByDesc(fn (array $row) => [
-                $this->locationTierRank($row['location_tier']),
-                $row['match_score'],
-                $row['quest']->created_at?->timestamp ?? 0,
-            ])
+            ->sortByDesc(fn (array $row) => $this->sortKeysForRankedQuest($row))
             ->values()
             ->pipe(fn (Collection $sorted) => $this->prioritizeBoostedQuests($sorted))
             ->take($limit);
+    }
+
+    /**
+     * @param  array{quest: Quest, match_score: int, location_tier: string}  $row
+     * @return list<int|float>
+     */
+    protected function sortKeysForRankedQuest(array $row): array
+    {
+        $quest = $row['quest'];
+
+        if ($this->remoteMatchPolicy->isLocationAgnostic($quest)) {
+            return [
+                (int) ($row['match_score'] ?? 0),
+                $quest->created_at?->timestamp ?? 0,
+            ];
+        }
+
+        return [
+            $this->locationTierRank($row['location_tier']),
+            (int) ($row['match_score'] ?? 0),
+            $quest->created_at?->timestamp ?? 0,
+        ];
     }
 
     /**
@@ -141,6 +167,7 @@ class QuestMatchingService
             'same_lga' => 3,
             'same_state' => 2,
             'different_state' => 1,
+            'remote' => 0,
             default => 0,
         };
     }
@@ -186,7 +213,26 @@ class QuestMatchingService
             return $endsAt?->timestamp ?? PHP_INT_MAX;
         })->values();
 
-        return $boostedOrdered->concat($regular->values());
+        return $this->dedupeScoredRows($boostedOrdered->concat($regular->values()));
+    }
+
+    /**
+     * Keep one row per quest (highest score wins) so sibling category prefs cannot duplicate listings.
+     *
+     * @param  Collection<int, array{quest: Quest, match_score: int, reasons: list<string>}>  $rows
+     * @return Collection<int, array{quest: Quest, match_score: int, reasons: list<string>}>
+     */
+    protected function dedupeScoredRows(Collection $rows): Collection
+    {
+        return $rows
+            ->groupBy(fn (array $row) => (int) $row['quest']->id)
+            ->map(function (Collection $group): array {
+                return $group->sortByDesc(fn (array $row) => [
+                    (int) ($row['match_score'] ?? 0),
+                    $row['quest']->created_at?->timestamp ?? 0,
+                ])->first();
+            })
+            ->values();
     }
 
     /**

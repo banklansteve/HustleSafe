@@ -378,7 +378,7 @@ const navGroups = [
             { label: 'Content patrol', hint: 'Proactive sampled Quest & proposal review', href: route('operations.patrol.index'), match: (p) => p.startsWith('/operations/patrol') && !p.startsWith('/operations/user-activity-patrol') },
             { label: 'User activity patrol', hint: 'Auto-detected user anomalies — disputes, velocity, identity', href: route('operations.user-activity-patrol.index'), match: (p) => p.startsWith('/operations/user-activity-patrol') },
             { label: 'Badge requests', hint: 'Manual Top Rated & talent badge reviews', href: route('operations.badge-requests.index'), match: (p) => p.startsWith('/operations/badge-requests') },
-            { label: 'Conversation monitoring', hint: 'Flagged quest & Q&A messages — assign, warn, suspend', href: route('operations.conversation-monitoring.index'), match: (p) => p.startsWith('/operations/conversation-monitoring') },
+            { label: 'Trust review', hint: 'Flagged quest & Q&A messages — warn, review history, escalate suspensions', href: route('operations.conversation-monitoring.index'), match: (p) => p.startsWith('/operations/conversation-monitoring') },
         ],
     },
     {
@@ -396,6 +396,7 @@ const navGroups = [
         label: 'Cases',
         items: [
             { label: 'Disputes', hint: 'Mediation queue and evidence review', href: route('operations.disputes.index'), match: (p) => p.startsWith('/operations/disputes') },
+            { label: 'Contract management', hint: 'Patrol contracts, delivery review, and escalations', href: route('operations.contract-management.index'), match: (p) => p.startsWith('/operations/contract-management') },
             { label: 'Escrow anomalies', hint: 'Stalled contracts before formal disputes', href: route('operations.escrow-anomalies.index'), match: (p) => p.startsWith('/operations/escrow-anomalies') },
             { label: 'Sanction appeals', hint: 'Warnings, restrictions, and suspensions', href: route('operations.sanction-appeals.index'), match: (p) => p.startsWith('/operations/sanction-appeals') },
             { label: 'Payment monitoring', hint: 'Anomaly detection queue for escrow and payouts', href: route('operations.payment-monitoring.index'), match: (p) => p.startsWith('/operations/payment-monitoring') },

@@ -48,8 +48,8 @@ class ConversationPolicyWarningUserNotification extends Notification
         return [
             'kind' => 'conversation_policy_warning',
             'warning_id' => $this->warningId,
-            'title' => $this->subject,
-            'body' => str($this->messageBody)->limit(180)->toString(),
+            'title' => __('New messaging policy notice'),
+            'body' => __('Open Policy notices to read the full message and reply if you need clarification.'),
             'href' => route('account.policy-notices.index', absolute: false),
         ];
     }

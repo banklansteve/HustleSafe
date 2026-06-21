@@ -23,11 +23,11 @@ export function useFreelancerShellNav() {
             isActive: (path) => path === '/my-proposals' || path.startsWith('/my-proposals/'),
         },
         {
-            key: 'explore',
-            href: route('quests.explore'),
-            label: 'Browse quests',
+            key: 'quests',
+            href: route('quests.browse'),
+            label: 'Find quests',
             icon: MagnifyingGlassIcon,
-            isActive: (path) => path.startsWith('/quests/explore'),
+            isActive: (path) => path.startsWith('/quests/browse') || path.startsWith('/quests/explore'),
         },
         {
             key: 'portfolio',

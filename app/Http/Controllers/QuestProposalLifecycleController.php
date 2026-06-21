@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\AdminProposalStatus;
 use App\Enums\QuestStatus;
 use App\Events\QuestProposalListUpdated;
+use App\Http\Requests\Quests\CancelProposalAwardRequest;
 use App\Http\Requests\Quests\ConfirmProposalAwardRequest;
 use App\Models\PaymentEscrow;
 use App\Models\Quest;
@@ -16,6 +17,7 @@ use App\Notifications\ProposalWithdrawnClientNotification;
 use App\Services\Admin\AdminActivityFeedService;
 use App\Services\Payments\PaystackClient;
 use App\Jobs\FinalizeProposalAwardJob;
+use App\Services\Proposals\ProposalAwardCancellationService;
 use App\Services\Proposals\ProposalClarificationPromptService;
 use App\Services\Proposals\ProposalClarificationService;
 use App\Services\Proposals\ProposalShortlistService;
@@ -112,10 +114,6 @@ class QuestProposalLifecycleController extends Controller
             'confirm_award_terms' => ['accepted'],
             'accept_escrow_rules' => ['accepted'],
             'accept_fees_and_terms' => ['accepted'],
-            'deliverables' => ['required', 'array', 'min:1', 'max:20'],
-            'deliverables.*.title' => ['required', 'string', 'max:255'],
-            'deliverables.*.description' => ['nullable', 'string', 'max:2000'],
-            'revision_definition' => ['nullable', 'string', 'max:2000'],
         ]);
 
         if ((int) $offer->quest_id !== (int) $quest->id) {
@@ -129,11 +127,19 @@ class QuestProposalLifecycleController extends Controller
             throw ValidationException::withMessages(['proposal' => __('This proposal cannot be awarded in its current state.')]);
         }
 
+        $recurring = app(\App\Services\Quest\QuestRecurringEngagementService::class);
+        if ($recurring->isRecurring($quest) && ! $offer->accepts_installment_terms) {
+            throw ValidationException::withMessages([
+                'proposal' => __('This worker has not accepted the installment payment schedule. Choose another proposal or ask them to resubmit.'),
+            ]);
+        }
+
         if ($quest->accepted_quest_offer_id !== null || $quest->pending_award_offer_id !== null) {
             throw ValidationException::withMessages(['proposal' => __('This quest already has an award in progress or accepted.')]);
         }
 
         $terms = $promptService->awardTermsSnapshot($quest, $offer);
+        $terms['prior_status'] = $offer->status;
         $terms['client_confirmation'] = [
             'ip' => $request->ip(),
             'user_agent' => substr((string) $request->userAgent(), 0, 2000),
@@ -141,18 +147,11 @@ class QuestProposalLifecycleController extends Controller
             'action' => __('I agree to the terms of this contract'),
         ];
         $terms['revisions_included'] = (int) ($offer->corrections_included ? ($offer->corrections_rounds ?: 1) : 0);
-        $terms['revision_definition'] = (string) $request->input(
-            'revision_definition',
-            __('A revision adjusts the agreed deliverable within the original scope. New features or material scope expansion require an amendment.')
-        );
-        $terms['deliverables'] = collect($request->input('deliverables', []))
-            ->map(fn ($row) => [
-                'title' => trim((string) ($row['title'] ?? '')),
-                'description' => trim((string) ($row['description'] ?? '')) ?: null,
-            ])
-            ->filter(fn ($row) => $row['title'] !== '')
-            ->values()
-            ->all();
+        $terms['revision_definition'] = $promptService->deriveRevisionDefinition($offer);
+        $terms['deliverables'] = $promptService->deriveDeliverables($quest, $offer);
+        if ($recurring->isRecurring($quest)) {
+            $terms['installment_schedule'] = $recurring->proposalTermsPayload($quest);
+        }
 
         $offer->update([
             'status' => 'pending_award',
@@ -170,7 +169,7 @@ class QuestProposalLifecycleController extends Controller
 
         $offer->freelancer?->notify(new ProposalAwardPendingFreelancerNotification($offer, $terms));
 
-        return back()->with('success', __('Award initiated — the freelancer must confirm scope, price, and deadline before escrow funding unlocks.'));
+        return back()->with('success', __('You chose this worker. They must confirm before you can pay into escrow.'));
     }
 
     public function confirmAward(
@@ -209,7 +208,7 @@ class QuestProposalLifecycleController extends Controller
             'action' => __('I agree to the terms of this contract'),
         ];
 
-        DB::transaction(function () use ($quest, $offer, $freelancerConfirmation): void {
+        DB::transaction(function () use ($quest, $offer, $freelancerConfirmation, $otherOfferIds): void {
             QuestOffer::query()
                 ->where('quest_id', $quest->id)
                 ->where('id', '<>', $offer->id)
@@ -226,6 +225,7 @@ class QuestProposalLifecycleController extends Controller
                 $snapshot = [];
             }
             $snapshot['freelancer_confirmation'] = $freelancerConfirmation;
+            $snapshot['declined_offer_ids'] = $otherOfferIds->map(fn ($id) => (int) $id)->values()->all();
 
             $offer->update([
                 'status' => 'accepted',
@@ -255,8 +255,32 @@ class QuestProposalLifecycleController extends Controller
             declinedOfferIds: $otherOfferIds->map(fn ($id) => (int) $id)->values()->all(),
         )->onConnection('database');
 
+        $offer->refresh()->loadMissing(['quest', 'freelancer', 'quest.client']);
+        $quest->refresh()->loadMissing('client');
+        $quest->client?->notify(new \App\Notifications\ProposalAcceptedClientNotification($offer));
+
         return back()
             ->with('success', __('Award confirmed — the client can now fund escrow to start work.'));
+    }
+
+    public function cancelAward(
+        CancelProposalAwardRequest $request,
+        Quest $quest,
+        QuestOffer $offer,
+        ProposalAwardCancellationService $cancellations,
+    ): RedirectResponse {
+        $this->authorize('respondAsClient', $offer);
+
+        $cancellations->cancel(
+            $quest,
+            $offer,
+            $request->user(),
+            $request->validated('reason'),
+        );
+
+        return redirect()
+            ->route('quests.client.proposals.index', $quest)
+            ->with('success', __('Award cancelled. The freelancer has been notified and the quest is open again.'));
     }
 
     public function markEscrowFunded(Request $request, Quest $quest, QuestOffer $offer, VerificationEngineService $verificationEngine): RedirectResponse

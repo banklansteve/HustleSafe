@@ -163,6 +163,10 @@ const emit = defineEmits(['update:modelValue']);
 const DEFAULT_TEXT_COLOR = '#4b5563';
 const textColor = ref(DEFAULT_TEXT_COLOR);
 
+// Remember the last text selection so toolbar controls that steal focus
+// (e.g. the native colour picker) can re-apply marks to the intended range.
+const lastSelection = ref(null);
+
 const LIGHT_COLOR_PATTERN = /^(?:#(?:fff(?:fff)?|f[89a-f]{5})|white|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|rgb\(\s*255\s+255\s+255\s*\))$/i;
 
 /** Strip invisible/light inline colours saved from older editor sessions or pasted HTML. */
@@ -213,8 +217,11 @@ const editor = useEditor({
             spellcheck: 'true',
         },
     },
-    onCreate: ({ editor: ed }) => {
-        ed.commands.unsetColor();
+    onSelectionUpdate: ({ editor: ed }) => {
+        const { from, to } = ed.state.selection;
+        if (from !== to) {
+            lastSelection.value = { from, to };
+        }
     },
     onUpdate: ({ editor: ed }) => {
         emit('update:modelValue', sanitizeDescriptionHtml(ed.getHTML()));
@@ -232,21 +239,38 @@ watch(
         const next = sanitizeDescriptionHtml(val || '');
         if (next !== current) {
             ed.commands.setContent(next, false);
-            ed.commands.unsetColor();
         }
     },
 );
+
+/** Re-apply a mark to the remembered selection (focus may have moved to a toolbar control). */
+function chainOnSelection() {
+    const ed = editor.value;
+    const chain = ed.chain().focus();
+    const sel = lastSelection.value;
+    const live = ed.state.selection;
+
+    if (live.from === live.to && sel && sel.from !== sel.to) {
+        return chain.setTextSelection(sel);
+    }
+
+    return chain;
+}
 
 function onTextColor(e) {
     const hex = e?.target?.value;
     if (!hex || !editor.value) {
         return;
     }
-    editor.value.chain().focus().setColor(hex).run();
+    textColor.value = hex;
+    chainOnSelection().setColor(hex).run();
 }
 
 function clearColor() {
-    editor.value?.chain().focus().unsetColor().run();
+    if (!editor.value) {
+        return;
+    }
+    chainOnSelection().unsetColor().run();
 }
 
 function setLink() {
@@ -283,7 +307,9 @@ onBeforeUnmount(() => {
     caret-color: #334155;
 }
 
-.quest-rich-editor .ProseMirror :where(p, li, h2, h3, blockquote, strong, em, u, s, span) {
+/* Block-level nodes inherit the dark body colour; inline marks (span/strong/em…)
+   are intentionally excluded so the colour picker can apply per-selection colours. */
+.quest-rich-editor .ProseMirror :where(p, li, h2, h3, blockquote) {
     color: inherit;
 }
 

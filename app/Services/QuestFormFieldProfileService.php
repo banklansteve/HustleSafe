@@ -23,6 +23,12 @@ class QuestFormFieldProfileService
         'healthcare-wellness',
         'sales-bd',
         'ecommerce-retail',
+        // Local/recurring services where ongoing cadence matters.
+        'home-office-cleaning',
+        'childcare-eldercare',
+        'transportation-logistics',
+        'laundry-textile-care',
+        'beauty-personal-care',
     ];
 
     /**
@@ -48,6 +54,36 @@ class QuestFormFieldProfileService
         'gaming-interactive',
         'agriculture-supply',
         'real-estate',
+        // Nigerian local-service parents.
+        'home-office-cleaning',
+        'repairs-maintenance',
+        'automotive-services',
+        'installation-assembly',
+        'beauty-personal-care',
+        'laundry-textile-care',
+        'catering-food-services',
+        'transportation-logistics',
+        'childcare-eldercare',
+        'specialized-artisan',
+        'nonprofit-community',
+        'research-decision',
+        'other-multidisciplinary',
+    ];
+
+    /**
+     * Parent slugs whose work is commonly performed at the client's premises, so the
+     * on-site brief (access level + pets) is relevant.
+     *
+     * @var list<string>
+     */
+    protected const ON_SITE_PARENTS = [
+        'trades-field',
+        'home-office-cleaning',
+        'repairs-maintenance',
+        'installation-assembly',
+        'childcare-eldercare',
+        'beauty-personal-care',
+        'catering-food-services',
     ];
 
     /**
@@ -127,7 +163,7 @@ class QuestFormFieldProfileService
      */
     protected function siteAccessContextApplies(?string $parentSlug, ?string $leafSlug): bool
     {
-        if ($parentSlug === 'trades-field') {
+        if ($parentSlug !== null && in_array($parentSlug, self::ON_SITE_PARENTS, true)) {
             return true;
         }
 

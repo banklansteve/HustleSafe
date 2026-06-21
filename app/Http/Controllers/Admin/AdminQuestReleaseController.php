@@ -64,6 +64,67 @@ class AdminQuestReleaseController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function forceApproveAndRelease(Request $request, Quest $quest): JsonResponse
+    {
+        abort_unless($request->user()?->role?->slug === 'super_admin', 403);
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:10', 'max:1000'],
+            'confirm' => ['accepted'],
+        ]);
+
+        $lifecycle = app(\App\Services\Quest\QuestDeliveryLifecycleService::class);
+
+        if ($quest->delivered_at === null && $quest->freelancer_id !== null) {
+            $freelancer = $quest->freelancer ?? \App\Models\User::query()->find($quest->freelancer_id);
+            if ($freelancer !== null) {
+                $lifecycle->submitDeliverable($quest, $freelancer, [
+                    'summary' => __('Platform staff recorded delivery on behalf of parties. Reason: :reason', ['reason' => $data['reason']]),
+                    'delivery_url' => null,
+                ]);
+                $quest->refresh();
+            }
+        }
+
+        if ($quest->delivery_acknowledged_at === null) {
+            $quest->update([
+                'delivery_acknowledged_at' => now(),
+                'delivery_acknowledged_by' => $request->user()->id,
+            ]);
+            $this->events->record($quest->fresh(), 'sa_delivery_approved', $request->user(), $request, [
+                'reason' => $data['reason'],
+            ]);
+            $quest->refresh();
+        }
+
+        if ($quest->status === \App\Enums\QuestStatus::InProgress && in_array($quest->escrow_status, ['funded', 'partially_released'], true)) {
+            try {
+                $this->escrow->releaseEscrowToWallet($quest, $request->user(), __('Super admin approved and released: :reason', ['reason' => $data['reason']]));
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                return response()->json(['ok' => false, 'errors' => $e->errors()], 422);
+            }
+
+            $quest->refresh();
+            $quest->update([
+                'status' => \App\Enums\QuestStatus::Completed,
+                'completed_at' => now(),
+                'funds_released_at' => now(),
+                'closure_type' => 'sa_force_approved_released',
+            ]);
+
+            $contract = \App\Models\QuestContract::query()->where('quest_id', $quest->id)->first();
+            if ($contract !== null) {
+                app(\App\Services\Contracts\ContractLifecycleService::class)->markCompleted($contract, $request->user(), $request);
+            }
+
+            $this->events->record($quest->fresh(), 'sa_funds_released', $request->user(), $request, [
+                'reason' => $data['reason'],
+            ]);
+        }
+
+        return response()->json(['ok' => true, 'quest_id' => $quest->id]);
+    }
+
     public function liftHold(Request $request, Quest $quest): JsonResponse
     {
         abort_unless($request->user()?->role?->slug === 'super_admin', 403);

@@ -62,6 +62,7 @@ class QuestQualityGateService
         }
 
         $hasDeadline = ! empty($payload['estimated_delivery_date'])
+            || ! empty($payload['delivery_deadline'])
             || (! empty($payload['estimated_completion_days']) && (int) $payload['estimated_completion_days'] > 0);
 
         if (! $hasDeadline) {

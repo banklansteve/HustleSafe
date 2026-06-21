@@ -19,6 +19,9 @@ class ConversationMessageFlag extends Model
         'trigger_category',
         'matched_pattern_redacted',
         'confidence',
+        'detection_reasoning',
+        'pattern_score',
+        'context_score',
         'status',
         'flagged_at',
     ];
@@ -28,6 +31,9 @@ class ConversationMessageFlag extends Model
         return [
             'trigger_category' => ConversationFlagCategory::class,
             'confidence' => 'float',
+            'detection_reasoning' => 'array',
+            'pattern_score' => 'integer',
+            'context_score' => 'integer',
             'flagged_at' => 'datetime',
         ];
     }

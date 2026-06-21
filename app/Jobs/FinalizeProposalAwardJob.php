@@ -4,9 +4,8 @@ namespace App\Jobs;
 
 use App\Models\Quest;
 use App\Models\QuestOffer;
-use App\Notifications\ProposalAcceptedClientNotification;
 use App\Notifications\ProposalAcceptedFreelancerNotification;
-use App\Services\AdminActivityFeedService;
+use App\Services\Admin\AdminActivityFeedService;
 use App\Services\Contracts\ContractGenerationService;
 use App\Services\Quest\QuestJourneySurveyService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -44,7 +43,6 @@ final class FinalizeProposalAwardJob implements ShouldQueue
         }
 
         try {
-            $quest->client?->notify(new ProposalAcceptedClientNotification($offer));
             $offer->freelancer?->notify(new ProposalAcceptedFreelancerNotification($offer));
 
             app(ContractGenerationService::class)->generateFromAward($quest, $offer);

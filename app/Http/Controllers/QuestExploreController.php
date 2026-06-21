@@ -25,7 +25,9 @@ class QuestExploreController extends Controller
             return redirect()->route('dashboard');
         }
 
-        $rows = app(QuestMatchingService::class)->discoveryFeedForExplore($user, 48);
+        $rows = app(QuestMatchingService::class)->discoveryFeedForExplore($user, 48)
+            ->unique(fn (array $row) => (int) $row['quest']->id)
+            ->values();
 
         $freelancerOffers = $user->role?->slug === 'freelancer'
             ? QuestOffer::mapForFreelancerOnQuests(

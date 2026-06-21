@@ -27,9 +27,9 @@
                 class="w-full rounded-xl border-slate-200 font-semibold shadow-sm"
                 :class="invalid ? 'border-rose-300 ring-rose-200' : ''"
                 :placeholder="placeholder"
-                :disabled="atMax"
+                :disabled="atMax || !hasCategoryContext"
                 autocomplete="off"
-                @focus="openSuggestions = true"
+                @focus="onInputFocus"
                 @keydown.enter.prevent="commitDraft"
                 @keydown.escape="closeSuggestions"
                 @keydown.down.prevent="moveHighlight(1)"
@@ -54,8 +54,14 @@
         </div>
 
         <p class="mt-1.5 text-[11px] font-semibold text-slate-500">
-            {{ modelValue.length }} / {{ max }} selected
-            <span v-if="atMax"> — remove one to add another.</span>
+            <template v-if="!hasCategoryContext">
+                Select work subcategories above first, then pick skills from the same list clients use on quests.
+            </template>
+            <template v-else>
+                {{ modelValue.length }} / {{ max }} selected
+                <span v-if="dictionaryOnly"> — choose from suggestions so skills match client quests.</span>
+                <span v-else-if="atMax"> — remove one to add another.</span>
+            </template>
         </p>
     </div>
 </template>
@@ -69,10 +75,12 @@ const props = defineProps({
     modelValue: { type: Array, default: () => [] },
     max: { type: Number, default: 10 },
     categoryId: { type: [Number, String, null], default: null },
+    categoryIds: { type: Array, default: () => [] },
     suggestUrl: { type: String, required: true },
     placeholder: { type: String, default: 'Start typing a skill…' },
     inputId: { type: String, default: 'required-skills-input' },
     invalid: { type: Boolean, default: false },
+    dictionaryOnly: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -85,9 +93,22 @@ let suggestTimer = null;
 
 const atMax = computed(() => props.modelValue.length >= props.max);
 
+const hasCategoryContext = computed(() => {
+    if (props.categoryId) {
+        return true;
+    }
+
+    return Array.isArray(props.categoryIds) && props.categoryIds.length > 0;
+});
+
 function closeSuggestions() {
     openSuggestions.value = false;
     highlightedIndex.value = 0;
+}
+
+function onInputFocus() {
+    openSuggestions.value = true;
+    fetchSuggestions();
 }
 
 function moveHighlight(delta) {
@@ -122,36 +143,64 @@ function removeSkill(idx) {
     emit('update:modelValue', next);
 }
 
+function matchingSuggestionForDraft() {
+    const needle = draft.value.trim().toLowerCase();
+    if (!needle) {
+        return null;
+    }
+
+    return suggestions.value.find((skill) => String(skill).toLowerCase() === needle) ?? null;
+}
+
 function commitDraft() {
-    if (suggestions.value.length && highlightedIndex.value >= 0) {
+    if (suggestions.value.length && highlightedIndex.value >= 0 && openSuggestions.value) {
         selectSkill(suggestions.value[highlightedIndex.value]);
 
         return;
     }
-    if (draft.value.trim()) {
-        addSkill(draft.value);
-        draft.value = '';
-        closeSuggestions();
+
+    const draftValue = draft.value.trim();
+    if (!draftValue) {
+        return;
     }
+
+    if (props.dictionaryOnly) {
+        const exact = matchingSuggestionForDraft();
+        if (exact) {
+            selectSkill(exact);
+        }
+
+        return;
+    }
+
+    addSkill(draftValue);
+    draft.value = '';
+    closeSuggestions();
 }
 
 async function fetchSuggestions() {
-    const q = draft.value.trim();
-    if (!props.categoryId || q.length < 1) {
+    if (!hasCategoryContext.value) {
         suggestions.value = [];
         highlightedIndex.value = 0;
 
         return;
     }
 
+    const q = draft.value.trim();
+
     try {
-        const { data } = await axios.get(props.suggestUrl, {
-            params: {
-                q,
-                quest_category_id: props.categoryId,
-                exclude: props.modelValue,
-            },
-        });
+        const params = {
+            q,
+            exclude: props.modelValue,
+        };
+
+        if (Array.isArray(props.categoryIds) && props.categoryIds.length > 0) {
+            params.quest_category_ids = props.categoryIds;
+        } else if (props.categoryId) {
+            params.quest_category_id = props.categoryId;
+        }
+
+        const { data } = await axios.get(props.suggestUrl, { params });
         suggestions.value = data.skills || [];
         highlightedIndex.value = 0;
         openSuggestions.value = suggestions.value.length > 0;
@@ -175,9 +224,18 @@ watch(
 );
 
 watch(
+    () => [...(props.categoryIds || [])],
+    () => {
+        draft.value = '';
+        suggestions.value = [];
+        closeSuggestions();
+    },
+);
+
+watch(
     () => [...props.modelValue],
     () => {
-        if (draft.value.trim()) {
+        if (hasCategoryContext.value) {
             fetchSuggestions();
         }
     },

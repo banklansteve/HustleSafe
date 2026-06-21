@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\QuestAvailabilityNeed;
+use App\Enums\QuestEngagementMode;
 use App\Enums\QuestFreelancerLocationPref;
 use App\Enums\QuestProjectType;
 use App\Enums\QuestPromotionTier;
@@ -13,6 +14,7 @@ use App\Enums\QuestVisibility;
 use App\Enums\AdminQuestStatus;
 use App\Models\QuestBoost;
 use App\Services\Quest\QuestCategoryReferenceCodeService;
+use App\Services\Quest\QuestCompletionScheduleService;
 use App\Services\QuestFileStorageService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -55,6 +57,15 @@ class Quest extends Model
         'freelancer_location_pref',
         'availability_need',
         'project_type',
+        'engagement_mode',
+        'installment_frequency',
+        'contract_duration_months',
+        'installment_count',
+        'installment_amount_minor',
+        'contract_starts_at',
+        'contract_ends_at',
+        'contract_renewal_preference',
+        'current_installment_id',
         'estimated_hours',
         'team_size',
         'auto_listing_expiry_days',
@@ -95,6 +106,12 @@ class Quest extends Model
         'escrow_frozen_at',
         'escrow_freeze_reason',
         'delivered_at',
+        'delivery_review_deadline_at',
+        'delivery_revision_requested_at',
+        'delivery_revision_requested_by',
+        'delivery_revision_note',
+        'delivery_submission_count',
+        'latest_delivery_submission_id',
         'completed_at',
         'funds_released_at',
         'auto_completed_at',
@@ -145,18 +162,7 @@ class Quest extends Model
 
     public static function generateReferenceCode(?int $questCategoryId = null): string
     {
-        $prefix = app(QuestCategoryReferenceCodeService::class)->prefixForCategoryId($questCategoryId);
-        $chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-
-        do {
-            $suffix = '';
-            for ($i = 0; $i < 7; $i++) {
-                $suffix .= $chars[random_int(0, strlen($chars) - 1)];
-            }
-            $code = $prefix.'-'.$suffix;
-        } while (static::query()->where('reference_code', $code)->exists());
-
-        return $code;
+        return app(\App\Services\Quest\QuestReferenceGenerator::class)->next();
     }
 
     public function getRouteKeyName(): string
@@ -191,6 +197,9 @@ class Quest extends Model
                 if (is_string($value) && preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/', $value)) {
                     $q->orWhere('uuid', $value);
                 }
+                if (is_string($value) && str_contains($value, '-')) {
+                    $q->orWhere('reference_code', \App\Support\References\HustleSafeReferenceAlphabet::normalize($value));
+                }
                 if (is_numeric($value) && (int) $value > 0) {
                     $q->orWhere('id', (int) $value);
                 }
@@ -207,6 +216,9 @@ class Quest extends Model
             'freelancer_location_pref' => QuestFreelancerLocationPref::class,
             'availability_need' => QuestAvailabilityNeed::class,
             'project_type' => QuestProjectType::class,
+            'engagement_mode' => QuestEngagementMode::class,
+            'contract_starts_at' => 'datetime',
+            'contract_ends_at' => 'datetime',
             'team_size' => QuestTeamSize::class,
             'promotion_tier' => QuestPromotionTier::class,
             'traffic_utm' => 'array',
@@ -238,6 +250,8 @@ class Quest extends Model
             'escrow_hold_expected_resolution_at' => 'datetime',
             'escrow_frozen_at' => 'datetime',
             'delivered_at' => 'datetime',
+            'delivery_review_deadline_at' => 'datetime',
+            'delivery_revision_requested_at' => 'datetime',
             'completed_at' => 'datetime',
             'completed_on_time' => 'boolean',
             'dispute_opened' => 'boolean',
@@ -399,6 +413,38 @@ class Quest extends Model
     }
 
     /**
+     * @return BelongsTo<QuestDeliverySubmission, $this>
+     */
+    public function latestDeliverySubmission(): BelongsTo
+    {
+        return $this->belongsTo(QuestDeliverySubmission::class, 'latest_delivery_submission_id');
+    }
+
+    /**
+     * @return HasMany<QuestDeliverySubmission, $this>
+     */
+    public function deliverySubmissions(): HasMany
+    {
+        return $this->hasMany(QuestDeliverySubmission::class)->orderByDesc('submitted_at');
+    }
+
+    /**
+     * @return HasMany<QuestPaymentInstallment, $this>
+     */
+    public function paymentInstallments(): HasMany
+    {
+        return $this->hasMany(QuestPaymentInstallment::class)->orderBy('installment_number');
+    }
+
+    /**
+     * @return BelongsTo<QuestPaymentInstallment, $this>
+     */
+    public function currentInstallment(): BelongsTo
+    {
+        return $this->belongsTo(QuestPaymentInstallment::class, 'current_installment_id');
+    }
+
+    /**
      * @return HasMany<AdminFinancialLedgerEntry, $this>
      */
     public function adminFinancialLedgerEntries(): HasMany
@@ -480,7 +526,15 @@ class Quest extends Model
      */
     public function expectedCompletionAnchor(): ?Carbon
     {
-        return app(\App\Services\QuestEngagementLifecycleService::class)->expectedCompletionAt($this);
+        return app(QuestCompletionScheduleService::class)->engagementAnchorAt($this);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function completionSchedulePayload(): array
+    {
+        return app(QuestCompletionScheduleService::class)->toPayload($this);
     }
 
     /**

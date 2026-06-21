@@ -14,13 +14,17 @@ use App\Models\QuestOffer;
 use App\Models\Review;
 use App\Models\User;
 use App\Support\PlainText;
+use App\Services\ConversationMonitoring\ConversationMonitoringEngine;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class ContentModerationScannerService
 {
-    public function __construct(private readonly CloudinaryMediaModerationService $cloudinary) {}
+    public function __construct(
+        private readonly CloudinaryMediaModerationService $cloudinary,
+        private readonly ConversationMonitoringEngine $conversationEngine,
+    ) {}
 
     public function scan(Model $model, ?User $actor = null, string $source = 'automated'): ?ModerationCase
     {
@@ -32,6 +36,7 @@ class ContentModerationScannerService
         $text = trim((string) ($payload['text'] ?? ''));
         $triggers = collect()
             ->merge($this->keywordTriggers($text))
+            ->merge($this->conversationPolicyTriggers($text))
             ->merge($this->linkTriggers($text))
             ->merge($this->newAccountTriggers($payload['subject_user'] ?? null))
             ->merge($this->duplicateTriggers($payload['content_type'], $text, $model))
@@ -453,6 +458,32 @@ class ContentModerationScannerService
         }
 
         return $severity === 'critical' ? 'held_pending_review' : 'pending_review';
+    }
+
+    private function conversationPolicyTriggers(string $text): Collection
+    {
+        if ($text === '') {
+            return collect();
+        }
+
+        return collect($this->conversationEngine->analyze($text))
+            ->map(fn (array $hit) => [
+                'rule_key' => 'conversation_policy:'.$hit['category']->value,
+                'rule_type' => 'conversation_policy',
+                'category' => $hit['category']->value,
+                'severity' => in_array($hit['category']->value, ['off_platform_payment', 'external_contact'], true) ? 'critical' : 'warning',
+                'confidence' => (int) ($hit['confidence_score'] ?? round($hit['confidence'] * 100)),
+                'matched_text' => $hit['pattern_redacted'],
+                'context' => collect($hit['reasoning'] ?? [])
+                    ->map(fn (array $line) => ($line['signal'] ?? 'signal').': '.($line['match'] ?? '').' (+'.($line['points'] ?? 0).')')
+                    ->implode(' · '),
+                'meta' => [
+                    'pattern_score' => $hit['pattern_score'] ?? null,
+                    'context_score' => $hit['context_score'] ?? null,
+                    'reasoning' => $hit['reasoning'] ?? [],
+                ],
+            ])
+            ->values();
     }
 
     private function contextAround(string $text, string $needle): string

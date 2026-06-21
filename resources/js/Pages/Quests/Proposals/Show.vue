@@ -1,6 +1,6 @@
 <template>
     <AppShell>
-        <Head :title="`Proposal · ${quest.title}`" />
+        <Head :title="`${offer.reference_code ? offer.reference_code + ' · ' : ''}Proposal · ${quest.title}`" />
 
         <div class="mx-auto max-w-5xl space-y-2">
             <div
@@ -70,7 +70,7 @@
                 <div class="flex flex-wrap gap-2">
                     <a
                         v-if="can_download_pdf"
-                        :href="route('quests.proposals.pdf', [quest.route_key, offer.id])"
+                        :href="route('quests.proposals.pdf', [quest.route_key, offerRouteKey()])"
                         class="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-white/20"
                     >
                         Download PDF
@@ -97,11 +97,26 @@
                         <span aria-hidden="true" class="shrink-0">→</span>
                     </Link>
                     <p class="text-[10px] font-black uppercase tracking-[0.25em] text-white/70">Proposal</p>
+                    <p v-if="offer.reference_code" class="font-mono text-xs font-bold tracking-wide text-white/80">
+                        Ref {{ offer.reference_code }}
+                        <span v-if="quest.reference_code" class="text-white/60"> · Quest {{ quest.reference_code }}</span>
+                    </p>
                     <h1 class="font-display text-2xl font-black tracking-tight text-white sm:text-3xl">
                         {{ quest.title }}
                     </h1>
                     <p v-if="!observer_mode" class="text-sm font-semibold text-white/90">
-                        Grand total <span class="font-black text-emerald-200">{{ formatBudget(offer.quoted_amount_minor) }}</span>
+                        <template v-if="is_client">
+                            Escrow total
+                            <span class="font-black text-emerald-200">{{ formatBudget(escrowTotalMinor) }}</span>
+                        </template>
+                        <template v-else-if="is_author">
+                            Your quote
+                            <span class="font-black text-emerald-200">{{ formatBudget(quoteTotalMinor) }}</span>
+                        </template>
+                        <template v-else>
+                            Quote
+                            <span class="font-black text-emerald-200">{{ formatBudget(quoteTotalMinor) }}</span>
+                        </template>
                         · Submitted {{ formatWhen(offer.created_at) }}
                     </p>
                     <p v-else class="text-sm font-semibold text-white/90">
@@ -190,6 +205,14 @@
                     <li>Price: <span class="font-black">{{ awardTerms.price_label }}</span></li>
                     <li v-if="awardTerms.deadline_label">Finish: <span class="font-black">{{ awardTerms.deadline_label }}</span></li>
                 </ul>
+                <button
+                    v-if="commerce?.can_cancel_award"
+                    type="button"
+                    class="mt-4 rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 hover:bg-rose-50"
+                    @click="openModal('cancel_award')"
+                >
+                    Cancel award
+                </button>
             </section>
 
             <section
@@ -245,8 +268,8 @@
                 <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-900">Escrow funding</p>
                 <p class="mt-1 text-xs leading-relaxed">
                     Fund escrow for
-                    <span class="font-black">{{ formatBudget(offer.quoted_amount_minor) }}</span>
-                    (including fees in the breakdown) before the freelancer is expected to start. Nothing is released to them until you mark the job
+                    <span class="font-black">{{ formatBudget(escrowTotalMinor) }}</span>
+                    before the freelancer is expected to start. Nothing is released to them until you mark the job
                     completed. See our
                     <a :href="route('legal.escrow')" target="_blank" rel="noopener noreferrer" class="font-black text-amber-950 underline underline-offset-2">Escrow Policy</a>.
                 </p>
@@ -264,6 +287,14 @@
                         Pay with Paystack
                     </button>
                 </form>
+                <button
+                    v-if="commerce?.can_cancel_award"
+                    type="button"
+                    class="mt-3 inline-flex rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 hover:bg-rose-50"
+                    @click="openModal('cancel_award')"
+                >
+                    Cancel award
+                </button>
                 <div v-if="commerce && (!observer_mode && (is_client || is_author))" class="mt-3 flex flex-wrap gap-2">
                     <Link
                         v-if="commerce.active_dispute"
@@ -297,20 +328,18 @@
                 </p>
             </section>
 
-            <section
-                v-if="!observer_mode && commerce?.escrow_timeline && quest.escrow_status && !['none', 'awaiting_funding'].includes(quest.escrow_status)"
-                class="rounded-2xl border border-emerald-200/90 bg-white px-4 py-4 shadow-sm ring-1 ring-emerald-100 sm:px-5"
-            >
-                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-900">Escrow timeline</p>
-                <p class="mt-1 text-xs font-semibold text-slate-600">Live status of funds on this contract — updated as each stage completes.</p>
-                <div class="mt-3">
-                    <EscrowTransparencyTimeline :timeline="commerce.escrow_timeline" />
-                </div>
-                <DisputePreventionPrompts v-if="commerce.dispute_prevention_prompts?.length" class="mt-4" :prompts="commerce.dispute_prevention_prompts" />
-            </section>
+            <EscrowDeliveryLifecyclePanel
+                v-if="!observer_mode && deliveryLifecycle.show_panel"
+                :lifecycle="deliveryLifecycle"
+                :quest="quest"
+                :contract-url="commerce?.contract_url"
+                :dispute-url="commerce?.dispute_create_url"
+                @approve="openApproveModal"
+                @release-funds="openReleaseModal"
+            />
 
             <section
-                v-if="!observer_mode && completionUi.show_completion_section"
+                v-if="!observer_mode && completionUi.show_completion_section && !deliveryLifecycle.show_panel"
                 class="rounded-2xl border border-emerald-200/90 bg-emerald-50/90 px-4 py-3 text-sm font-semibold text-emerald-950 ring-1 ring-emerald-100 sm:px-5"
             >
                 <p class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-900">Delivery & escrow release</p>
@@ -437,7 +466,7 @@
                         <div class="flex flex-col gap-2">
                             <Link
                                 v-if="offer.can_edit"
-                                :href="route('quests.proposals.edit', [quest.route_key, offer.id])"
+                                :href="route('quests.proposals.edit', [quest.route_key, offerRouteKey()])"
                                 class="inline-flex justify-center rounded-full bg-primary-600 px-4 py-2.5 text-center text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-primary-700"
                             >
                                 Edit proposal
@@ -462,8 +491,16 @@
                             Timeline
                         </h2>
                         <ul class="space-y-2 text-sm font-semibold text-slate-800">
-                            <li>Planned start: <span class="font-black">{{ offer.planned_start_date || '—' }}</span></li>
-                            <li>Planned finish: <span class="font-black">{{ offer.planned_finish_date || '—' }}</span></li>
+                            <li v-if="clientCompletionSchedule?.planned_finish_date">
+                                Client planned finish:
+                                <span class="font-black">{{ formatClientDate(clientCompletionSchedule.planned_finish_date) }}</span>
+                            </li>
+                            <li v-if="clientCompletionSchedule?.hard_deadline_date">
+                                Client delivery deadline:
+                                <span class="font-black text-rose-900">{{ formatClientDate(clientCompletionSchedule.hard_deadline_date) }}</span>
+                            </li>
+                            <li>Your planned start: <span class="font-black">{{ offer.planned_start_date || '—' }}</span></li>
+                            <li>Your planned finish: <span class="font-black">{{ offer.planned_finish_date || '—' }}</span></li>
                             <li v-if="offer.estimated_duration_days">Estimated duration: <span class="font-black">{{ offer.estimated_duration_days }} days</span></li>
                             <li v-if="offer.progress_report_frequency">
                                 Progress reports: <span class="font-black">{{ progressLabel(offer.progress_report_frequency) }}</span>
@@ -502,8 +539,14 @@
 
             <section v-if="!observer_mode" class="space-y-2 rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-6">
                 <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
-                    Pricing breakdown
+                    {{ is_client ? 'Pricing breakdown (escrow)' : 'Your quote' }}
                 </h2>
+                <p v-if="is_client" class="text-xs font-semibold leading-relaxed text-slate-600">
+                    This is what you fund into escrow — quote plus platform fee, VAT, and other statutory lines where applicable.
+                </p>
+                <p v-else-if="is_author" class="text-xs font-semibold leading-relaxed text-slate-600">
+                    Your clean quote only. Platform fees and VAT are added on the client’s checkout — not part of what you enter here.
+                </p>
                 <div class="grid gap-2 sm:grid-cols-2">
                     <div v-for="row in pricingRows" :key="row.k" class="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-2.5 text-sm font-semibold text-slate-800">
                         <span>{{ row.label }}</span>
@@ -512,12 +555,24 @@
                         </span>
                     </div>
                 </div>
-                <PlatformFeeDisclosureNote class="mt-4" :platform-fee-percent="offer.platform_fee_percent_display" compact />
+                <PlatformFeeDisclosureNote v-if="is_client" class="mt-4" :platform-fee-percent="offer.platform_fee_percent_display" compact />
+            </section>
+
+            <section
+                v-if="!observer_mode && commerce?.escrow_timeline && quest.escrow_status && !['none', 'awaiting_funding'].includes(quest.escrow_status)"
+                class="rounded-xl border border-slate-200/90 bg-slate-50/50 px-4 py-4 ring-1 ring-slate-100 sm:px-5"
+            >
+                <h2 class="text-xs font-bold uppercase tracking-wide text-slate-500">Escrow timeline</h2>
+                <p class="mt-1 text-[11px] font-medium text-slate-500">Fund status on this contract — updates as each stage completes.</p>
+                <div class="mt-3 opacity-95">
+                    <EscrowTransparencyTimeline :timeline="commerce.escrow_timeline" />
+                </div>
+                <DisputePreventionPrompts v-if="commerce.dispute_prevention_prompts?.length" class="mt-3" :prompts="commerce.dispute_prevention_prompts" />
             </section>
 
             <ReportConcernSheet
                 v-if="canReportProposal"
-                :action-url="route('quests.proposals.reports.store', [quest.route_key, offer.id])"
+                :action-url="route('quests.proposals.reports.store', [quest.route_key, offerRouteKey()])"
                 subtitle="Misleading quotes, harassment, or attempts to move payment off-platform should be reported. Our team triages by severity."
                 :context="{
                     type: 'proposal',
@@ -563,81 +618,131 @@
 
                         <template v-else-if="activeModal === 'accept'">
                             <div v-if="awardTermsPreview" class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-800">
-                                <p class="font-black uppercase tracking-wide text-slate-500">Contract snapshot</p>
-                                <p class="mt-2">Price: <span class="font-black">{{ awardTermsPreview.price_label }}</span></p>
-                                <p v-if="awardTermsPreview.deadline_label">Finish: <span class="font-black">{{ awardTermsPreview.deadline_label }}</span></p>
+                                <p class="font-black uppercase tracking-wide text-slate-500">What you are paying for</p>
+                                <p class="mt-2">Escrow total: <span class="font-black">{{ awardTermsPreview.price_label }}</span></p>
+                                <p v-if="awardTermsPreview.deadline_label">Finish by: <span class="font-black">{{ awardTermsPreview.deadline_label }}</span></p>
                                 <p class="mt-2 leading-relaxed">{{ awardTermsPreview.scope_summary }}</p>
                             </div>
+                            <ul v-if="awardTermsPreview?.payout" class="mt-3 space-y-1.5 rounded-xl border border-slate-200 bg-white p-3 text-xs font-semibold text-slate-800">
+                                <li class="flex flex-wrap justify-between gap-2">
+                                    <span>Freelancer quote</span>
+                                    <span class="font-black">{{ awardTermsPreview.payout.quote_label }}</span>
+                                </li>
+                                <li v-if="Number(awardTermsPreview.payout.discount_minor) > 0" class="flex flex-wrap justify-between gap-2">
+                                    <span>Discount</span>
+                                    <span class="font-black">−{{ awardTermsPreview.payout.discount_label }}</span>
+                                </li>
+                                <li v-if="awardTermsPreview.payout.vat_applies && Number(awardTermsPreview.payout.vat_minor) > 0" class="flex flex-wrap justify-between gap-2">
+                                    <span>VAT</span>
+                                    <span class="font-black">{{ awardTermsPreview.payout.vat_label }}</span>
+                                </li>
+                                <li v-if="Number(awardTermsPreview.payout.wht_minor) > 0" class="flex flex-wrap justify-between gap-2">
+                                    <span>Withholding tax</span>
+                                    <span class="font-black">{{ awardTermsPreview.payout.wht_label }}</span>
+                                </li>
+                                <li v-if="Number(awardTermsPreview.payout.stamp_minor) > 0" class="flex flex-wrap justify-between gap-2">
+                                    <span>Stamp duty</span>
+                                    <span class="font-black">{{ awardTermsPreview.payout.stamp_label }}</span>
+                                </li>
+                                <li class="flex flex-wrap justify-between gap-2">
+                                    <span>Platform fee ({{ awardTermsPreview.payout.platform_fee_percent }}%)</span>
+                                    <span class="font-black">{{ awardTermsPreview.payout.platform_fee_label }}</span>
+                                </li>
+                                <li class="flex flex-wrap justify-between gap-2 border-t border-slate-200 pt-2 text-sm">
+                                    <span class="font-black">Escrow total</span>
+                                    <span class="font-black text-emerald-800">{{ awardTermsPreview.payout.gross_label }}</span>
+                                </li>
+                            </ul>
                             <ul class="mt-4 list-disc space-y-2 pl-4 text-xs font-semibold text-slate-700">
                                 <li>
-                                    You agree to fund escrow for the full quote
-                                    <span class="font-black text-slate-900">{{ formatBudget(offer.quoted_amount_minor) }}</span>
-                                    (including platform and statutory lines shown in the breakdown) before the freelancer is obligated to start.
+                                    You will pay
+                                    <span class="font-black text-slate-900">{{ formatBudget(escrowTotalMinor) }}</span>
+                                    into escrow (safe holding) after the worker confirms. They start only when the money is in escrow.
                                 </li>
                                 <li>
-                                    After the agreed delivery date, we email you a review reminder that day, again 24 hours later, and a final reminder 36 hours later.
-                                    If you do not mark the job completed or open a dispute, escrow may automatically release to the freelancer
+                                    When the job is done, the worker sends it for your review. You have
                                     <span class="font-black text-slate-900">72 hours</span>
-                                    after the agreed delivery date.
+                                    to approve, ask for small fixes, or raise a complaint. If you do nothing, payment may go out automatically.
                                 </li>
                                 <li>
-                                    Platform fee is {{ offer.platform_fee_percent_display }}% of the job subtotal (see
+                                    Platform fee is {{ offer.platform_fee_percent_display }}% (see
                                     <a :href="route('legal.terms')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Terms</a>
                                     and
                                     <a :href="route('legal.escrow')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Escrow Policy</a>).
                                 </li>
                                 <li>
-                                    If delivery fails or disputes arise, eligible cases follow our
-                                    <a :href="route('legal.dispute')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Dispute Policy</a>
-                                    and
-                                    <a :href="route('legal.terms')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Terms of Service</a>.
+                                    Problems? See our
+                                    <a :href="route('legal.dispute')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Dispute Policy</a>.
                                 </li>
                             </ul>
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="acceptForm.confirm_award_terms" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I want to award this proposal — scope, quoted price, and timeline above are what I expect delivered.</span>
+                                <span>Yes — I want this worker. The price, job description, and finish date above are correct.</span>
                             </label>
                             <InputError :message="acceptForm.errors.confirm_award_terms" />
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="acceptForm.accept_escrow_rules" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I will fund escrow after the freelancer confirms; release happens when I mark complete or 72 hours after the agreed delivery date (with email reminders).</span>
+                                <span>I understand I pay into escrow after they confirm, and money only leaves when I approve the finished work (or after the 72-hour review period).</span>
                             </label>
                             <InputError :message="acceptForm.errors.accept_escrow_rules" />
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="acceptForm.accept_fees_and_terms" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I accept platform fees and the escrow, dispute, and Terms of Service rules linked above.</span>
+                                <span>I accept the platform fees and rules linked above.</span>
                             </label>
                             <InputError :message="acceptForm.errors.accept_fees_and_terms" />
-                            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                <p class="text-xs font-black uppercase tracking-wide text-slate-500">Confirm deliverables</p>
-                                <p class="mt-1 text-xs font-semibold text-slate-600">List each deliverable as a separate line item — this is frozen into the contract.</p>
-                                <ul class="mt-3 space-y-2">
-                                    <li v-for="(item, idx) in acceptDeliverables" :key="idx" class="flex gap-2">
-                                        <input v-model="item.title" type="text" class="min-w-0 flex-1 rounded-lg border-slate-200 text-sm shadow-sm" placeholder="Deliverable title" required />
-                                        <button v-if="acceptDeliverables.length > 1" type="button" class="shrink-0 text-xs font-bold text-rose-700" @click="acceptDeliverables.splice(idx, 1)">Remove</button>
-                                    </li>
-                                </ul>
-                                <button type="button" class="mt-2 text-xs font-black uppercase text-primary-800 underline" @click="acceptDeliverables.push({ title: '', description: '' })">Add deliverable</button>
-                                <InputError :message="acceptForm.errors.deliverables" />
-                            </div>
-                            <label class="mt-2 block text-xs font-bold uppercase text-slate-600">Revision definition</label>
-                            <textarea
-                                v-model="acceptForm.revision_definition"
-                                rows="3"
-                                class="mt-1 w-full rounded-xl border-slate-200 text-sm shadow-sm"
-                                placeholder="What counts as a revision vs a scope change?"
-                            />
+                        </template>
+
+                        <template v-else-if="activeModal === 'cancel_award'">
+                            <p class="text-xs font-semibold leading-relaxed text-slate-700">
+                                Use this only if you need to undo the award before escrow is funded and work starts. The freelancer is notified immediately, and this counts against your client trust signals.
+                            </p>
+                            <label class="mt-3 block text-xs font-bold text-slate-700">
+                                Reason (optional but helpful)
+                                <textarea
+                                    v-model="cancelAwardForm.reason"
+                                    rows="3"
+                                    maxlength="1000"
+                                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900"
+                                    placeholder="Briefly explain why you are cancelling before escrow…"
+                                />
+                            </label>
+                            <InputError :message="cancelAwardForm.errors.reason" />
+                            <label class="mt-3 flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
+                                <input v-model="cancelAwardForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-rose-600 focus:ring-rose-500" />
+                                <span>I understand the freelancer will be notified, the award will be withdrawn, and this may affect my trust score.</span>
+                            </label>
+                            <InputError :message="cancelAwardForm.errors.confirm" />
                         </template>
 
                         <template v-else-if="activeModal === 'confirm_award'">
-                            <ul v-if="awardTerms" class="list-disc space-y-2 pl-4 text-xs font-semibold text-slate-700">
+                            <div v-if="awardTermsPreview.payout" class="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                                <p class="text-[10px] font-black uppercase tracking-wide text-emerald-900">What you are accepting</p>
+                                <ul class="mt-3 space-y-2 text-sm font-semibold text-emerald-950">
+                                    <li class="flex flex-wrap justify-between gap-2">
+                                        <span>Your quote</span>
+                                        <span class="font-black">{{ awardTermsPreview.payout.quote_label || awardTermsPreview.payout.net_quote_label }}</span>
+                                    </li>
+                                    <li v-if="Number(awardTermsPreview.payout.discount_minor) > 0" class="flex flex-wrap justify-between gap-2 text-emerald-900/90">
+                                        <span>Discount</span>
+                                        <span class="font-black">−{{ awardTermsPreview.payout.discount_label }}</span>
+                                    </li>
+                                    <li class="flex flex-wrap justify-between gap-2 border-t border-emerald-200/80 pt-2 text-base">
+                                        <span class="font-black">Net quote</span>
+                                        <span class="font-black text-emerald-800">{{ awardTermsPreview.payout.net_quote_label || awardTermsPreview.payout.quote_label }}</span>
+                                    </li>
+                                </ul>
+                                <p class="mt-3 text-xs font-semibold leading-relaxed text-emerald-900/90">
+                                    {{ awardTermsPreview.payout.summary }}
+                                </p>
+                            </div>
+                            <ul v-if="awardTerms" class="mt-4 list-disc space-y-2 pl-4 text-xs font-semibold text-slate-700">
                                 <li>Price: <span class="font-black">{{ awardTerms.price_label }}</span></li>
-                                <li v-if="awardTerms.deadline_label">Finish: <span class="font-black">{{ awardTerms.deadline_label }}</span></li>
+                                <li v-if="awardTerms.deadline_label">Finish by: <span class="font-black">{{ awardTerms.deadline_label }}</span></li>
                                 <li class="leading-relaxed">{{ awardTerms.scope_summary }}</li>
                             </ul>
                             <label class="mt-4 flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="confirmAwardForm.confirm_award_terms" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I accept this award — scope, price, and finish date as shown above.</span>
+                                <span>I accept this job at the quoted amount above. The client funds escrow separately with platform fees and taxes.</span>
                             </label>
                             <InputError :message="confirmAwardForm.errors.confirm_award_terms" />
                         </template>
@@ -661,12 +766,11 @@
 
                         <template v-else-if="activeModal === 'acknowledge'">
                             <p class="text-xs font-semibold text-slate-600">
-                                This records that you received the deliverables. Escrow is <span class="font-black">not</span> released yet — use “Release funds” only after the
-                                {{ completionUi.cooldown_hours }}-hour protection window and any required authorisations.
+                                Approving confirms the deliverable meets the brief. Payment releases when the safeguard window and any platform authorisations are satisfied.
                             </p>
                             <label class="flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="acknowledgeForm.confirm" type="checkbox" class="mt-1 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
-                                <span>I confirm deliverables meet the agreed brief. I am not releasing payment yet.</span>
+                                <span>I approve this deliverable and authorise payment release when eligible.</span>
                             </label>
                             <InputError :message="acknowledgeForm.errors.confirm" />
                             <InputError :message="acknowledgeForm.errors.quest" />
@@ -736,6 +840,7 @@ import PlatformFeeDisclosureNote from '@/Components/Billing/PlatformFeeDisclosur
 import ClientProposalPreferenceResponses from '@/Components/Quests/ClientProposalPreferenceResponses.vue';
 import PartyInsightCard from '@/Components/Quests/PartyInsightCard.vue';
 import ReportConcernSheet from '@/Components/Quests/ReportConcernSheet.vue';
+import EscrowDeliveryLifecyclePanel from '@/Components/Quests/EscrowDeliveryLifecyclePanel.vue';
 import EscrowTransparencyTimeline from '@/Components/Quests/EscrowTransparencyTimeline.vue';
 import DisputePreventionPrompts from '@/Components/Quests/DisputePreventionPrompts.vue';
 import BackChevronLink from '@/Components/Ui/BackChevronLink.vue';
@@ -743,6 +848,7 @@ import InputError from '@/Components/InputError.vue';
 import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
 import AppShell from '@/Layouts/AppShell.vue';
 import axios from 'axios';
+import { formatClientDate, questCompletionSchedule as buildQuestCompletionSchedule } from '@/utils/questCompletionSchedule';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -766,6 +872,8 @@ const props = defineProps({
 
 const page = usePage();
 
+const clientCompletionSchedule = computed(() => buildQuestCompletionSchedule(props.quest));
+
 const showFreelancerInsight = computed(
     () => !props.is_author && Boolean(props.freelancer_insight?.name),
 );
@@ -777,6 +885,8 @@ const acknowledgeForm = useForm({ confirm: false });
 const releaseForm = useForm({ confirm: false, acknowledge_release: false });
 
 const showFundingNotice = computed(() => Boolean(page.props.flash?.show_escrow_funding_notice));
+
+const deliveryLifecycle = computed(() => props.commerce?.delivery_lifecycle ?? { show_panel: false });
 
 const completionUi = computed(() => {
     const c = props.commerce?.completion ?? {};
@@ -839,13 +949,17 @@ const csrfToken = computed(() => {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 });
 
-function openAcknowledgeModal() {
-    if (!completionUi.value.can_acknowledge_delivery) {
+function openApproveModal() {
+    if (!deliveryLifecycle.value.can_approve && !completionUi.value.can_acknowledge_delivery) {
         return;
     }
     acknowledgeForm.clearErrors();
     acknowledgeForm.reset();
     openModal('acknowledge');
+}
+
+function openAcknowledgeModal() {
+    openApproveModal();
 }
 
 function openReleaseModal() {
@@ -872,11 +986,13 @@ const acceptForm = useForm({
     confirm_award_terms: false,
     accept_escrow_rules: false,
     accept_fees_and_terms: false,
-    revision_definition: 'A revision adjusts the agreed deliverable within the original scope. New features or material scope expansion require an amendment.',
 });
-const acceptDeliverables = ref([{ title: '', description: '' }]);
 const confirmAwardForm = useForm({
     confirm_award_terms: false,
+});
+const cancelAwardForm = useForm({
+    confirm: false,
+    reason: '',
 });
 const escrowForm = useForm({ confirm: false, confirm_funds_in_escrow: false });
 const withdrawForm = useForm({ confirm: false, understand_withdraw: false });
@@ -886,6 +1002,7 @@ const anyModalFormProcessing = computed(
         declineForm.processing
         || acceptForm.processing
         || confirmAwardForm.processing
+        || cancelAwardForm.processing
         || escrowForm.processing
         || acknowledgeForm.processing
         || releaseForm.processing
@@ -896,6 +1013,14 @@ const canToggleShortlist = computed(
     () => props.is_client && props.quest.status === 'open' && ['submitted', 'shortlisted'].includes(localOfferStatus.value),
 );
 
+const quoteTotalMinor = computed(() =>
+    Number(props.offer.quote_total_minor ?? props.offer.quoted_amount_minor ?? 0),
+);
+
+const escrowTotalMinor = computed(() =>
+    Number(props.offer.escrow_total_minor ?? props.offer.pricing_snapshot?.escrow_total_minor ?? props.offer.pricing_snapshot?.grand_total_minor ?? quoteTotalMinor.value),
+);
+
 const awardTerms = computed(() => props.offer.award_terms_snapshot || null);
 
 const awardTermsPreview = computed(() => {
@@ -904,11 +1029,55 @@ const awardTermsPreview = computed(() => {
     }
 
     const finish = props.offer.planned_finish_date || props.offer.proposed_completion_date;
+    const quoteMinor = quoteTotalMinor.value;
+    const escrowMinor = escrowTotalMinor.value;
+    const feePct = Number(props.offer.platform_fee_percent_display ?? page.props.platform_fee_percent ?? 12);
+    const platformFeeMinor = Math.round(quoteMinor * (feePct / 100));
+    const netMinor = Math.max(0, quoteMinor - platformFeeMinor);
+    const snapshot = props.offer.pricing_snapshot || {};
+
+    if (props.is_client) {
+        return {
+            scope_summary: props.offer.scope_detail || props.offer.pitch || '',
+            price_label: formatBudget(escrowMinor),
+            deadline_label: finish || null,
+            payout: {
+                gross_minor: escrowMinor,
+                gross_label: formatBudget(escrowMinor),
+                quote_minor: quoteMinor,
+                quote_label: formatBudget(quoteMinor),
+                platform_fee_percent: feePct,
+                platform_fee_minor: Number(snapshot.platform_fee_minor || 0),
+                platform_fee_label: formatBudget(snapshot.platform_fee_minor || 0),
+                vat_minor: Number(snapshot.vat_minor || 0),
+                vat_label: formatBudget(snapshot.vat_minor || 0),
+                vat_applies: snapshot.vat_applies !== false && Number(snapshot.vat_minor || 0) > 0,
+                discount_minor: Number(snapshot.discount_minor || 0),
+                discount_label: formatBudget(snapshot.discount_minor || 0),
+                wht_minor: Number(snapshot.withholding_tax_minor || 0),
+                wht_label: formatBudget(snapshot.withholding_tax_minor || 0),
+                stamp_minor: Number(snapshot.stamp_duty_minor || 0),
+                stamp_label: formatBudget(snapshot.stamp_duty_minor || 0),
+                net_to_wallet_minor: netMinor,
+                net_to_wallet_label: formatBudget(netMinor),
+                summary: `You fund ${formatBudget(escrowMinor)} into escrow (quote ${formatBudget(quoteMinor)} plus fees and taxes shown above).`,
+            },
+        };
+    }
 
     return {
         scope_summary: props.offer.scope_detail || props.offer.pitch || '',
-        price_label: formatBudget(props.offer.quoted_amount_minor),
+        price_label: formatBudget(quoteMinor),
         deadline_label: finish || null,
+        payout: {
+            quote_minor: quoteMinor,
+            quote_label: formatBudget(quoteMinor),
+            discount_minor: Number(snapshot.discount_minor || 0),
+            discount_label: formatBudget(snapshot.discount_minor || 0),
+            net_quote_minor: quoteMinor,
+            net_quote_label: formatBudget(quoteMinor),
+            summary: `Your quoted amount is ${formatBudget(quoteMinor)}. The client pays statutory charges and platform fees separately when funding escrow.`,
+        },
     };
 });
 
@@ -952,11 +1121,12 @@ const modalTitle = computed(() => {
     const m = activeModal.value;
     const titles = {
         decline: 'Decline proposal',
-        accept: 'Award proposal',
-        confirm_award: 'Confirm award terms',
-        escrow: 'Confirm escrow funded',
-        acknowledge: 'Confirm delivery',
-        release: 'Release funds to freelancer',
+        accept: 'Choose this worker',
+        confirm_award: 'Confirm the job',
+        cancel_award: 'Cancel award',
+        escrow: 'Confirm payment in escrow',
+        acknowledge: 'Approve finished work',
+        release: 'Pay the worker',
         withdraw: 'Withdraw proposal',
     };
 
@@ -969,10 +1139,13 @@ const modalIntro = computed(() => {
         return 'Declining is permanent for this proposal. Other proposals remain untouched.';
     }
     if (m === 'accept') {
-        return 'You confirm scope, price, and deadline. The freelancer must confirm too before escrow funding unlocks.';
+        return 'Check the price, job, and finish date below. The worker must also confirm before you pay.';
     }
     if (m === 'confirm_award') {
-        return 'This creates a documented contract moment — escrow funding follows only after you confirm.';
+        return 'The client chose you for this job. Confirm so they can pay into escrow.';
+    }
+    if (m === 'cancel_award') {
+        return 'This withdraws the award before any escrow payment. The quest returns to open proposals.';
     }
     if (m === 'escrow') {
         return 'You are confirming funds are in escrow so the freelancer receives the official go-ahead.';
@@ -992,7 +1165,7 @@ const modalIntro = computed(() => {
 
 const modalPrimaryClass = computed(() => {
     const m = activeModal.value;
-    if (m === 'decline' || m === 'withdraw') {
+    if (m === 'decline' || m === 'withdraw' || m === 'cancel_award') {
         return 'bg-rose-600 hover:bg-rose-700';
     }
     if (m === 'accept') {
@@ -1022,6 +1195,9 @@ const modalSubmitDisabled = computed(() => {
     if (m === 'confirm_award') {
         return confirmAwardForm.processing || !confirmAwardForm.confirm_award_terms;
     }
+    if (m === 'cancel_award') {
+        return cancelAwardForm.processing || !cancelAwardForm.confirm;
+    }
     if (m === 'escrow') {
         return escrowForm.processing || !escrowForm.confirm || !escrowForm.confirm_funds_in_escrow;
     }
@@ -1043,6 +1219,7 @@ function openModal(id) {
     declineForm.clearErrors();
     acceptForm.clearErrors();
     confirmAwardForm.clearErrors();
+    cancelAwardForm.clearErrors();
     escrowForm.clearErrors();
     acknowledgeForm.clearErrors();
     releaseForm.clearErrors();
@@ -1050,30 +1227,11 @@ function openModal(id) {
     declineForm.reset();
     acceptForm.reset();
     confirmAwardForm.reset();
+    cancelAwardForm.reset();
     escrowForm.reset();
     acknowledgeForm.reset();
     releaseForm.reset();
     withdrawForm.reset();
-    if (id === 'accept') {
-        acceptForm.revision_definition = 'A revision adjusts the agreed deliverable within the original scope. New features or material scope expansion require an amendment.';
-        acceptDeliverables.value = buildSuggestedDeliverables();
-    }
-}
-
-function buildSuggestedDeliverables() {
-    const materials = Array.isArray(props.offer.materials) ? props.offer.materials : [];
-    const fromMaterials = materials
-        .map((m) => ({ title: String(m.label || '').trim(), description: '' }))
-        .filter((m) => m.title);
-    if (fromMaterials.length) {
-        return fromMaterials;
-    }
-    const text = String(props.offer.scope_detail || props.offer.pitch || '').replace(/<[^>]+>/g, ' ').trim();
-    const lines = text.split(/\r\n|\r|\n|(?:\s*[-•*]\s+)/).map((l) => l.replace(/^[-•*\d.)]+\s*/, '').trim()).filter((l) => l.length >= 8);
-    if (lines.length) {
-        return lines.slice(0, 12).map((title) => ({ title: title.slice(0, 120), description: '' }));
-    }
-    return [{ title: 'Deliver work as described in the accepted proposal and quest brief', description: '' }];
 }
 
 function closeModal() {
@@ -1093,7 +1251,7 @@ function toggleShortlist() {
     localOfferStatus.value = wasShortlisted ? 'submitted' : 'shortlisted';
 
     axios
-        .post(route('quests.proposals.toggle-shortlist', [props.quest.route_key, props.offer.id]), {}, {
+        .post(route('quests.proposals.toggle-shortlist', [props.quest.route_key, offerRouteKey()]), {}, {
             headers: { Accept: 'application/json' },
         })
         .then(({ data }) => {
@@ -1108,10 +1266,14 @@ function questRouteKey() {
     return props.quest.route_key ?? props.quest.slug ?? props.quest.uuid ?? props.quest.id;
 }
 
+function offerRouteKey() {
+    return props.offer.route_key ?? props.offer.uuid ?? props.offer.id;
+}
+
 function submitModal() {
     const m = activeModal.value;
     const rk = questRouteKey();
-    const oid = props.offer.id;
+    const oid = offerRouteKey();
     if (m === 'decline') {
         declineForm
             .transform(() => ({
@@ -1125,8 +1287,6 @@ function submitModal() {
                 confirm_award_terms: bool(acceptForm.confirm_award_terms),
                 accept_escrow_rules: bool(acceptForm.accept_escrow_rules),
                 accept_fees_and_terms: bool(acceptForm.accept_fees_and_terms),
-                revision_definition: acceptForm.revision_definition,
-                deliverables: acceptDeliverables.value.filter((d) => d.title.trim() !== ''),
             }))
             .post(route('quests.proposals.accept', [rk, oid]), { preserveScroll: true, onSuccess: closeModal });
     } else if (m === 'confirm_award') {
@@ -1141,6 +1301,13 @@ function submitModal() {
                     closeModal();
                 },
             });
+    } else if (m === 'cancel_award') {
+        cancelAwardForm
+            .transform(() => ({
+                confirm: bool(cancelAwardForm.confirm),
+                reason: cancelAwardForm.reason?.trim() || null,
+            }))
+            .post(route('quests.proposals.cancel-award', [rk, oid]));
     } else if (m === 'escrow') {
         escrowForm
             .transform(() => ({
@@ -1151,7 +1318,7 @@ function submitModal() {
     } else if (m === 'acknowledge') {
         acknowledgeForm
             .transform(() => ({ confirm: bool(acknowledgeForm.confirm) }))
-            .post(route('quests.acknowledge-delivery', questRouteKey()), { preserveScroll: true, onSuccess: closeModal });
+            .post(route('quests.delivery.approve', questRouteKey()), { preserveScroll: true, onSuccess: closeModal });
     } else if (m === 'release') {
         releaseForm
             .transform(() => ({
@@ -1171,24 +1338,44 @@ function submitModal() {
 
 const pricingRows = computed(() => {
     const p = props.offer.pricing_snapshot || {};
-    const vatLabel = p.vat_applies === false ? 'VAT (not applied)' : 'VAT';
+
+    if (props.is_client) {
+        const vatLabel = p.vat_applies === false || !Number(p.vat_minor || 0) ? 'VAT (not applied)' : 'VAT';
+        const rows = [
+            { k: 'prof', label: 'Professional fee', v: p.professional_fee_minor },
+            { k: 'mat', label: 'Materials', v: p.materials_total_minor },
+            { k: 'travel', label: 'Travel', v: p.travel_cost_minor },
+            { k: 'disc', label: 'Discount', v: p.discount_minor },
+            { k: 'quote', label: 'Freelancer quote (subtotal)', v: quoteTotalMinor.value },
+            { k: 'vat', label: vatLabel, v: p.vat_minor },
+            { k: 'wht', label: 'Withholding tax', v: p.withholding_tax_minor },
+            { k: 'stamp', label: 'Stamp duty', v: p.stamp_duty_minor },
+            { k: 'plat', label: `Platform fee (${props.offer.platform_fee_percent_display ?? page.props.platform_fee_percent ?? 12}%)`, v: p.platform_fee_minor },
+            { k: 'grand', label: 'Escrow total', v: escrowTotalMinor.value },
+        ];
+
+        return rows.filter((r) => {
+            if (r.k === 'grand' || r.k === 'quote') {
+                return true;
+            }
+            if (r.k === 'vat') {
+                return Number(r.v) > 0 || p.vat_applies !== false;
+            }
+
+            return r.v !== undefined && r.v !== null && Number(r.v) !== 0;
+        });
+    }
+
     const rows = [
         { k: 'prof', label: 'Professional fee', v: p.professional_fee_minor },
         { k: 'mat', label: 'Materials', v: p.materials_total_minor },
         { k: 'travel', label: 'Travel', v: p.travel_cost_minor },
-        { k: 'vat', label: vatLabel, v: p.vat_minor },
-        { k: 'wht', label: 'Withholding tax', v: p.withholding_tax_minor },
-        { k: 'stamp', label: 'Stamp duty', v: p.stamp_duty_minor },
-        { k: 'plat', label: `Platform fee (${props.offer.platform_fee_percent_display ?? page.props.platform_fee_percent ?? 12}%)`, v: p.platform_fee_minor },
         { k: 'disc', label: 'Discount', v: p.discount_minor },
-        { k: 'grand', label: 'Grand total', v: p.grand_total_minor },
+        { k: 'quote', label: 'Your quote (net)', v: quoteTotalMinor.value },
     ];
 
     return rows.filter((r) => {
-        if (r.label === 'Grand total') {
-            return true;
-        }
-        if (r.k === 'vat') {
+        if (r.k === 'quote') {
             return true;
         }
 

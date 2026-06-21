@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Account\StorePolicyNoticeReplyRequest;
 use App\Services\UserPolicyNoticesService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,6 +29,17 @@ class UserPolicyNoticesController extends Controller
         return response()->json([
             'message' => __('Thanks — we have recorded that you saw this notice.'),
             ...$notices->indexPayload($user),
+        ]);
+    }
+
+    public function reply(StorePolicyNoticeReplyRequest $request, int $id, UserPolicyNoticesService $notices): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user !== null, 403);
+
+        return response()->json([
+            'message' => __('Your reply was sent to our trust & safety team.'),
+            ...$notices->reply($user, $id, (string) $request->validated('body')),
         ]);
     }
 }

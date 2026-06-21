@@ -97,13 +97,13 @@ class EscrowTransparencyTimelineService
             ];
         }
 
-        if ($quest->delivered_at !== null || $quest->delivery_acknowledged_at !== null) {
+        if ($quest->delivered_at !== null) {
             return [
                 'status' => 'completed',
-                'at' => ($quest->escrow_funded_at ?? $quest->updated_at)?->toIso8601String(),
-                'actor' => $quest->freelancer?->name ?? __('Freelancer'),
+                'at' => $quest->delivered_at->toIso8601String(),
+                'actor' => $quest->freelancer?->name,
                 'actor_role' => __('Freelancer'),
-                'hint' => null,
+                'hint' => __('Deliverable submitted — client review window open.'),
             ];
         }
 
@@ -127,7 +127,7 @@ class EscrowTransparencyTimelineService
                 'at' => $quest->delivery_acknowledged_at->toIso8601String(),
                 'actor' => $this->actorName($quest, (int) $quest->delivery_acknowledged_by) ?? $quest->client?->name,
                 'actor_role' => __('Client'),
-                'hint' => __('Delivery confirmed — awaiting fund release.'),
+                'hint' => __('Deliverable approved — payment releasing.'),
             ];
         }
 
@@ -137,7 +137,7 @@ class EscrowTransparencyTimelineService
                 'at' => $quest->delivered_at->toIso8601String(),
                 'actor' => $quest->freelancer?->name,
                 'actor_role' => __('Freelancer'),
-                'hint' => __('Client is reviewing the delivery.'),
+                'hint' => __('Client is reviewing the submission.'),
             ];
         }
 
@@ -147,7 +147,7 @@ class EscrowTransparencyTimelineService
                 'at' => null,
                 'actor' => null,
                 'actor_role' => null,
-                'hint' => __('Client reviews work here before marking complete.'),
+                'hint' => __('Awaiting freelancer deliverable submission.'),
             ];
         }
 

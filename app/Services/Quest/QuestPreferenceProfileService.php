@@ -84,7 +84,7 @@ class QuestPreferenceProfileService
 
     protected function resolveProfileType(string $parentSlug, string $leafSlug, string $haystack): string
     {
-        foreach (['technical', 'physical', 'design', 'professional'] as $type) {
+        foreach (['technical', 'physical', 'design', 'lessons', 'care', 'logistics', 'professional'] as $type) {
             if ($this->matchesDetection($type, $parentSlug, $leafSlug, $haystack)) {
                 return $type;
             }

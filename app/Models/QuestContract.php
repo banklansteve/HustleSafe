@@ -80,6 +80,24 @@ class QuestContract extends Model
         return 'reference_code';
     }
 
+    /**
+     * @param  mixed  $value
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        if ($field !== null) {
+            return static::query()->where($field, $value)->firstOrFail();
+        }
+
+        $normalized = is_string($value)
+            ? \App\Support\References\HustleSafeReferenceAlphabet::normalize($value)
+            : $value;
+
+        return static::query()
+            ->where('reference_code', $normalized)
+            ->firstOrFail();
+    }
+
     public function quest(): BelongsTo
     {
         return $this->belongsTo(Quest::class);
@@ -98,6 +116,11 @@ class QuestContract extends Model
     public function freelancer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'freelancer_id');
+    }
+
+    public function flaggedForReviewBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'flagged_for_review_by');
     }
 
     public function activeDispute(): BelongsTo

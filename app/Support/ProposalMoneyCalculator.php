@@ -70,7 +70,7 @@ final class ProposalMoneyCalculator
      *     grand_minor: int
      * }|null
      */
-    public static function breakdown(?array $materials, ?array $pricing): ?array
+    public static function breakdown(?array $materials, ?array $pricing, bool $includeClientCharges = true): ?array
     {
         if (! is_array($pricing)) {
             return null;
@@ -88,18 +88,25 @@ final class ProposalMoneyCalculator
 
         $prof = max(0, (int) ($pricing['professional_fee_ngn'] ?? 0)) * 100;
         $travel = max(0, (int) ($pricing['travel_cost_ngn'] ?? 0)) * 100;
-        $stamp = max(0, (int) ($pricing['stamp_duty_ngn'] ?? 0)) * 100;
+        $stamp = $includeClientCharges ? max(0, (int) ($pricing['stamp_duty_ngn'] ?? 0)) * 100 : 0;
         $platform = max(0, (int) ($pricing['platform_fee_ngn'] ?? 0)) * 100;
-        if ($platform === 0) {
+        if ($includeClientCharges && $platform === 0) {
             $baseForFee = $prof + $matMinor + $travel;
             $platform = (int) round($baseForFee * (PlatformSettings::platformFeePercent() / 100));
+        } elseif (! $includeClientCharges) {
+            $platform = 0;
         }
+
         $discount = max(0, (int) ($pricing['discount_ngn'] ?? 0)) * 100;
         $baseMinor = $prof + $matMinor + $travel;
-        $vatRate = (float) config('quests.proposal_vat_percent', 7.5);
-        $vatApplies = filter_var($pricing['vat_applies'] ?? true, FILTER_VALIDATE_BOOLEAN);
+        $vatRate = PlatformSettings::vatPercent();
+        $vatApplies = $includeClientCharges
+            && $vatRate > 0
+            && filter_var($pricing['vat_applies'] ?? true, FILTER_VALIDATE_BOOLEAN);
         $vatMinor = $vatApplies ? (int) round($baseMinor * ($vatRate / 100)) : 0;
-        $whtPct = max(0.0, min(100.0, (float) ($pricing['withholding_tax_percent'] ?? 0)));
+        $whtPct = $includeClientCharges
+            ? max(0.0, min(100.0, (float) ($pricing['withholding_tax_percent'] ?? 0)))
+            : 0.0;
         $whtMinor = (int) round($baseMinor * ($whtPct / 100));
         $grandMinor = $baseMinor + $vatMinor + $whtMinor + $stamp + $platform - $discount;
 
@@ -115,6 +122,77 @@ final class ProposalMoneyCalculator
             'discount_minor' => $discount,
             'grand_minor' => $grandMinor,
         ];
+    }
+
+    /**
+     * Client escrow total from stored freelancer quote components.
+     *
+     * @param  array<string, mixed>  $quoteBreakdown
+     * @return array<string, int|float|bool>
+     */
+    public static function clientEscrowBreakdown(array $quoteBreakdown): array
+    {
+        $baseMinor = (int) ($quoteBreakdown['base_minor'] ?? 0);
+        $discount = (int) ($quoteBreakdown['discount_minor'] ?? 0);
+        $platform = (int) round($baseMinor * (PlatformSettings::platformFeePercent() / 100));
+        $vatRate = PlatformSettings::vatPercent();
+        $vatMinor = $vatRate > 0 ? (int) round($baseMinor * ($vatRate / 100)) : 0;
+        $whtMinor = 0;
+        $stampMinor = 0;
+        $grandMinor = $baseMinor + $vatMinor + $whtMinor + $stampMinor + $platform - $discount;
+
+        return [
+            'base_minor' => $baseMinor,
+            'prof_minor' => (int) ($quoteBreakdown['prof_minor'] ?? 0),
+            'mat_minor' => (int) ($quoteBreakdown['mat_minor'] ?? 0),
+            'travel_minor' => (int) ($quoteBreakdown['travel_minor'] ?? 0),
+            'vat_minor' => $vatMinor,
+            'vat_applies' => $vatMinor > 0,
+            'vat_percent' => $vatRate,
+            'wht_minor' => $whtMinor,
+            'stamp_minor' => $stampMinor,
+            'platform_minor' => $platform,
+            'discount_minor' => $discount,
+            'quote_minor' => max(0, $baseMinor - $discount),
+            'grand_minor' => $grandMinor,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $pricingSnapshot
+     */
+    public static function quoteTotalMinor(?array $pricingSnapshot): int
+    {
+        if (! is_array($pricingSnapshot)) {
+            return 0;
+        }
+
+        if (isset($pricingSnapshot['quote_total_minor'])) {
+            return max(0, (int) $pricingSnapshot['quote_total_minor']);
+        }
+
+        $base = (int) ($pricingSnapshot['professional_fee_minor'] ?? 0)
+            + (int) ($pricingSnapshot['materials_total_minor'] ?? 0)
+            + (int) ($pricingSnapshot['travel_cost_minor'] ?? 0);
+        $discount = (int) ($pricingSnapshot['discount_minor'] ?? 0);
+
+        return max(0, $base - $discount);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $pricingSnapshot
+     */
+    public static function escrowTotalMinor(?array $pricingSnapshot): int
+    {
+        if (! is_array($pricingSnapshot)) {
+            return 0;
+        }
+
+        if (isset($pricingSnapshot['escrow_total_minor'])) {
+            return max(0, (int) $pricingSnapshot['escrow_total_minor']);
+        }
+
+        return max(0, (int) ($pricingSnapshot['grand_total_minor'] ?? 0));
     }
 
     /**
@@ -142,14 +220,15 @@ final class ProposalMoneyCalculator
 
         $p = $data['pricing'];
         $matMinor = array_sum(array_column($materials, 'line_total_minor'));
-        $breakdown = self::breakdown($data['materials'], $p);
-        if ($breakdown === null) {
+        $quoteBreakdown = self::breakdown($data['materials'], $p, includeClientCharges: false);
+        if ($quoteBreakdown === null) {
             throw new \LogicException('Proposal pricing invalid.');
         }
 
-        $vatRate = (float) config('quests.proposal_vat_percent', 7.5);
-        $vatApplies = filter_var($p['vat_applies'] ?? true, FILTER_VALIDATE_BOOLEAN);
-        $whtPct = max(0.0, min(100.0, (float) ($p['withholding_tax_percent'] ?? 0)));
+        $clientBreakdown = self::clientEscrowBreakdown($quoteBreakdown);
+        $vatRate = (float) ($clientBreakdown['vat_percent'] ?? PlatformSettings::vatPercent());
+        $vatApplies = (bool) ($clientBreakdown['vat_applies'] ?? false);
+        $whtPct = 0.0;
 
         $terms = $isUpdate
             ? [
@@ -163,19 +242,21 @@ final class ProposalMoneyCalculator
             ];
 
         $pricingSnapshot = [
-            'professional_fee_minor' => $breakdown['prof_minor'],
+            'professional_fee_minor' => $quoteBreakdown['prof_minor'],
             'materials_total_minor' => $matMinor,
-            'travel_cost_minor' => $breakdown['travel_minor'],
-            'vat_minor' => $breakdown['vat_minor'],
+            'travel_cost_minor' => $quoteBreakdown['travel_minor'],
+            'quote_total_minor' => $quoteBreakdown['grand_minor'],
+            'vat_minor' => $clientBreakdown['vat_minor'],
             'vat_applies' => $vatApplies,
             'vat_percent' => $vatRate,
-            'withholding_tax_minor' => $breakdown['wht_minor'],
+            'withholding_tax_minor' => $clientBreakdown['wht_minor'],
             'withholding_tax_percent' => $whtPct,
-            'stamp_duty_minor' => $breakdown['stamp_minor'],
-            'platform_fee_minor' => $breakdown['platform_minor'],
-            'discount_minor' => $breakdown['discount_minor'],
-            'grand_total_minor' => $breakdown['grand_minor'],
-            'grand_total_ngn' => (int) round($breakdown['grand_minor'] / 100),
+            'stamp_duty_minor' => $clientBreakdown['stamp_minor'],
+            'platform_fee_minor' => $clientBreakdown['platform_minor'],
+            'discount_minor' => $quoteBreakdown['discount_minor'],
+            'escrow_total_minor' => $clientBreakdown['grand_minor'],
+            'grand_total_minor' => $clientBreakdown['grand_minor'],
+            'grand_total_ngn' => (int) round($clientBreakdown['grand_minor'] / 100),
             'terms' => $terms,
         ];
 

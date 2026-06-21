@@ -106,9 +106,7 @@ class UserNotificationInboxService
                 return false;
             }
 
-            $id = (int) ($data['warning_id'] ?? 0);
-
-            return $id === 0 || $id === $warningId;
+            return (int) ($data['warning_id'] ?? 0) === $warningId;
         });
     }
 }

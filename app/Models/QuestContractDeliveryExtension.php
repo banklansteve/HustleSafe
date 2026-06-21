@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\DeliveryDateAdjustmentType;
 use App\Enums\DeliveryExtensionReasonCategory;
 use App\Enums\DeliveryExtensionStatus;
 use Illuminate\Database\Eloquent\Model;
@@ -12,6 +13,7 @@ class QuestContractDeliveryExtension extends Model
     protected $fillable = [
         'quest_contract_id',
         'extension_number',
+        'adjustment_type',
         'requested_by_user_id',
         'reason_category',
         'explanation',
@@ -39,6 +41,7 @@ class QuestContractDeliveryExtension extends Model
     protected function casts(): array
     {
         return [
+            'adjustment_type' => DeliveryDateAdjustmentType::class,
             'reason_category' => DeliveryExtensionReasonCategory::class,
             'status' => DeliveryExtensionStatus::class,
             'original_delivery_date' => 'date',

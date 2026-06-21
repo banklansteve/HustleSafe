@@ -38,6 +38,6 @@ class QuestContractPolicy
 
     public function flagForReview(User $user, QuestContract $contract): bool
     {
-        return $user->role?->slug === 'super_admin';
+        return in_array($user->role?->slug, ['admin', 'super_admin'], true);
     }
 }

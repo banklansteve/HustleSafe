@@ -56,7 +56,7 @@ class StoreQuestProposalRequest extends FormRequest
             $pricing['withholding_tax_percent'] = 0;
             $pricing['stamp_duty_ngn'] = 0;
             $pricing['platform_fee_ngn'] = 0;
-            $breakdown = ProposalMoneyCalculator::breakdown($materials, $pricing);
+            $breakdown = ProposalMoneyCalculator::breakdown($materials, $pricing, includeClientCharges: false);
             if ($breakdown !== null) {
                 $pricing['grand_total_ngn'] = (int) round($breakdown['grand_minor'] / 100);
                 $this->merge(['pricing' => $pricing]);
@@ -95,6 +95,7 @@ class StoreQuestProposalRequest extends FormRequest
             'pricing.discount_ngn' => ['nullable', 'integer', 'min:0', 'max:'.$maxNgn],
             'pricing.grand_total_ngn' => ['required', 'integer', 'min:1', 'max:'.$maxNgn],
             'accepted_terms' => ['accepted'],
+            'accepts_installment_terms' => ['sometimes', 'boolean'],
             'preference_responses' => ['nullable', 'array'],
             'preference_responses.*' => ['array'],
             'preference_responses.*.response_type' => ['required_with:preference_responses.*', 'string', Rule::in(['accept', 'propose_alternative', 'clarify', 'custom'])],
@@ -196,6 +197,11 @@ class StoreQuestProposalRequest extends FormRequest
                         $v->errors()->add($field, $message);
                     }
                 }
+            }
+
+            $recurring = app(\App\Services\Quest\QuestRecurringEngagementService::class);
+            if ($recurring->isRecurring($quest) && ! $this->boolean('accepts_installment_terms')) {
+                $v->errors()->add('accepts_installment_terms', __('You must accept the installment payment schedule for this ongoing job.'));
             }
         });
     }

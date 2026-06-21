@@ -48,7 +48,76 @@ final class RevenueMonitorService
             'sidebar' => $this->sidebarMetrics($from, $to, $prevFrom, $prevTo),
             'transactions' => $this->transactions($request, $from, $to),
             'trend_insights' => $this->trendInsights($from, $to),
+            'top_spenders' => $this->topSpenders($from, $to),
         ];
+    }
+
+    /**
+     * Top 10 paying users per revenue stream for the selected period.
+     *
+     * @return list<array{key: string, label: string, attribution: string, spenders: list<array<string, mixed>>}>
+     */
+    private function topSpenders(Carbon $from, Carbon $to): array
+    {
+        $boost = QuestBoostPayment::query()
+            ->where('status', 'paid')
+            ->whereBetween('paid_at', [$from, $to])
+            ->selectRaw('client_id as user_id, SUM(amount_minor) as total, COUNT(*) as cnt')
+            ->groupBy('client_id')
+            ->orderByDesc('total')
+            ->limit(10)
+            ->get();
+
+        $premium = FreelancerSubscriptionPayment::query()
+            ->where('status', 'paid')
+            ->whereBetween('paid_at', [$from, $to])
+            ->selectRaw('user_id, SUM(amount_minor) as total, COUNT(*) as cnt')
+            ->groupBy('user_id')
+            ->orderByDesc('total')
+            ->limit(10)
+            ->get();
+
+        $platform = FinancialEscrowRecord::query()
+            ->whereNotNull('fee_recognised_at')
+            ->whereBetween('fee_recognised_at', [$from, $to])
+            ->whereNotNull('client_id')
+            ->selectRaw('client_id as user_id, SUM(platform_fee_minor) as total, COUNT(*) as cnt')
+            ->groupBy('client_id')
+            ->orderByDesc('total')
+            ->limit(10)
+            ->get();
+
+        return [
+            ['key' => 'quest_boost', 'label' => 'Quest boosts', 'attribution' => 'Paying client', 'spenders' => $this->mapSpenders($boost)],
+            ['key' => 'premium', 'label' => 'Premium members', 'attribution' => 'Subscriber', 'spenders' => $this->mapSpenders($premium)],
+            ['key' => 'platform_fee', 'label' => 'Platform fees', 'attribution' => 'Funding client', 'spenders' => $this->mapSpenders($platform)],
+        ];
+    }
+
+    /**
+     * @param  Collection<int, object>  $rows  rows with user_id, total, cnt
+     * @return list<array<string, mixed>>
+     */
+    private function mapSpenders(Collection $rows): array
+    {
+        $userIds = $rows->pluck('user_id')->filter()->map(fn ($id) => (int) $id)->all();
+        $users = User::query()->whereIn('id', $userIds)->get(['id', 'name', 'username', 'avatar_url'])->keyBy('id');
+
+        return $rows->map(function ($row) use ($users) {
+            $userId = (int) $row->user_id;
+            $user = $users->get($userId);
+            $total = (int) $row->total;
+
+            return [
+                'user_id' => $userId,
+                'name' => $user?->name ?? ('User #'.$userId),
+                'username' => $user?->username,
+                'avatar_url' => $user?->avatar_url,
+                'total_minor' => $total,
+                'total_display' => NgnMoney::format($total),
+                'transactions' => (int) $row->cnt,
+            ];
+        })->values()->all();
     }
 
     /**
@@ -101,10 +170,13 @@ final class RevenueMonitorService
     private function presets(): array
     {
         return [
+            ['key' => 'today', 'label' => 'Today'],
+            ['key' => 'last_7_days', 'label' => 'Last 7 days'],
             ['key' => 'this_month', 'label' => 'This month'],
             ['key' => 'last_month', 'label' => 'Last month'],
             ['key' => 'last_3_months', 'label' => 'Last 3 months'],
-            ['key' => 'last_12_months', 'label' => 'Last 12 months'],
+            ['key' => 'last_6_months', 'label' => 'Last 6 months'],
+            ['key' => 'this_year', 'label' => 'This year'],
             ['key' => 'custom', 'label' => 'Custom range'],
         ];
     }
@@ -118,6 +190,18 @@ final class RevenueMonitorService
         $now = now();
 
         return match ($preset) {
+            'today' => [
+                $now->copy()->startOfDay(),
+                $now->copy()->endOfDay(),
+                'today',
+                'Today',
+            ],
+            'last_7_days' => [
+                $now->copy()->subDays(6)->startOfDay(),
+                $now->copy()->endOfDay(),
+                'last_7_days',
+                'Last 7 days',
+            ],
             'last_month' => [
                 $now->copy()->subMonth()->startOfMonth(),
                 $now->copy()->subMonth()->endOfMonth(),
@@ -129,6 +213,18 @@ final class RevenueMonitorService
                 $now->copy()->endOfDay(),
                 'last_3_months',
                 'Last 3 months',
+            ],
+            'last_6_months' => [
+                $now->copy()->subMonths(6)->startOfDay(),
+                $now->copy()->endOfDay(),
+                'last_6_months',
+                'Last 6 months',
+            ],
+            'this_year' => [
+                $now->copy()->startOfYear(),
+                $now->copy()->endOfDay(),
+                'this_year',
+                $now->format('Y'),
             ],
             'last_12_months' => [
                 $now->copy()->subMonths(12)->startOfDay(),
@@ -498,7 +594,8 @@ final class RevenueMonitorService
                     'revenue_type' => 'premium',
                     'revenue_type_label' => 'Premium',
                     'transaction_id' => 'PRE-'.$p->id,
-                    'party_label' => $p->user?->username ? '@'.$p->user->username : ($p->user?->name ?? 'User #'.$p->user_id),
+                    'party_label' => $p->user?->name ?? ('User #'.$p->user_id),
+                    'party_username' => $p->user?->username,
                     'party_user_id' => $p->user_id,
                     'date' => $p->paid_at?->toDateString(),
                     'occurred_at' => $p->paid_at?->toIso8601String(),
@@ -538,7 +635,8 @@ final class RevenueMonitorService
                     'revenue_type' => 'quest_boost',
                     'revenue_type_label' => 'Quest boost',
                     'transaction_id' => 'BST-'.$p->id,
-                    'party_label' => $p->client?->username ? '@'.$p->client->username : ($p->client?->name ?? 'Client #'.$p->client_id),
+                    'party_label' => $p->client?->name ?? ('Client #'.$p->client_id),
+                    'party_username' => $p->client?->username,
                     'party_user_id' => $p->client_id,
                     'quest_id' => $p->quest_id,
                     'date' => $p->paid_at?->toDateString(),
@@ -576,7 +674,8 @@ final class RevenueMonitorService
                     'revenue_type' => 'platform_fee',
                     'revenue_type_label' => 'Platform fee',
                     'transaction_id' => 'FEE-'.$r->id,
-                    'party_label' => trim(($r->client?->username ? '@'.$r->client->username : '').' / '.($r->freelancer?->username ? '@'.$r->freelancer->username : '')),
+                    'party_label' => trim(($r->client?->name ?? $r->client_name ?? '—').' → '.($r->freelancer?->name ?? $r->freelancer_name ?? '—')),
+                    'party_user_id' => $r->client_id,
                     'date' => $r->fee_recognised_at?->toDateString(),
                     'occurred_at' => $r->fee_recognised_at?->toIso8601String(),
                     'duration_label' => 'Contract release',

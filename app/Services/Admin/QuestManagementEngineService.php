@@ -633,6 +633,9 @@ class QuestManagementEngineService
                 'start_timing' => $quest->start_timing?->value,
                 'scheduled_start_date' => $quest->scheduled_start_date?->toDateString(),
                 'estimated_completion_days' => $quest->estimated_completion_days,
+                'estimated_delivery_date' => $quest->estimated_delivery_date?->toDateString(),
+                'delivery_deadline' => $quest->delivery_deadline?->toDateString(),
+                'completion_schedule' => app(\App\Services\Quest\QuestCompletionScheduleService::class)->toPayload($quest),
                 'due_at' => $quest->due_at?->toIso8601String(),
                 'location' => collect([$quest->city, $quest->localGovernment?->name, $quest->stateModel?->name])->filter()->join(', '),
             ],
@@ -669,6 +672,8 @@ class QuestManagementEngineService
             ],
             'items' => $offers->map(fn (QuestOffer $offer) => [
                 'id' => $offer->id,
+                'uuid' => $offer->uuid,
+                'reference_code' => $offer->reference_code,
                 'status' => $offer->status,
                 'pitch' => $offer->pitch,
                 'scope_detail' => $offer->scope_detail,
@@ -691,6 +696,11 @@ class QuestManagementEngineService
 
     private function escrowPayload(Quest $quest): array
     {
+        $contractRecord = \App\Models\QuestContract::query()
+            ->where('quest_id', $quest->id)
+            ->latest('id')
+            ->first();
+
         return [
             'has_contract' => $quest->freelancer_id !== null || $quest->accepted_quest_offer_id !== null,
             'contract' => [
@@ -705,6 +715,12 @@ class QuestManagementEngineService
                 'paid_out' => $this->money((int) $quest->paid_out_minor),
                 'refunded' => $this->money((int) $quest->refunded_minor),
                 'receipt_url' => route('admin.contracts.receipt', $quest),
+                'reference_code' => $contractRecord?->reference_code,
+                'status' => $contractRecord?->status?->value ?? ($contractRecord ? (string) $contractRecord->status : null),
+                'generated_at' => $contractRecord?->generated_at?->toIso8601String(),
+                'admin_url' => $contractRecord?->reference_code
+                    ? route('admin.contracts.view', $contractRecord->reference_code)
+                    : null,
             ],
             'ledger' => app(FinancialControlCentreService::class)->escrowLedger($quest),
         ];
@@ -779,8 +795,16 @@ class QuestManagementEngineService
 
     private function timeline(Quest $quest): array
     {
+        $schedule = app(\App\Services\Quest\QuestCompletionScheduleService::class);
+
         return collect([
             ['label' => 'Quest created', 'actor' => $quest->client?->name, 'at' => $quest->created_at?->toIso8601String()],
+            $schedule->plannedFinishDate($quest)
+                ? ['label' => 'Planned finish (client target)', 'actor' => $quest->client?->name, 'at' => $schedule->plannedFinishDate($quest)?->toIso8601String(), 'detail' => $schedule->plannedFinishDate($quest)?->toDateString()]
+                : null,
+            $schedule->hardDeadlineDate($quest)
+                ? ['label' => 'Delivery deadline (hard cutoff)', 'actor' => $quest->client?->name, 'at' => $schedule->hardDeadlineDate($quest)?->toIso8601String(), 'detail' => $schedule->hardDeadlineDate($quest)?->toDateString()]
+                : null,
             $quest->escrow_funded_at ? ['label' => 'Escrow funded', 'actor' => 'System', 'at' => $quest->escrow_funded_at->toIso8601String()] : null,
             $quest->completed_at ? ['label' => 'Quest completed', 'actor' => 'System', 'at' => $quest->completed_at->toIso8601String()] : null,
         ])->filter()->values()->all();

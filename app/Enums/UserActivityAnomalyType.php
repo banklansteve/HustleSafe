@@ -23,6 +23,8 @@ enum UserActivityAnomalyType: string
     case PremiumAnomaly = 'premium_anomaly';
     case RefundRateHigh = 'refund_rate_high';
     case TrustScoreDrop = 'trust_score_drop';
+    case EscrowRoundTripping = 'escrow_round_tripping';
+    case SharedKycDocument = 'shared_kyc_document';
 
     public function label(): string
     {
@@ -46,16 +48,18 @@ enum UserActivityAnomalyType: string
             self::PremiumAnomaly => 'Premium Anomaly',
             self::RefundRateHigh => 'Refund Rate High',
             self::TrustScoreDrop => 'Trust Score Drop',
+            self::EscrowRoundTripping => 'Escrow Round-Tripping',
+            self::SharedKycDocument => 'Shared KYC Document',
         };
     }
 
     public function category(): string
     {
         return match ($this) {
-            self::DisputeSpike, self::Chargeback, self::RefundRateHigh, self::PaymentIssue => 'financial',
+            self::DisputeSpike, self::Chargeback, self::RefundRateHigh, self::PaymentIssue, self::EscrowRoundTripping => 'financial',
             self::VelocitySpike, self::NewAccountHighValue, self::WinRateAnomaly, self::CancellationPattern, self::PremiumAnomaly, self::TrustScoreDrop => 'behavioral',
             self::OffPlatformPayment, self::ConversationFlag => 'communication',
-            self::VerificationFail, self::LocationAnomaly, self::DeviceAnomaly, self::SharedIdentity, self::SharedIpAccounts => 'verification',
+            self::VerificationFail, self::LocationAnomaly, self::DeviceAnomaly, self::SharedIdentity, self::SharedIpAccounts, self::SharedKycDocument => 'verification',
             self::ReviewManipulation => 'review',
             self::AccountInconsistency => 'account',
         };

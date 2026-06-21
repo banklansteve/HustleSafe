@@ -167,7 +167,7 @@ class StaffOperationsDashboardService
             ['label' => 'Open Support hub', 'href' => route('operations.support.index'), 'description' => 'Tickets, quest-thread chats, disputes, and user context.'],
             ['label' => 'Open CS Inbox', 'href' => route('operations.communications.index'), 'description' => 'Legacy communications and enquiry threads.'],
             ['label' => 'Trust & risk monitoring', 'href' => route('operations.trust.index'), 'description' => 'Risk queue, watchlist feed, and fraud network investigation.'],
-            ['label' => 'Conversation monitoring', 'href' => route('operations.conversation-monitoring.index'), 'description' => 'Flagged quest & focused Q&A messages — warn, suspend, or escalate.'],
+            ['label' => 'Trust review', 'href' => route('operations.conversation-monitoring.index'), 'description' => 'Flagged quest & focused Q&A messages — warn, review history, escalate suspensions to Super Admin.'],
         ];
     }
 

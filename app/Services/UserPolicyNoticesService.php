@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\AdminUserSanction;
 use App\Models\ConversationPolicyWarning;
+use App\Models\ConversationPolicyWarningReply;
 use App\Models\User;
+use App\Notifications\ConversationPolicyWarningReplyStaffNotification;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -17,8 +19,6 @@ class UserPolicyNoticesService
      */
     public function indexPayload(User $user): array
     {
-        $this->inbox->markConversationPolicyWarnings($user);
-
         $pending = $this->conversationWarnings($user, acknowledged: false)
             ->merge($this->sanctionWarnings($user, acknowledged: false))
             ->sortByDesc('issued_at')
@@ -37,6 +37,40 @@ class UserPolicyNoticesService
             'history' => $history,
             'pending_count' => count($pending),
         ];
+    }
+
+    /**
+     * @return array{pending: list<array<string, mixed>>, history: list<array<string, mixed>>, pending_count: int}
+     */
+    public function reply(User $user, int $warningId, string $body): array
+    {
+        $warning = ConversationPolicyWarning::query()
+            ->where('user_id', $user->id)
+            ->whereKey($warningId)
+            ->firstOrFail();
+
+        $recentDuplicate = ConversationPolicyWarningReply::query()
+            ->where('conversation_policy_warning_id', $warning->id)
+            ->where('user_id', $user->id)
+            ->where('body', $body)
+            ->where('created_at', '>=', now()->subMinutes(2))
+            ->exists();
+
+        if ($recentDuplicate) {
+            throw ValidationException::withMessages([
+                'body' => __('You just sent this reply. Please wait a moment before sending again.'),
+            ]);
+        }
+
+        ConversationPolicyWarningReply::query()->create([
+            'conversation_policy_warning_id' => $warning->id,
+            'user_id' => $user->id,
+            'body' => $body,
+        ]);
+
+        $this->notifyStaffOfReply($warning, $user, $body);
+
+        return $this->indexPayload($user);
     }
 
     public function acknowledge(User $user, string $source, int $id): void
@@ -82,6 +116,7 @@ class UserPolicyNoticesService
             ->with([
                 'issuedBy:id,name',
                 'review.quest:id,title,reference_code',
+                'replies:id,conversation_policy_warning_id,body,created_at',
             ])
             ->where('user_id', $user->id)
             ->when($acknowledged, fn ($q) => $q->whereNotNull('acknowledged_at'), fn ($q) => $q->whereNull('acknowledged_at'))
@@ -92,12 +127,20 @@ class UserPolicyNoticesService
                 'source' => 'conversation',
                 'title' => __('Messaging policy notice'),
                 'body' => $warning->note,
-                'reason_label' => __('Conversation monitoring'),
+                'reason_label' => __('Trust & safety'),
                 'quest_title' => $warning->review?->quest?->title,
                 'quest_reference' => $warning->review?->quest?->reference_code,
                 'issued_by' => $warning->issuedBy?->name,
                 'issued_at' => $warning->created_at?->timezone('Africa/Lagos')->toIso8601String(),
                 'acknowledged_at' => $warning->acknowledged_at?->timezone('Africa/Lagos')->toIso8601String(),
+                'can_reply' => true,
+                'replies' => $warning->replies
+                    ->map(fn (ConversationPolicyWarningReply $reply) => [
+                        'id' => $reply->id,
+                        'body' => $reply->body,
+                        'created_at' => $reply->created_at?->timezone('Africa/Lagos')->toIso8601String(),
+                    ])
+                    ->all(),
             ]);
     }
 
@@ -125,6 +168,17 @@ class UserPolicyNoticesService
                 'issued_by' => $sanction->admin?->name,
                 'issued_at' => $sanction->starts_at?->timezone('Africa/Lagos')->toIso8601String(),
                 'acknowledged_at' => $sanction->user_acknowledged_at?->timezone('Africa/Lagos')->toIso8601String(),
+                'can_reply' => false,
+                'replies' => [],
             ]);
+    }
+
+    private function notifyStaffOfReply(ConversationPolicyWarning $warning, User $replier, string $body): void
+    {
+        $notification = new ConversationPolicyWarningReplyStaffNotification($warning, $replier, $body);
+
+        User::query()
+            ->whereHas('role', fn ($q) => $q->whereIn('slug', ['super_admin', 'admin']))
+            ->each(fn (User $staff) => $staff->notify($notification));
     }
 }

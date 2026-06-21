@@ -114,6 +114,7 @@ class QuestWizardStepValidator
             ],
             'estimated_completion_days' => ['required', 'integer', 'min:1', 'max:365'],
             'estimated_delivery_date' => ['nullable', 'date', 'after_or_equal:today'],
+            'delivery_deadline' => ['nullable', 'date', 'after_or_equal:today'],
             'budget_amount_minor' => [
                 'required',
                 'integer',

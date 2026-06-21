@@ -75,7 +75,7 @@ $userEditFields = [
 $questEditFields = [
     'title', 'description', 'status', 'escrow_status', 'client_id', 'freelancer_id', 'quest_category_id',
     'state_id', 'local_government_id', 'city', 'visibility', 'budget_amount_minor', 'max_offers',
-    'scheduled_start_date', 'estimated_completion_days', 'estimated_delivery_date', 'due_at',
+    'scheduled_start_date', 'estimated_completion_days', 'estimated_delivery_date', 'delivery_deadline', 'due_at',
     'project_type', 'team_size', 'start_timing', 'availability_need',
     'freelancer_location_pref', 'dispute_opened', 'escrow_funded_at', 'completed_at',
 ];
@@ -381,6 +381,7 @@ return [
                 'scheduled_start_date' => $date,
                 'estimated_completion_days' => $int,
                 'estimated_delivery_date' => $date,
+                'delivery_deadline' => $date,
                 'due_at' => $date,
                 'project_type' => $enum(QuestProjectType::class),
                 'team_size' => $enum(QuestTeamSize::class),

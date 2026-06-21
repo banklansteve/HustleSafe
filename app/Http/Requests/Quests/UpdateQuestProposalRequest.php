@@ -63,7 +63,7 @@ class UpdateQuestProposalRequest extends FormRequest
             $pricing['withholding_tax_percent'] = 0;
             $pricing['stamp_duty_ngn'] = 0;
             $pricing['platform_fee_ngn'] = 0;
-            $breakdown = ProposalMoneyCalculator::breakdown($materials, $pricing);
+            $breakdown = ProposalMoneyCalculator::breakdown($materials, $pricing, includeClientCharges: false);
             if ($breakdown !== null) {
                 $pricing['grand_total_ngn'] = (int) round($breakdown['grand_minor'] / 100);
                 $this->merge(['pricing' => $pricing]);

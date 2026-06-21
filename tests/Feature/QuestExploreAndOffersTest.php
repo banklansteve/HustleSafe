@@ -108,7 +108,7 @@ class QuestExploreAndOffersTest extends TestCase
                 'stamp_duty_ngn' => 0,
                 'platform_fee_ngn' => 0,
                 'discount_ngn' => 0,
-                'grand_total_ngn' => 403125,
+                'grand_total_ngn' => 375000,
             ],
             'accepted_terms' => true,
         ];
@@ -272,7 +272,7 @@ class QuestExploreAndOffersTest extends TestCase
                     'stamp_duty_ngn' => 0,
                     'platform_fee_ngn' => 0,
                     'discount_ngn' => 0,
-                    'grand_total_ngn' => 220375,
+                    'grand_total_ngn' => 205000,
                 ],
                 'accepted_terms' => true,
             ])

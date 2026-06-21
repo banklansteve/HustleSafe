@@ -107,9 +107,7 @@ final class UserVerificationCatalogService
 
     public function isFreelancer(User $user): bool
     {
-        $slug = $user->role?->slug ?? $user->account_type;
-
-        return in_array($slug, ['freelancer', 'seller', 'provider'], true);
+        return $user->usesFreelancerVerificationLimits();
     }
 
     /**

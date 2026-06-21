@@ -18,6 +18,40 @@ class ProposalTrustBehaviourService
 
     public const CLIENT_GHOST_STRIKE_THRESHOLD = 2;
 
+    public const CLIENT_AWARD_CANCELLATION_PENALTY = 4;
+
+    public function recordClientAwardCancellation(
+        Quest $quest,
+        QuestOffer $offer,
+        User $client,
+        ?string $reason = null,
+        bool $wasMutuallyConfirmed = false,
+    ): void {
+        if (! Schema::hasTable('proposal_behaviour_logs')) {
+            return;
+        }
+
+        ProposalBehaviourLog::query()->create([
+            'quest_id' => $quest->id,
+            'quest_offer_id' => $offer->id,
+            'user_id' => $client->id,
+            'event_type' => 'client_award_cancelled',
+            'meta' => [
+                'freelancer_id' => $offer->freelancer_id,
+                'reason' => $reason,
+                'was_mutually_confirmed' => $wasMutuallyConfirmed,
+            ],
+            'occurred_at' => now(),
+        ]);
+
+        $metrics = UserTrustMetric::query()->firstOrCreate(['user_id' => $client->id]);
+        if (\Illuminate\Support\Facades\Schema::hasColumn('user_trust_metrics', 'client_award_cancellation_count')) {
+            $metrics->increment('client_award_cancellation_count');
+        }
+
+        app(ClientTrustScoreService::class)->sync($client->fresh());
+    }
+
     public function recordShortlistedWithdrawal(QuestOffer $offer): void
     {
         if (! Schema::hasTable('proposal_behaviour_logs')) {

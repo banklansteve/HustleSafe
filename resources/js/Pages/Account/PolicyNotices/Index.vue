@@ -41,6 +41,43 @@
                         {{ notice.issued_by ? `From ${notice.issued_by}` : 'From HustleSafe team' }}
                         · {{ formatWhen(notice.issued_at) }}
                     </p>
+
+                    <div v-if="notice.replies?.length" class="mt-4 space-y-2 rounded-xl border border-slate-200 bg-white/80 p-3">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Your replies</p>
+                        <div
+                            v-for="reply in notice.replies"
+                            :key="reply.id"
+                            class="rounded-lg bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700"
+                        >
+                            <p class="whitespace-pre-wrap">{{ reply.body }}</p>
+                            <p class="mt-1 text-[10px] font-semibold text-slate-400">{{ formatWhen(reply.created_at) }}</p>
+                        </div>
+                    </div>
+
+                    <div v-if="notice.can_reply" class="mt-4 space-y-2 rounded-xl border border-slate-200 bg-white/90 p-3">
+                        <label :for="`reply-${noticeKey(notice)}`" class="text-[10px] font-black uppercase tracking-wide text-slate-600">
+                            Reply to trust &amp; safety
+                        </label>
+                        <textarea
+                            :id="`reply-${noticeKey(notice)}`"
+                            v-model="replyDrafts[noticeKey(notice)]"
+                            rows="3"
+                            maxlength="2000"
+                            class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+                            placeholder="Explain your side or ask for clarification…"
+                        />
+                        <p v-if="replyErrors[noticeKey(notice)]" class="text-xs font-semibold text-rose-700">{{ replyErrors[noticeKey(notice)] }}</p>
+                        <button
+                            type="button"
+                            class="inline-flex w-full items-center justify-center rounded-full border border-primary-200 bg-primary-50 px-5 py-3 text-xs font-black uppercase tracking-wide text-primary-900 hover:bg-primary-100 disabled:opacity-60 sm:w-auto"
+                            :disabled="busyKey === `reply-${noticeKey(notice)}` || !(replyDrafts[noticeKey(notice)] || '').trim()"
+                            @click="sendReply(notice)"
+                        >
+                            <ReLoader4Line v-if="busyKey === `reply-${noticeKey(notice)}`" class="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                            Send reply
+                        </button>
+                    </div>
+
                     <button
                         type="button"
                         class="mt-4 inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-wide text-white hover:bg-slate-800 disabled:opacity-60 sm:w-auto"
@@ -85,7 +122,7 @@ import AppShell from '@/Layouts/AppShell.vue';
 import { Head } from '@inertiajs/vue3';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import axios from 'axios';
-import { onMounted, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 
 const props = defineProps({
     pending: { type: Array, default: () => [] },
@@ -96,6 +133,8 @@ const props = defineProps({
 const pending = ref([...(props.pending || [])]);
 const history = ref([...(props.history || [])]);
 const busyKey = ref('');
+const replyDrafts = reactive({});
+const replyErrors = reactive({});
 
 onMounted(() => {
     window.dispatchEvent(new CustomEvent('app:notifications-changed'));
@@ -119,6 +158,30 @@ async function acknowledge(notice) {
         pending.value = data.pending || [];
         history.value = data.history || [];
         window.dispatchEvent(new CustomEvent('app:notifications-changed'));
+    } finally {
+        busyKey.value = '';
+    }
+}
+
+async function sendReply(notice) {
+    const key = noticeKey(notice);
+    const body = (replyDrafts[key] || '').trim();
+    if (!body || busyKey.value === `reply-${key}`) {
+        return;
+    }
+
+    busyKey.value = `reply-${key}`;
+    replyErrors[key] = '';
+    try {
+        const { data } = await axios.post(route('account.policy-notices.reply', notice.id), { body });
+        pending.value = data.pending || [];
+        history.value = data.history || [];
+        replyDrafts[key] = '';
+        window.dispatchEvent(new CustomEvent('app:notifications-changed'));
+    } catch (error) {
+        replyErrors[key] = error?.response?.data?.errors?.body?.[0]
+            || error?.response?.data?.message
+            || 'Could not send your reply. Please try again.';
     } finally {
         busyKey.value = '';
     }

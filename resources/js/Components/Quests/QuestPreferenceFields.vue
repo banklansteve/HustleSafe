@@ -12,7 +12,7 @@
             </p>
         </div>
 
-        <div v-for="(field, key) in normalizedFields" :key="key" class="space-y-2">
+        <div v-for="(field, key) in visibleFields" :key="key" class="space-y-2">
             <div class="flex items-center gap-1">
                 <p class="text-sm font-bold text-slate-900">
                     {{ field.label }}
@@ -108,6 +108,32 @@ const normalizedFields = computed(() => {
     return fields;
 });
 
+const visibleFields = computed(() => {
+    const fields = normalizedFields.value;
+    const visible = {};
+
+    for (const [key, field] of Object.entries(fields)) {
+        const when = field.show_when;
+        if (when?.field && when?.value !== undefined) {
+            if (localValues[when.field] !== when.value) {
+                continue;
+            }
+        }
+        visible[key] = field;
+    }
+
+    return visible;
+});
+
+function fieldIsVisible(field) {
+    const when = field?.show_when;
+    if (!when?.field) {
+        return true;
+    }
+
+    return localValues[when.field] === when.value;
+}
+
 function defaultForField(field) {
     if (field.type === 'checkbox_group') {
         return [];
@@ -197,6 +223,18 @@ watch(
         }
     },
     { immediate: true },
+);
+
+watch(
+    () => localValues.session_frequency,
+    (freq) => {
+        if (freq !== 'weekly' && localValues.sessions_per_week !== undefined) {
+            localValues.sessions_per_week = '';
+        }
+        if (freq !== 'monthly' && localValues.sessions_per_month !== undefined) {
+            localValues.sessions_per_month = '';
+        }
+    },
 );
 
 watch(

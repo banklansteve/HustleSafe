@@ -25,7 +25,22 @@
                     <span class="rounded-full bg-primary-50 px-3 py-1 font-bold text-primary-900 ring-1 ring-primary-100">
                         Budget {{ formatBudget(quest.budget_minor) }}
                     </span>
-                    <span v-if="quest.estimated_completion_days" class="rounded-full bg-slate-50 px-3 py-1 ring-1 ring-slate-100">
+                    <span
+                        v-if="completionSchedule?.planned_finish_date"
+                        class="rounded-full bg-slate-50 px-3 py-1 ring-1 ring-slate-100"
+                    >
+                        Planned finish {{ formatClientDate(completionSchedule.planned_finish_date) }}
+                    </span>
+                    <span
+                        v-if="completionSchedule?.hard_deadline_date"
+                        class="rounded-full bg-rose-50 px-3 py-1 font-bold text-rose-950 ring-1 ring-rose-100"
+                    >
+                        Deadline {{ formatClientDate(completionSchedule.hard_deadline_date) }}
+                    </span>
+                    <span
+                        v-else-if="quest.estimated_completion_days"
+                        class="rounded-full bg-slate-50 px-3 py-1 ring-1 ring-slate-100"
+                    >
                         Client timeline ~ {{ quest.estimated_completion_days }} days
                     </span>
                 </div>
@@ -341,14 +356,14 @@
                         </div>
                     </div>
                     <div class="space-y-2">
-                        <InputLabel value="Grand total" />
+                        <InputLabel value="Your quote (net)" />
                         <div
                             class="flex w-full items-center rounded-xl border border-primary-200 bg-primary-50/80 px-4 py-3 text-lg font-black text-primary-950 shadow-inner ring-1 ring-primary-100"
                         >
                             {{ formatNgn(computedGrandNgn) }}
                         </div>
                         <p class="text-xs font-semibold text-slate-600">
-                            Updates when you change professional fee, materials, travel, or discount.
+                            Professional fee + materials + travel − discount. Platform fees and VAT are added when the client funds escrow.
                         </p>
                         <InputError :message="form.errors['pricing.grand_total_ngn']" />
                     </div>
@@ -361,6 +376,25 @@
                     v-model="form.preference_responses"
                     :client-preferences="quest.preferences || []"
                 />
+
+                <section v-if="!proposal_edit?.offer_id && installmentTermsRequired" class="space-y-3 rounded-2xl border border-violet-200/90 bg-violet-50/60 p-5 shadow-sm ring-1 ring-violet-100 sm:p-6">
+                    <h2 class="font-display text-sm font-black uppercase tracking-wide text-violet-900">
+                        Installment payment
+                    </h2>
+                    <p class="text-sm font-semibold leading-relaxed text-violet-950">
+                        {{ installmentTermsSummary }}
+                    </p>
+                    <ul class="list-disc space-y-1 pl-5 text-xs font-semibold text-violet-900/90">
+                        <li>Total in escrow (your quote): {{ quotedEscrowTotal }}</li>
+                        <li>Each payout: {{ quotedInstallmentAmount }} ({{ quest.recurring_engagement?.frequency_label }})</li>
+                        <li>Contract: {{ quest.recurring_engagement?.contract_months }} months · {{ quest.recurring_engagement?.installment_count }} payments</li>
+                    </ul>
+                    <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-violet-300/80 bg-white/80 px-4 py-3 text-sm font-semibold text-violet-950 ring-1 ring-violet-100">
+                        <input v-model="form.accepts_installment_terms" type="checkbox" class="mt-1 rounded border-violet-300 text-violet-700 focus:ring-violet-500" />
+                        <span>I accept the {{ quest.recurring_engagement?.frequency_label?.toLowerCase() }} payment schedule for this ongoing job.</span>
+                    </label>
+                    <InputError :message="form.errors.accepts_installment_terms" />
+                </section>
 
                 <section v-if="!proposal_edit?.offer_id" class="space-y-4 rounded-2xl border border-slate-200/90 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm ring-1 ring-slate-100 sm:p-6">
                     <h2 class="font-display text-sm font-black uppercase tracking-wide text-slate-500">
@@ -422,7 +456,7 @@
                     <button
                         type="submit"
                         class="inline-flex items-center justify-center rounded-full bg-primary-600 px-8 py-3 text-sm font-black text-white shadow-lg shadow-primary-900/15 hover:bg-primary-700 disabled:opacity-50"
-                        :disabled="form.processing || (!proposal_edit?.offer_id && !form.accepted_terms) || (proposal_edit?.offer_id && !form.confirm_revision)"
+                        :disabled="form.processing || (!proposal_edit?.offer_id && (!form.accepted_terms || (installmentTermsRequired && !form.accepts_installment_terms))) || (proposal_edit?.offer_id && !form.confirm_revision)"
                     >
                         <ReLoader4Line v-if="form.processing" class="mr-2 h-5 w-5 shrink-0 animate-spin" aria-hidden="true" />
                         {{ proposal_edit?.offer_id ? 'Save changes' : 'Submit proposal' }}
@@ -450,6 +484,7 @@ import AppShell from '@/Layouts/AppShell.vue';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import ProposalPreferenceResponses from '@/Components/Quests/ProposalPreferenceResponses.vue';
 import { buildQuestClientExpectationHints, clientSpecifiedRevisionRounds } from '@/utils/questClientExpectationHints';
+import { formatClientDate, questCompletionSchedule } from '@/utils/questCompletionSchedule';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, ref, watch } from 'vue';
 
@@ -491,12 +526,28 @@ const props = defineProps({
 const isEditMode = computed(() => Boolean(props.proposal_edit?.offer_id));
 
 function defaultPlannedStart() {
+    if (props.quest.scheduled_start_date) {
+        return props.quest.scheduled_start_date;
+    }
+
     const d = new Date();
 
     return d.toISOString().slice(0, 10);
 }
 
 function defaultPlannedFinish() {
+    if (props.quest.recurring_engagement?.required) {
+        if (props.quest.contract_ends_at) {
+            return props.quest.contract_ends_at;
+        }
+        if (props.quest.scheduled_start_date && props.quest.recurring_engagement?.contract_months) {
+            const start = new Date(`${props.quest.scheduled_start_date}T12:00:00`);
+            start.setMonth(start.getMonth() + Number(props.quest.recurring_engagement.contract_months));
+
+            return start.toISOString().slice(0, 10);
+        }
+    }
+
     const d = new Date();
     const days = Number(props.quest.estimated_completion_days) || 14;
     d.setDate(d.getDate() + days);
@@ -549,6 +600,7 @@ function buildInitialForm() {
             grand_total_ngn: 0,
         },
         accepted_terms: false,
+        accepts_installment_terms: false,
         confirm_revision: false,
         preference_responses: {},
     };
@@ -557,6 +609,8 @@ function buildInitialForm() {
 const form = useForm(buildInitialForm());
 
 const clientHints = computed(() => buildQuestClientExpectationHints(props.quest));
+const completionSchedule = computed(() => questCompletionSchedule(props.quest));
+const installmentTermsRequired = computed(() => Boolean(props.quest.recurring_engagement?.required));
 
 const showProgressReportField = computed(() => !clientSpecifiedRevisionRounds(props.quest));
 
@@ -691,6 +745,27 @@ const breakdown = computed(() => {
 
 const computedGrandNgn = computed(() => Math.round(breakdown.value.grandMinor / 100));
 
+const quotedInstallmentAmountMinor = computed(() => {
+    const count = Number(props.quest.recurring_engagement?.installment_count) || 1;
+    return Math.floor(breakdown.value.grandMinor / count);
+});
+
+const quotedInstallmentAmount = computed(() => formatNgn(quotedInstallmentAmountMinor.value / 100));
+
+const quotedEscrowTotal = computed(() => formatNgn(computedGrandNgn.value));
+
+const installmentTermsSummary = computed(() => {
+    const re = props.quest.recurring_engagement;
+    if (!re?.required) {
+        return '';
+    }
+    const freq = String(re.frequency_label || 'period').toLowerCase();
+    const months = re.contract_months;
+    const amountLabel = quotedInstallmentAmount.value;
+
+    return `This is an ongoing job paid in ${freq} installments (${amountLabel} each) for ${months} months, based on the freelancer's quote.`;
+});
+
 watch(
     computedGrandNgn,
     (next) => {
@@ -778,6 +853,7 @@ function submit() {
             grand_total_ngn: computedGrandNgn.value,
         },
         accepted_terms: data.accepted_terms ? true : false,
+        accepts_installment_terms: data.accepts_installment_terms ? true : false,
         confirm_revision: data.confirm_revision ? true : false,
     });
 
@@ -802,7 +878,7 @@ function submit() {
     };
 
     if (isEditMode.value) {
-        form.transform(transform).put(route('quests.proposals.update', [props.quest.route_key, props.proposal_edit.offer_id]), visitOpts);
+        form.transform(transform).put(route('quests.proposals.update', [props.quest.route_key, props.proposal_edit.offer_route_key ?? props.proposal_edit.offer_id]), visitOpts);
 
         return;
     }

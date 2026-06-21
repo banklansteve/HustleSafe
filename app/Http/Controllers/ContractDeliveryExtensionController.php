@@ -24,7 +24,7 @@ class ContractDeliveryExtensionController extends Controller
 
         $service->queueRequest($contract, $request->user(), $request->validated(), $request);
 
-        return back()->with('success', __('Extension request submitted. The client has been notified.'));
+        return back()->with('success', __('Your date-change request was sent. We notified the client.'));
     }
 
     public function respond(

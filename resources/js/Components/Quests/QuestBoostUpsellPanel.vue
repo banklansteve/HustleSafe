@@ -4,7 +4,7 @@
         class="rounded-xl border border-amber-200/90 bg-gradient-to-br from-amber-50/95 via-white to-orange-50/80 p-5 shadow-md ring-1 ring-amber-100 sm:p-6"
     >
         <div
-            v-if="!upsell.has_active_boost && upsell.show_panel && !tipDismissed"
+            v-if="!upsell.has_active_boost && upsell.show_panel && !tipDismissed && !upsell.has_scheduled_follow_on"
             class="mb-4 rounded-xl border border-amber-200 bg-amber-100/50 px-4 py-3"
         >
             <div class="flex flex-wrap items-start justify-between gap-2">
@@ -27,10 +27,16 @@
                     Boost visibility
                 </p>
                 <h2 class="font-display mt-1 text-lg font-bold text-slate-900">
-                    {{ upsell.has_active_boost ? 'Your quest is boosted' : 'Reach more matching pros' }}
+                    {{ panelHeading }}
                 </h2>
                 <p class="mt-2 text-sm font-semibold leading-relaxed text-slate-700">
-                    <template v-if="upsell.has_active_boost">
+                    <template v-if="upsell.has_scheduled_follow_on">
+                        Your follow-on boost is booked. The current boost runs until its finish time, then the new one starts automatically.
+                    </template>
+                    <template v-else-if="upsell.is_reboost">
+                        Your boost ends soon. Boost again now and the new period starts the moment the current one ends — no gap in visibility.
+                    </template>
+                    <template v-else-if="upsell.has_active_boost">
                         Freelancers see a Boosted badge and your quest ranks higher in Explore while active.
                     </template>
                     <template v-else>
@@ -41,14 +47,30 @@
         </div>
 
         <div
-            v-if="!upsell.has_active_boost && upsell.remaining_listing_label"
+            v-if="upsell.has_scheduled_follow_on"
+            class="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-4 text-sm font-semibold text-emerald-950"
+        >
+            <p class="text-[10px] font-black uppercase tracking-wide text-emerald-800">Boost extended</p>
+            <ul class="mt-3 space-y-2 text-xs leading-relaxed sm:text-sm">
+                <li v-if="upsell.active_boost">
+                    Current boost ends <span class="font-black">{{ formatWhen(upsell.active_boost.ends_at) }}</span>.
+                </li>
+                <li v-if="upsell.scheduled_boost">
+                    Your new {{ upsell.scheduled_boost.tier_label }} boost starts then and runs until
+                    <span class="font-black">{{ formatWhen(upsell.scheduled_boost.ends_at) }}</span>.
+                </li>
+            </ul>
+        </div>
+
+        <div
+            v-if="!upsell.has_active_boost && upsell.remaining_listing_label && !upsell.has_scheduled_follow_on"
             class="mt-4 rounded-xl border border-sky-100 bg-sky-50/80 px-4 py-3 text-xs font-semibold text-sky-950"
         >
             Listing accepts proposals for {{ upsell.remaining_listing_label }}.
             Boost duration cannot extend past that deadline.
         </div>
 
-        <div v-if="upsell.has_active_boost && quest.featured_boost" class="mt-4 flex flex-wrap items-center gap-2">
+        <div v-if="upsell.has_active_boost && quest.featured_boost && !upsell.has_scheduled_follow_on" class="mt-4 flex flex-wrap items-center gap-2">
             <span class="inline-flex items-center rounded-full bg-amber-500 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-white shadow-sm">
                 {{ quest.featured_boost.badge_label || 'Boosted' }}
             </span>
@@ -57,7 +79,26 @@
             </span>
         </div>
 
-        <form v-else-if="upsell.can_purchase" class="mt-5 space-y-4" @submit.prevent="submitCheckout">
+        <div
+            v-if="upsell.has_active_boost && quest.featured_boost && upsell.has_scheduled_follow_on"
+            class="mt-4 flex flex-wrap items-center gap-2"
+        >
+            <span class="inline-flex items-center rounded-full bg-amber-500 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-white shadow-sm">
+                {{ quest.featured_boost.badge_label || 'Boosted' }}
+            </span>
+            <span class="text-xs font-semibold text-slate-600">
+                Current boost active until {{ formatWhen(quest.featured_boost.expires_at) }}
+            </span>
+        </div>
+
+        <div
+            v-if="upsell.is_reboost && upsell.active_boost && !upsell.has_scheduled_follow_on"
+            class="mt-4 rounded-xl border border-amber-300 bg-amber-100/60 px-4 py-3 text-xs font-semibold text-amber-950"
+        >
+            Your {{ upsell.active_boost.tier_label }} boost ends {{ formatWhen(upsell.active_boost.ends_at) }}. Choose a follow-on boost below to keep your quest featured without interruption.
+        </div>
+
+        <form v-if="upsell.can_purchase" class="mt-5 space-y-4" @submit.prevent="submitCheckout">
             <fieldset class="space-y-3">
                 <legend class="sr-only">Choose boost duration</legend>
                 <label
@@ -96,8 +137,13 @@
             <InputError :message="checkoutForm.errors.tier" />
 
             <div class="rounded-xl border border-slate-100 bg-white/90 px-4 py-3 text-xs font-semibold leading-relaxed text-slate-600">
-                Pay with Paystack. Boost starts immediately after payment is confirmed — no admin approval needed.
-                You'll receive email confirmation and matching freelancers will see a Boosted badge.
+                <template v-if="upsell.is_reboost">
+                    Pay with Paystack. Your follow-on boost is confirmed instantly and starts the moment your current boost ends — no admin approval, no gap in visibility.
+                </template>
+                <template v-else>
+                    Pay with Paystack. Boost starts immediately after payment is confirmed — no admin approval needed.
+                    You'll receive email confirmation and matching freelancers will see a Boosted badge.
+                </template>
             </div>
 
             <button
@@ -109,7 +155,7 @@
             </button>
         </form>
 
-        <p v-else-if="!upsell.has_active_boost" class="mt-4 text-sm font-semibold text-slate-600">
+        <p v-else-if="!upsell.has_active_boost && !upsell.has_scheduled_follow_on" class="mt-4 text-sm font-semibold text-slate-600">
             Boosting is not available for this quest right now.
         </p>
     </section>
@@ -147,10 +193,26 @@ const selectedTierRow = computed(() => props.upsell.tiers?.find((t) => t.value =
 const selectedTierAvailable = computed(() => Boolean(selectedTierRow.value?.available));
 const selectedTierPrice = computed(() => selectedTierRow.value?.price_display ?? '');
 
+const panelHeading = computed(() => {
+    if (props.upsell.has_scheduled_follow_on) {
+        return 'Boost extended successfully';
+    }
+
+    if (props.upsell.is_reboost) {
+        return 'Boost ending soon — boost again';
+    }
+
+    return props.upsell.has_active_boost ? 'Your quest is boosted' : 'Reach more matching pros';
+});
+
 function formatWhen(iso) {
     if (!iso) return '—';
     try {
-        return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+        return new Date(iso).toLocaleString('en-NG', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+            timeZone: 'Africa/Lagos',
+        });
     } catch {
         return iso;
     }

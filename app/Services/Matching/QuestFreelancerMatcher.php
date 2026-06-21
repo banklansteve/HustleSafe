@@ -4,6 +4,7 @@ namespace App\Services\Matching;
 
 use App\Models\FreelancerMetric;
 use App\Models\Quest;
+use App\Models\QuestOffer;
 use App\Models\User;
 use App\Services\Freelancer\FreelancerProSubscriptionService;
 use App\Services\Verification\VerificationEngineService;
@@ -16,6 +17,7 @@ class QuestFreelancerMatcher
         protected FreelancerMetricsService $metricsService,
         protected VerificationEngineService $verificationEngine,
         protected FreelancerProSubscriptionService $proMembership,
+        protected QuestRemoteMatchPolicy $remoteMatchPolicy,
     ) {}
 
     /**
@@ -36,9 +38,19 @@ class QuestFreelancerMatcher
 
         $quest->loadMissing(['stateModel:id,name', 'localGovernment:id,name']);
 
+        $proposedFreelancerIds = QuestOffer::query()
+            ->where('quest_id', $quest->id)
+            ->pluck('freelancer_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
         $candidates = User::query()
             ->whereRelation('role', 'slug', 'freelancer')
             ->where('users.id', '<>', $quest->client_id)
+            ->when($proposedFreelancerIds !== [], fn ($q) => $q->whereNotIn('users.id', $proposedFreelancerIds))
             ->whereHas('questCategoryPreferences', fn ($q) => $q->where('quest_categories.id', $categoryId))
             ->with(['trustMetrics', 'stateModel:id,name', 'localGovernmentModel:id,name'])
             ->limit(200)
@@ -52,8 +64,9 @@ class QuestFreelancerMatcher
         $lgaCount = 0;
         $stateCount = 0;
         $nationalCount = 0;
+        $remoteQuest = $this->remoteMatchPolicy->isLocationAgnostic($quest);
 
-        $scored = $candidates->map(function (User $freelancer) use ($quest, $metricsByUser, &$lgaCount, &$stateCount, &$nationalCount) {
+        $scored = $candidates->map(function (User $freelancer) use ($quest, $metricsByUser, &$lgaCount, &$stateCount, &$nationalCount, $remoteQuest) {
             if (! $this->passesHardGates($freelancer, $quest)) {
                 return null;
             }
@@ -67,7 +80,9 @@ class QuestFreelancerMatcher
             }
 
             $tier = $breakdown['location_tier'];
-            if ($tier === 'same_lga') {
+            if ($remoteQuest || $tier === 'remote') {
+                $nationalCount++;
+            } elseif ($tier === 'same_lga') {
                 $lgaCount++;
             } elseif ($tier === 'same_state') {
                 $stateCount++;
@@ -90,7 +105,7 @@ class QuestFreelancerMatcher
         ])->values();
 
         $total = $scored->count();
-        $label = $this->statsLabel($quest, $lgaCount, $stateCount, $nationalCount);
+        $label = $this->statsLabel($quest, $lgaCount, $stateCount, $nationalCount, $remoteQuest);
 
         $recommendations = $scored->take($limit)->map(function (array $row): array {
             /** @var User $u */
@@ -166,7 +181,10 @@ class QuestFreelancerMatcher
     protected function whyRecommendedLine(User $freelancer, Quest $quest, array $breakdown): string
     {
         $parts = [];
-        if ($breakdown['location_tier'] === 'same_lga') {
+
+        if (($breakdown['location_tier'] ?? '') === 'remote') {
+            $parts[] = __('Nationwide online fit');
+        } elseif ($breakdown['location_tier'] === 'same_lga') {
             $parts[] = __('Based in your LGA');
         } elseif ($breakdown['location_tier'] === 'same_state') {
             $parts[] = __('Based in your state');
@@ -184,8 +202,14 @@ class QuestFreelancerMatcher
         return $parts !== [] ? implode(' · ', $parts) : __('Category and profile match');
     }
 
-    protected function statsLabel(Quest $quest, int $lga, int $state, int $national): string
+    protected function statsLabel(Quest $quest, int $lga, int $state, int $national, bool $remoteQuest = false): string
     {
+        if ($remoteQuest) {
+            return __(':total freelancers nationwide match this online brief on skills and category', [
+                'total' => $lga + $state + $national,
+            ]);
+        }
+
         $lgaName = $quest->localGovernment?->name ?? __('your LGA');
         $stateName = $quest->stateModel?->name ?? __('your state');
 

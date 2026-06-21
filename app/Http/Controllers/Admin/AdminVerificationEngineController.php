@@ -277,6 +277,7 @@ class AdminVerificationEngineController extends Controller
                 'id',
                 'name',
                 'email',
+                'role_id',
                 'account_type',
                 'current_verification_level',
                 'kyc_tier',

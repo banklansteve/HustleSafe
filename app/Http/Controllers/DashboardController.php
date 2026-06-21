@@ -466,7 +466,7 @@ class DashboardController extends Controller
                 'freelancer_label' => $o->freelancer?->first_name ?: $o->freelancer?->name,
                 'quest_title' => $o->quest?->title,
                 'updated_at' => $o->updated_at?->timezone('Africa/Lagos')->toIso8601String(),
-                'proposal_url' => $o->quest ? route('quests.proposals.show', [$o->quest->getRouteKey(), $o->id]) : null,
+                'proposal_url' => $o->quest ? route('quests.proposals.show', [$o->quest->getRouteKey(), $o]) : null,
             ])
             ->all();
     }
@@ -511,9 +511,9 @@ class DashboardController extends Controller
                 'icon' => 'photo',
             ],
             [
-                'label' => __('Explore quests & send proposals'),
-                'description' => __('Open briefs matched to your skills and location.'),
-                'href' => route('quests.explore'),
+                'label' => __('Find quests'),
+                'description' => __('Browse every open quest with filters, or switch to your matched feed.'),
+                'href' => route('quests.browse'),
                 'icon' => 'search',
             ],
             [

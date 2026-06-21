@@ -11,6 +11,13 @@ return [
     'win_rate_window_days' => (int) env('QUEST_PATROL_WIN_RATE_DAYS', 7),
     'win_rate_threshold_percent' => (int) env('QUEST_PATROL_WIN_RATE_THRESHOLD', 80),
     'new_account_days' => (int) env('QUEST_PATROL_NEW_ACCOUNT_DAYS', 14),
+
+    // Anti money-laundering / collusion scanning of funded + released quests.
+    'laundering_scan_days' => (int) env('QUEST_PATROL_LAUNDERING_SCAN_DAYS', 45),
+    'unworked_release_max_messages' => (int) env('QUEST_PATROL_UNWORKED_MAX_MESSAGES', 4),
+    'repeat_counterparty_window_days' => (int) env('QUEST_PATROL_REPEAT_COUNTERPARTY_DAYS', 60),
+    'repeat_counterparty_threshold' => (int) env('QUEST_PATROL_REPEAT_COUNTERPARTY_THRESHOLD', 3),
+    'circular_payment_window_days' => (int) env('QUEST_PATROL_CIRCULAR_PAYMENT_DAYS', 90),
     'dismissal_reasons' => [
         'false_positive' => 'False positive — legitimate transaction',
         'approved_variation' => 'Approved variation — client has special needs',

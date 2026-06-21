@@ -2,6 +2,7 @@
 
 namespace App\Services\Quest;
 
+use App\Enums\QuestBoostStatus;
 use App\Enums\QuestBoostTier;
 use App\Enums\QuestStatus;
 use App\Models\AdminFinancialLedgerEntry;
@@ -29,7 +30,13 @@ final class ClientQuestBoostService
             return false;
         }
 
-        if ($this->hasActiveBoost($quest)) {
+        if ($this->scheduledFollowOnBoost($quest) !== null) {
+            return false;
+        }
+
+        // Block while a boost is active, EXCEPT when it is close to expiry — in which
+        // case the owner may purchase a follow-on boost that continues seamlessly.
+        if ($this->hasActiveBoost($quest) && ! $this->isWithinReboostWindow($quest)) {
             return false;
         }
 
@@ -44,12 +51,67 @@ final class ClientQuestBoostService
             ->exists();
     }
 
+    public function activeBoost(Quest $quest): ?QuestBoost
+    {
+        return QuestBoost::query()
+            ->where('quest_id', $quest->id)
+            ->activeNow()
+            ->orderBy('ends_at')
+            ->first();
+    }
+
+    public function scheduledFollowOnBoost(Quest $quest): ?QuestBoost
+    {
+        return QuestBoost::query()
+            ->where('quest_id', $quest->id)
+            ->where('status', QuestBoostStatus::Active->value)
+            ->where('starts_at', '>', now())
+            ->orderBy('starts_at')
+            ->first();
+    }
+
+    /**
+     * How close to expiry (in hours) the "boost again" option appears:
+     * 48h for long boosts (14/30 day), 24h for short boosts (3/7 day).
+     */
+    public function reboostWindowHours(QuestBoostTier $tier): int
+    {
+        return in_array($tier, [QuestBoostTier::FourteenDay, QuestBoostTier::ThirtyDay], true) ? 48 : 24;
+    }
+
+    public function isWithinReboostWindow(Quest $quest): bool
+    {
+        $active = $this->activeBoost($quest);
+        if ($active === null || $active->ends_at === null) {
+            return false;
+        }
+
+        $window = $this->reboostWindowHours($active->tierEnum());
+
+        return now()->gte($active->ends_at->copy()->subHours($window));
+    }
+
+    /**
+     * When the next boost should begin: right after the current one ends if
+     * re-boosting near expiry, otherwise immediately.
+     */
+    public function boostAnchor(Quest $quest): Carbon
+    {
+        $active = $this->activeBoost($quest);
+        if ($active?->ends_at !== null && $this->isWithinReboostWindow($quest)) {
+            return $active->ends_at->copy();
+        }
+
+        return now();
+    }
+
     /**
      * @return list<array<string, mixed>>
      */
     public function availableTierOptions(Quest $quest): array
     {
-        $remainingHours = $this->remainingListingHours($quest);
+        $anchor = $this->boostAnchor($quest);
+        $remainingHours = $this->remainingListingHours($quest, $anchor);
 
         return collect(PlatformSettings::questBoostPricing())
             ->keys()
@@ -61,7 +123,7 @@ final class ClientQuestBoostService
 
                 return $tier->durationHours() <= $remainingHours;
             })
-            ->map(fn (QuestBoostTier $tier) => $this->tierRow($tier, $quest, $remainingHours))
+            ->map(fn (QuestBoostTier $tier) => $this->tierRow($tier, $quest, $remainingHours, $anchor))
             ->values()
             ->all();
     }
@@ -71,21 +133,38 @@ final class ClientQuestBoostService
      */
     public function upsellPayload(Quest $quest, User $client, bool $highlightPanel = false): array
     {
-        $remainingHours = $this->remainingListingHours($quest);
+        $anchor = $this->boostAnchor($quest);
+        $remainingHours = $this->remainingListingHours($quest, $anchor);
         $allTiers = collect(QuestBoostTier::ordered())
-            ->map(fn (QuestBoostTier $tier) => $this->tierRow($tier, $quest, $remainingHours))
+            ->map(fn (QuestBoostTier $tier) => $this->tierRow($tier, $quest, $remainingHours, $anchor))
             ->values()
             ->all();
 
         $canPurchase = $this->canPurchase($quest, $client);
+        $activeBoost = $this->activeBoost($quest);
+        $scheduledBoost = $this->scheduledFollowOnBoost($quest);
+        $isReboost = $this->isWithinReboostWindow($quest) && $scheduledBoost === null;
         $showPanel = $canPurchase
-            && $quest->boost_upsell_dismissed_at === null
-            && ($highlightPanel || $quest->created_at?->greaterThan(now()->subDays(3)));
+            && ($isReboost
+                || ($quest->boost_upsell_dismissed_at === null
+                    && ($highlightPanel || $quest->created_at?->greaterThan(now()->subDays(3)))))
+            || $scheduledBoost !== null;
 
         return [
             'can_purchase' => $canPurchase,
             'show_panel' => $showPanel,
             'has_active_boost' => $this->hasActiveBoost($quest),
+            'is_reboost' => $isReboost,
+            'has_scheduled_follow_on' => $scheduledBoost !== null,
+            'active_boost' => $activeBoost ? [
+                'tier_label' => $activeBoost->tierEnum()->label(),
+                'ends_at' => $activeBoost->ends_at?->timezone('Africa/Lagos')->toIso8601String(),
+            ] : null,
+            'scheduled_boost' => $scheduledBoost ? [
+                'tier_label' => $scheduledBoost->tierEnum()->label(),
+                'starts_at' => $scheduledBoost->starts_at->timezone('Africa/Lagos')->toIso8601String(),
+                'ends_at' => $scheduledBoost->ends_at->timezone('Africa/Lagos')->toIso8601String(),
+            ] : null,
             'listing_expires_at' => $quest->listing_expires_at?->timezone('Africa/Lagos')->toIso8601String(),
             'remaining_listing_hours' => $remainingHours,
             'remaining_listing_label' => $this->remainingListingLabel($quest, $remainingHours),
@@ -97,22 +176,25 @@ final class ClientQuestBoostService
         ];
     }
 
-    public function remainingListingHours(Quest $quest): ?float
+    public function remainingListingHours(Quest $quest, ?Carbon $anchor = null): ?float
     {
         if ($quest->status !== QuestStatus::Open || $quest->listing_expires_at === null) {
             return null;
         }
 
-        if ($quest->listing_expires_at->lte(now())) {
+        $anchor ??= now();
+
+        if ($quest->listing_expires_at->lte($anchor)) {
             return 0.0;
         }
 
-        return max(0.0, now()->diffInMinutes($quest->listing_expires_at, false) / 60);
+        return max(0.0, $anchor->diffInMinutes($quest->listing_expires_at, false) / 60);
     }
 
-    public function resolveBoostEndsAt(Quest $quest, QuestBoostTier $tier): Carbon
+    public function resolveBoostEndsAt(Quest $quest, QuestBoostTier $tier, ?Carbon $anchor = null): Carbon
     {
-        $endsAt = now()->addHours($tier->durationHours());
+        $anchor ??= now();
+        $endsAt = $anchor->copy()->addHours($tier->durationHours());
 
         if ($quest->listing_expires_at !== null && $quest->status === QuestStatus::Open) {
             $endsAt = $endsAt->min($quest->listing_expires_at);
@@ -123,7 +205,7 @@ final class ClientQuestBoostService
 
     public function assertTierAllowed(Quest $quest, QuestBoostTier $tier): void
     {
-        $remainingHours = $this->remainingListingHours($quest);
+        $remainingHours = $this->remainingListingHours($quest, $this->boostAnchor($quest));
 
         if ($remainingHours !== null && $tier->durationHours() > $remainingHours) {
             throw ValidationException::withMessages([
@@ -244,11 +326,11 @@ final class ClientQuestBoostService
     /**
      * @return array<string, mixed>
      */
-    private function tierRow(QuestBoostTier $tier, Quest $quest, ?float $remainingHours): array
+    private function tierRow(QuestBoostTier $tier, Quest $quest, ?float $remainingHours, ?Carbon $anchor = null): array
     {
         $priceMinor = PlatformSettings::questBoostPriceMinor($tier);
         $available = $remainingHours === null || $tier->durationHours() <= $remainingHours;
-        $endsAt = $this->resolveBoostEndsAt($quest, $tier);
+        $endsAt = $this->resolveBoostEndsAt($quest, $tier, $anchor);
 
         return [
             'value' => $tier->value,

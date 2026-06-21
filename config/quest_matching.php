@@ -15,6 +15,26 @@ return [
         'activity' => 0.05,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Remote / online-friendly quests (location does not affect fit)
+    |--------------------------------------------------------------------------
+    |
+    | Used when the client chose remote-friendly hiring or the category is
+    | normally delivered online (e.g. software, design). Skills and profile
+    | quality matter more than state/LGA overlap.
+    |
+    */
+    'remote_weights' => [
+        'location' => 0.0,
+        'skills' => 0.45,
+        'budget' => 0.15,
+        'tier_quality' => 0.25,
+        'activity' => 0.15,
+    ],
+
+    'remote_location_score' => 100,
+
     'skills_minimum_ratio' => 0.50,
 
     'location_tiers' => [

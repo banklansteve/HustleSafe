@@ -2,28 +2,25 @@
 
 namespace App\Services\Contracts;
 
+use App\Models\Quest;
 use App\Models\QuestContract;
-use Illuminate\Support\Facades\DB;
+use App\Support\References\HustleSafeReferenceAlphabet;
+use App\Support\References\QuestReferenceCodec;
+use Carbon\CarbonInterface;
 
 class ContractReferenceGenerator
 {
-    public function next(): string
+    public function nextForQuest(Quest $quest, ?CarbonInterface $at = null): string
     {
-        $year = now('Africa/Lagos')->format('Y');
+        $at ??= now('Africa/Lagos');
+        $year2 = QuestReferenceCodec::year2($at);
+        $questHash4 = QuestReferenceCodec::questHash4($quest);
 
-        return DB::transaction(function () use ($year): string {
-            $latest = QuestContract::query()
-                ->where('reference_code', 'like', "CTR-{$year}-%")
-                ->orderByDesc('reference_code')
-                ->lockForUpdate()
-                ->value('reference_code');
+        do {
+            $suffix = HustleSafeReferenceAlphabet::random(4);
+            $code = "CTR-{$year2}-{$questHash4}-{$suffix}";
+        } while (QuestContract::query()->where('reference_code', $code)->exists());
 
-            $sequence = 1;
-            if (is_string($latest) && preg_match('/CTR-\d{4}-(\d+)/', $latest, $matches)) {
-                $sequence = ((int) $matches[1]) + 1;
-            }
-
-            return sprintf('CTR-%s-%05d', $year, $sequence);
-        });
+        return $code;
     }
 }

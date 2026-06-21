@@ -14,6 +14,7 @@ use App\Services\QuestProposalPricingHintService;
 use App\Services\Verification\VerificationEngineService;
 use App\Services\UserNotificationInboxService;
 use App\Support\PlatformSettings;
+use App\Support\ProposalMoneyCalculator;
 use App\Support\QuestCommerceUi;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -269,6 +270,7 @@ class QuestProposalController extends Controller
 
         return [
             'offer_id' => $offer->id,
+            'offer_route_key' => $offer->getRouteKey(),
             'pitch' => $offer->pitch,
             'scope_detail' => $offer->scope_detail,
             'warranty_terms' => $offer->warranty_terms ?? '',
@@ -318,6 +320,9 @@ class QuestProposalController extends Controller
             'scheduled_start_date' => $quest->scheduled_start_date?->toDateString(),
             'estimated_delivery_date' => $quest->estimated_delivery_date?->toDateString(),
             'delivery_deadline' => $quest->delivery_deadline?->toDateString(),
+            'completion_schedule' => app(\App\Services\Quest\QuestCompletionScheduleService::class)->toPayload($quest),
+            'recurring_engagement' => app(\App\Services\Quest\QuestRecurringEngagementService::class)->proposalTermsPayload($quest),
+            'contract_ends_at' => $quest->contract_ends_at?->toDateString(),
             'auto_listing_expiry_days' => $quest->auto_listing_expiry_days,
             'preferences' => app(\App\Services\Quest\QuestPreferenceService::class)->displayListForQuest($quest->loadMissing('preferences')),
             'has_specified_preferences' => app(\App\Services\Quest\QuestPreferenceService::class)->hasSpecifiedPreferences($quest),
@@ -336,6 +341,9 @@ class QuestProposalController extends Controller
         if ($observerMode) {
             return [
                 'id' => $offer->id,
+                'uuid' => $offer->uuid,
+                'reference_code' => $offer->reference_code,
+                'route_key' => $offer->getRouteKey(),
                 'status' => $offer->status,
                 'pitch' => Str::limit((string) ($offer->pitch ?? ''), 450),
                 'scope_detail' => Str::limit((string) ($offer->scope_detail ?? ''), 520),
@@ -370,6 +378,9 @@ class QuestProposalController extends Controller
 
         return [
             'id' => $offer->id,
+            'uuid' => $offer->uuid,
+            'reference_code' => $offer->reference_code,
+            'route_key' => $offer->getRouteKey(),
             'status' => $offer->status,
             'pitch' => $offer->pitch,
             'scope_detail' => $offer->scope_detail,
@@ -383,7 +394,9 @@ class QuestProposalController extends Controller
             'progress_report_frequency' => $offer->progress_report_frequency,
             'materials' => $offer->materials ?? [],
             'pricing_snapshot' => $p,
-            'quoted_amount_minor' => (int) ($offer->quoted_amount_minor ?? ($p['grand_total_minor'] ?? 0)),
+            'quote_total_minor' => ProposalMoneyCalculator::quoteTotalMinor($p),
+            'escrow_total_minor' => ProposalMoneyCalculator::escrowTotalMinor($p),
+            'quoted_amount_minor' => ProposalMoneyCalculator::quoteTotalMinor($p),
             'created_at' => $offer->created_at?->timezone('Africa/Lagos')->toIso8601String(),
             'client_view_count' => (int) ($offer->client_view_count ?? 0),
             'last_client_view_at' => $offer->last_client_view_at?->timezone('Africa/Lagos')->toIso8601String(),

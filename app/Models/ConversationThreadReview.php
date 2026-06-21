@@ -5,9 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ConversationThreadReview extends Model
 {
+    use SoftDeletes;
     protected $fillable = [
         'quest_conversation_thread_id',
         'proposal_clarification_thread_id',
@@ -69,6 +71,11 @@ class ConversationThreadReview extends Model
     public function assignedStaff(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_staff_id');
+    }
+
+    public function reviewedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
     }
 
     public function superAdminEscalationBy(): BelongsTo

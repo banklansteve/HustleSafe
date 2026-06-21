@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Events\QuestConversationMessageSent;
 use App\Events\QuestConversationTyping;
 use App\Http\Requests\Quests\StoreQuestConversationMessageRequest;
 use App\Models\Quest;
@@ -10,11 +9,10 @@ use App\Models\QuestConversationMessage;
 use App\Models\QuestConversationThread;
 use App\Models\QuestOffer;
 use App\Models\User;
-use App\Notifications\QuestThreadMessageNotification;
 use App\Services\ConversationMonitoring\ConversationMessageRedactionService;
-use App\Services\ConversationMonitoring\ConversationMonitoringService;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\UserNotificationInboxService;
+use App\Support\ConversationScanDispatch;
 use App\Support\MessagingViewPresence;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -160,45 +158,14 @@ class QuestConversationController extends Controller
             'body' => $request->validated()['body'],
         ]);
 
-        app(ConversationMonitoringService::class)->processMessage($message->fresh());
-
         $thread->increment('messages_count');
         $thread->forceFill(['last_message_at' => now()])->save();
 
-        $recipient = (int) $user->id === (int) $freelancerParty->id
-            ? User::query()->findOrFail($quest->client_id)
-            : $freelancerParty;
-
-        $recipient->unreadNotifications()
-            ->where('type', QuestThreadMessageNotification::class)
-            ->get()
-            ->each(function ($n) use ($quest, $user): void {
-                $d = is_array($n->data) ? $n->data : [];
-                if (($d['kind'] ?? '') === 'quest_thread_message'
-                    && (int) ($d['quest_id'] ?? 0) === (int) $quest->id
-                    && (int) ($d['sender_id'] ?? 0) === (int) $user->id) {
-                    $n->delete();
-                }
-            });
-
-        if (! MessagingViewPresence::isViewing(
-            MessagingViewPresence::SCOPE_QUEST_THREAD,
-            (int) $thread->id,
-            (int) $recipient->id,
-        )) {
-            $recipient->notify(new QuestThreadMessageNotification($quest, $user, $message));
-        }
-
-        $message->load(['user:id,first_name,name,slug,avatar_url,role_id', 'user.role:id,slug']);
-
-        broadcast(new QuestConversationMessageSent(
-            $thread->id,
-            $this->messageBroadcastPayload($message),
-        ));
+        ConversationScanDispatch::questMessage($message->id);
 
         if ($request->expectsJson()) {
             return response()->json([
-                'message' => $this->messagePayload($message, $user),
+                'message' => $this->composerMessagePayload($message, $user),
             ]);
         }
 
@@ -335,6 +302,23 @@ class QuestConversationController extends Controller
             'avatar_url' => $freelancerParty->avatar_url,
             'role' => 'freelancer',
             'profile_url' => $this->freelancerPublicProfileUrl($freelancerParty),
+        ];
+    }
+
+    /**
+     * Immediate composer response for the sender — scan runs after the HTTP response.
+     *
+     * @return array<string, mixed>
+     */
+    protected function composerMessagePayload(QuestConversationMessage $m, User $viewer): array
+    {
+        return [
+            'id' => $m->id,
+            'body' => (string) $m->body,
+            'is_redacted' => false,
+            'redaction_label' => null,
+            'created_at' => $m->created_at?->timezone('Africa/Lagos')->toIso8601String(),
+            'sender' => $this->messageSenderPayload($viewer, $viewer),
         ];
     }
 

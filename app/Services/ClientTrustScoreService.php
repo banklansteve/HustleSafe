@@ -82,7 +82,15 @@ class ClientTrustScoreService
 
         $user->loadMissing('trustMetrics');
         $ghostPenalty = min(15, (int) ($user->trustMetrics?->client_proposal_ghost_strikes ?? 0) * 5);
-        $score = (int) round(min(100, max(0, ($linear * 100) - $ghostPenalty)));
+        $awardCancelCount = (int) ($user->trustMetrics?->client_award_cancellation_count ?? 0);
+        if ($awardCancelCount === 0 && \Illuminate\Support\Facades\Schema::hasTable('proposal_behaviour_logs')) {
+            $awardCancelCount = \App\Models\ProposalBehaviourLog::query()
+                ->where('user_id', $user->id)
+                ->where('event_type', 'client_award_cancelled')
+                ->count();
+        }
+        $awardCancelPenalty = min(20, $awardCancelCount * (int) config('scoring.client.award_cancellation_penalty_points', 4));
+        $score = (int) round(min(100, max(0, ($linear * 100) - $ghostPenalty - $awardCancelPenalty)));
 
         return [
             'score' => $score,
@@ -97,6 +105,8 @@ class ClientTrustScoreService
                 'address_verified' => round($addressNorm, 4),
                 'linear_raw' => round($linear, 4),
                 'ghost_strike_penalty' => $ghostPenalty,
+                'award_cancellation_penalty' => $awardCancelPenalty,
+                'award_cancellation_count' => $awardCancelCount,
                 'terminal_quests' => $terminal,
             ],
         ];

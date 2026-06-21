@@ -382,7 +382,14 @@
                                 <InfoItem label="Budget" :value="questDetail.overview.quest.budget" />
                                 <InfoItem label="Project type" :value="labelize(questDetail.overview.quest.project_type || 'not set')" />
                                 <InfoItem label="Location" :value="questDetail.overview.quest.location || 'Remote / not specified'" />
-                                <InfoItem label="Due date" :value="formatDate(questDetail.overview.quest.due_at)" />
+                                <InfoItem label="Planned finish" :value="formatClientDate(questDetail.overview.quest.completion_schedule?.planned_finish_date) || '—'" />
+                                <InfoItem label="Delivery deadline" :value="formatClientDate(questDetail.overview.quest.completion_schedule?.hard_deadline_date) || '—'" />
+                                <InfoItem
+                                    label="Engagement anchor"
+                                    :value="questDetail.overview.quest.completion_schedule?.engagement_anchor_label
+                                        ? `${questDetail.overview.quest.completion_schedule.engagement_anchor_label} · ${formatClientDate(questDetail.overview.quest.completion_schedule.engagement_anchor_date) || '—'}`
+                                        : formatDate(questDetail.overview.quest.due_at)"
+                                />
                                 <InfoItem label="Media" :value="`${questDetail.media.items.length} attachment(s)`" />
                             </dl>
                         </article>
@@ -626,6 +633,7 @@ import AdminTabs from '@/Components/Admin/AdminTabs.vue';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { Link, router } from '@inertiajs/vue3';
 import axios from 'axios';
+import { formatClientDate } from '@/utils/questCompletionSchedule';
 import { computed, defineComponent, h, reactive, ref, watch } from 'vue';
 
 const props = defineProps({

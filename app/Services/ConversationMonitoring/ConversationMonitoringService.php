@@ -56,6 +56,9 @@ class ConversationMonitoringService
                 'trigger_category' => $hit['category']->value,
                 'matched_pattern_redacted' => $hit['pattern_redacted'],
                 'confidence' => $hit['confidence'],
+                'detection_reasoning' => $hit['reasoning'] ?? null,
+                'pattern_score' => $hit['pattern_score'] ?? null,
+                'context_score' => $hit['context_score'] ?? null,
                 'status' => 'pending',
                 'flagged_at' => now(),
             ]);
@@ -106,6 +109,9 @@ class ConversationMonitoringService
                 'trigger_category' => $hit['category']->value,
                 'matched_pattern_redacted' => $hit['pattern_redacted'],
                 'confidence' => $hit['confidence'],
+                'detection_reasoning' => $hit['reasoning'] ?? null,
+                'pattern_score' => $hit['pattern_score'] ?? null,
+                'context_score' => $hit['context_score'] ?? null,
                 'status' => 'pending',
                 'flagged_at' => now(),
             ]);
@@ -169,7 +175,7 @@ class ConversationMonitoringService
         array $categories,
         int $pendingCount,
     ): void {
-        if ($review->exists && in_array($review->status, ['dismissed', 'resolved'], true)) {
+        if ($review->exists && in_array($review->status, ['dismissed', 'resolved', 'warned'], true)) {
             $review->status = 'pending';
         } elseif (! $review->exists) {
             $review->status = 'pending';

@@ -239,7 +239,7 @@ import PremiumDatePicker from '@/Components/Ui/PremiumDatePicker.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
 import { ReLoader4Line } from '@kalimahapps/vue-icons/re';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 
 const props = defineProps({
     mode: {

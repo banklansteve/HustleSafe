@@ -29,8 +29,9 @@ class QuestOfferController extends Controller
 
         $user = $request->user();
         $payload = $request->normalizedPayload();
-        $grand = (int) ($payload['pricing_snapshot']['grand_total_minor'] ?? 0);
-        $readiness->assertCanSubmitOffer($user, $quest, $grand);
+        $quoteMinor = (int) ($payload['pricing_snapshot']['quote_total_minor'] ?? 0);
+        $escrowMinor = (int) ($payload['pricing_snapshot']['escrow_total_minor'] ?? $payload['pricing_snapshot']['grand_total_minor'] ?? 0);
+        $readiness->assertCanSubmitOffer($user, $quest, $quoteMinor);
         app(\App\Services\Freelancer\ProposalQuotaService::class)->assertCanSubmit($user, $quest);
 
         $validated = $request->validated();
@@ -60,13 +61,16 @@ class QuestOfferController extends Controller
                 'estimated_duration_days' => $estimatedDurationDays,
                 'corrections_included' => (bool) ($validated['corrections_included'] ?? false),
                 'corrections_rounds' => ($validated['corrections_included'] ?? false) ? ($validated['corrections_rounds'] ?? null) : null,
+                'accepts_installment_terms' => app(\App\Services\Quest\QuestRecurringEngagementService::class)->isRecurring($quest)
+                    ? $request->boolean('accepts_installment_terms')
+                    : false,
                 'progress_report_frequency' => $validated['progress_report_frequency'] ?? null,
                 'progress_report_frequency_note' => ($validated['progress_report_frequency'] ?? null) === 'custom'
                     ? ($validated['progress_report_frequency_note'] ?? null)
                     : null,
                 'materials' => $payload['materials'],
                 'pricing_snapshot' => $payload['pricing_snapshot'],
-                'quoted_amount_minor' => $grand,
+                'quoted_amount_minor' => $quoteMinor,
                 'status' => 'submitted',
                 'freelancer_edit_deadline_at' => now()->addHours($editHours),
             ]);
@@ -107,7 +111,7 @@ class QuestOfferController extends Controller
             $verificationEngine->recordArbitrationAgreement($quest, $offer, $user, 'freelancer');
         }
 
-        if ($grand >= (int) ($verificationEngine->safeguards()['anomaly_high_value_minor'] ?? 0)) {
+        if ($escrowMinor >= (int) ($verificationEngine->safeguards()['anomaly_high_value_minor'] ?? 0)) {
             $quest->loadMissing(['client', 'questCategory', 'stateModel']);
             app(AdminActivityFeedService::class)->record(
                 'financial',
@@ -119,7 +123,7 @@ class QuestOfferController extends Controller
                     ['type' => 'quest', 'id' => $quest->id, 'label' => $quest->title],
                 ]),
                 ['category' => $quest->questCategory?->name, 'state' => $quest->stateModel?->name],
-                $grand,
+                $escrowMinor,
                 $user,
                 QuestOffer::class,
                 $offer->id,
@@ -149,8 +153,8 @@ class QuestOfferController extends Controller
         $this->authorize('update', $offer);
 
         $payload = $request->normalizedPayload();
-        $grand = (int) ($payload['pricing_snapshot']['grand_total_minor'] ?? 0);
-        $readiness->assertCanSubmitOffer($request->user(), $quest, $grand);
+        $quoteMinor = (int) ($payload['pricing_snapshot']['quote_total_minor'] ?? 0);
+        $readiness->assertCanSubmitOffer($request->user(), $quest, $quoteMinor);
         $validated = $request->validated();
 
         $estimatedDurationDays = $validated['estimated_duration_days'] ?? null;
@@ -179,7 +183,7 @@ class QuestOfferController extends Controller
                 : null,
             'materials' => $payload['materials'],
             'pricing_snapshot' => $payload['pricing_snapshot'],
-            'quoted_amount_minor' => $grand,
+            'quoted_amount_minor' => $quoteMinor,
         ]);
 
         DeliverQuestOfferClientNotification::dispatch($offer->id, 'updated')->afterResponse();

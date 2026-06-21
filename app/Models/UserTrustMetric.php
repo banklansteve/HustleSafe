@@ -14,6 +14,7 @@ class UserTrustMetric extends Model
         'reliability_penalty_points',
         'shortlisted_withdrawal_count',
         'client_proposal_ghost_strikes',
+        'client_award_cancellation_count',
         'client_quest_posting_flagged',
         'profile_completion_percent',
         'avg_rating_as_freelancer',

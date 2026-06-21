@@ -678,6 +678,69 @@
                                 </template>
                             </div>
                         </div>
+
+                        <div
+                            id="account-skills"
+                            class="rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm ring-1 ring-slate-100 sm:p-8"
+                        >
+                            <div class="flex items-start justify-between gap-4">
+                                <div>
+                                    <h3 class="font-display text-lg font-bold text-slate-900">
+                                        Skills
+                                    </h3>
+                                    <p class="mt-1 text-sm font-medium text-slate-600">
+                                        Pick skills from the same list clients use on quests. Matching compares these exactly, so choose suggestions rather than typing your own labels.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    class="rounded-full p-2 text-slate-400 ring-1 ring-slate-200/80 transition hover:bg-primary-50 hover:text-primary-800"
+                                    :aria-pressed="editSection === 'skills'"
+                                    :aria-label="editSection === 'skills' ? 'Close editor' : 'Edit skills'"
+                                    @click="toggleSection('skills')"
+                                >
+                                    <PencilSquareIcon v-if="editSection !== 'skills'" class="h-6 w-6" aria-hidden="true" />
+                                    <XMarkIcon v-else class="h-6 w-6" aria-hidden="true" />
+                                </button>
+                            </div>
+                            <div class="mt-6 min-h-[8rem]">
+                                <div v-if="editSection !== 'skills'" class="flex flex-wrap gap-2">
+                                    <span
+                                        v-for="s in skills"
+                                        :key="s"
+                                        class="rounded-full border border-primary-100 bg-primary-50 px-3 py-1.5 text-xs font-bold text-primary-900 ring-1 ring-primary-100/80"
+                                    >
+                                        {{ s }}
+                                    </span>
+                                    <span v-if="!skills.length" class="text-sm font-semibold text-slate-500">
+                                        No skills added yet — add a few so quests can match you.
+                                    </span>
+                                </div>
+                                <template v-else>
+                                    <SkillTagInput
+                                        v-model="skillsForm.skills"
+                                        :category-ids="categoryForm.quest_category_ids"
+                                        :suggest-url="skillsSuggestUrl"
+                                        :max="30"
+                                        dictionary-only
+                                        input-id="account-skills-input"
+                                        placeholder="Search skills from your categories…"
+                                        :invalid="!!skillsForm.errors.skills"
+                                    />
+                                    <div class="mt-5 flex flex-wrap items-center gap-3">
+                                        <button
+                                            type="button"
+                                            class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-md hover:bg-primary-700 disabled:opacity-50"
+                                            :disabled="skillsForm.processing"
+                                            @click="submitSkills"
+                                        >
+                                            Save skills
+                                        </button>
+                                        <InputError class="w-full sm:w-auto" :message="skillsForm.errors.skills" />
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
                     </div>
 
                     <div
@@ -1316,6 +1379,7 @@
 
 <script setup>
 import InputError from '@/Components/InputError.vue';
+import SkillTagInput from '@/Components/Quests/SkillTagInput.vue';
 import UserProfileAvatar from '@/Components/Ui/UserProfileAvatar.vue';
 import UiSelect from '@/Components/Ui/UiSelect.vue';
 import TrustHalfDonut from '@/Components/Home/TrustHalfDonut.vue';
@@ -1350,6 +1414,8 @@ const props = defineProps({
     portfolio: { type: Object, required: true },
     categories: { type: Array, default: () => [] },
     questCategoryTree: { type: Array, default: () => [] },
+    skills: { type: Array, default: () => [] },
+    skillsSuggestUrl: { type: String, default: '' },
     credentials: { type: Array, default: () => [] },
     cac: { type: Object, default: null },
     visibility: { type: Object, required: true },
@@ -1517,6 +1583,20 @@ const categoryForm = useForm({
     quest_category_ids: props.categories.map((c) => c.id),
 });
 
+const skillsForm = useForm({
+    skills: [...(props.skills || [])],
+});
+
+function submitSkills() {
+    skillsForm.patch(route('account.skills.update'), {
+        preserveScroll: true,
+        replace: true,
+        onSuccess: () => {
+            editSection.value = null;
+        },
+    });
+}
+
 /** One inline editor at a time — view mode avoids accidental edits. */
 const editSection = ref(null);
 
@@ -1665,6 +1745,14 @@ watch(
     () => props.categories,
     (cats) => {
         categoryForm.quest_category_ids = (cats || []).map((c) => c.id);
+    },
+    { deep: true },
+);
+
+watch(
+    () => props.skills,
+    (skills) => {
+        skillsForm.skills = [...(skills || [])];
     },
     { deep: true },
 );

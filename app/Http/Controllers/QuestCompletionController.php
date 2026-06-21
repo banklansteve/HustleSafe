@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\QuestStatus;
 use App\Models\Quest;
 use App\Services\Payments\EscrowPaymentService;
-use App\Services\QuestCompletionEventLogger;
+use App\Services\Quest\QuestRecurringEngagementService;
 use App\Support\EscrowReleasePolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,6 +16,7 @@ class QuestCompletionController extends Controller
     public function __construct(
         private readonly EscrowPaymentService $escrowPayments,
         private readonly QuestCompletionEventLogger $events,
+        private readonly QuestRecurringEngagementService $recurring,
     ) {}
 
     public function acknowledgeDelivery(Request $request, Quest $quest): RedirectResponse
@@ -27,7 +28,7 @@ class QuestCompletionController extends Controller
         $request->validate(['confirm' => ['accepted']]);
 
         if (! EscrowReleasePolicy::canAcknowledgeDelivery($quest, $request->user())) {
-            throw ValidationException::withMessages(['quest' => [__('Delivery cannot be confirmed right now.')]]);
+            throw ValidationException::withMessages(['quest' => [__('Delivery cannot be approved right now. Wait for the freelancer to submit deliverables.')]]);
         }
 
         $quest->update([
@@ -75,7 +76,7 @@ class QuestCompletionController extends Controller
         }
 
         if ($quest->delivery_acknowledged_at === null) {
-            throw ValidationException::withMessages(['quest' => [__('Confirm delivery before releasing funds.')]]);
+            throw ValidationException::withMessages(['quest' => [__('Approve the deliverable before releasing funds.')]]);
         }
 
         if (! EscrowReleasePolicy::canReleaseFunds($quest, $request->user())) {
@@ -85,12 +86,28 @@ class QuestCompletionController extends Controller
         }
 
         try {
-            $this->escrowPayments->releaseEscrowToWallet($quest->fresh(), $request->user(), __('Client released escrow after delivery confirmation'));
+            $result = $this->recurring->processApprovedRelease(
+                $quest->fresh(),
+                $request->user(),
+                __('Client released escrow after delivery confirmation'),
+            );
         } catch (ValidationException $e) {
             return back()->withErrors($e->errors());
         }
 
         $quest->refresh();
+
+        if (! $result['quest_completed']) {
+            $this->events->record($quest->fresh(), 'installment_released', $request->user(), $request, [
+                'installment_number' => $result['installment_number'],
+                'amount_minor' => $result['amount_minor'],
+            ]);
+
+            return back()->with('success', __('Payment for period :num released to the worker\'s wallet. The job continues until the contract ends.', [
+                'num' => $result['installment_number'],
+            ]));
+        }
+
         $quest->update([
             'status' => QuestStatus::Completed,
             'completed_at' => now(),

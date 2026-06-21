@@ -3,15 +3,16 @@
 namespace App\Notifications;
 
 use App\Models\QuestOffer;
+use App\Notifications\Concerns\SendsBrandedMail;
+use App\Services\Proposals\ProposalClarificationPromptService;
 use App\Support\PlatformFeeDisclosure;
 use App\Support\PlatformSettings;
 use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class ProposalAcceptedClientNotification extends Notification
 {
-    use Queueable;
+    use Queueable, SendsBrandedMail;
 
     public function __construct(
         public QuestOffer $offer,
@@ -25,28 +26,45 @@ class ProposalAcceptedClientNotification extends Notification
         return ['mail', 'database'];
     }
 
-    public function toMail(object $notifiable): MailMessage
+    public function toMail(object $notifiable): \Illuminate\Notifications\Messages\MailMessage
     {
         $this->offer->loadMissing(['quest', 'freelancer']);
         $quest = $this->offer->quest;
-        $first = $notifiable->first_name ?: $notifiable->name;
-        $grand = (int) ($this->offer->quoted_amount_minor ?? 0);
+        $freelancerName = $this->offer->freelancer?->name ?? __('The freelancer');
+        $payout = app(ProposalClarificationPromptService::class)->awardPayoutBreakdown($this->offer);
         $feePct = PlatformSettings::platformFeePercent();
         $disclosure = PlatformFeeDisclosure::toArray($feePct);
+        $questUrl = $quest ? route('quests.show', $quest, absolute: true) : url('/');
 
-        return (new MailMessage)
-            ->subject(__('Next step: fund escrow for :title', ['title' => $quest?->title ?? 'your quest']))
-            ->markdown('mail.quests.proposal-accepted-client', [
-                'firstName' => $first,
-                'questTitle' => $quest?->title,
-                'freelancerName' => $this->offer->freelancer?->name ?? __('Freelancer'),
-                'grandNgn' => number_format($grand / 100, 0, '.', ','),
-                'feePercent' => $disclosure['platform_fee_percent_label'],
-                'feeDisclosure' => $disclosure,
-                'feeSummaryLines' => PlatformFeeDisclosure::summaryLines($feePct),
-                'termsUrl' => route('legal.terms', absolute: true),
-                'questUrl' => $quest ? route('quests.show', $quest, absolute: true) : url('/'),
-            ]);
+        $panel = collect([
+            __('Worker: :name', ['name' => $freelancerName]),
+            __('Job value (escrow): :amount', ['amount' => $payout['gross_label']]),
+            __('Platform fee on release: :pct% (:fee)', [
+                'pct' => $disclosure['platform_fee_percent_label'],
+                'fee' => $payout['platform_fee_label'],
+            ]),
+            __('Worker receives in wallet: :net', ['net' => $payout['net_to_wallet_label']]),
+        ])->implode("\n\n");
+
+        return $this->brandedMail(
+            subject: __(':name confirmed — fund escrow for :title', [
+                'name' => $freelancerName,
+                'title' => $quest?->title ?? __('your quest'),
+            ]),
+            headline: __('Freelancer confirmed the award'),
+            notifiable: $notifiable,
+            lines: [
+                __(':name has confirmed the award terms for “:title”. You can now fund escrow so work can begin.', [
+                    'name' => $freelancerName,
+                    'title' => $quest?->title ?? __('your quest'),
+                ]),
+                __('Fund the full agreed job amount into escrow. Payment stays protected until you approve delivery (or the review period ends with no complaint).'),
+            ],
+            panel: $panel,
+            ctaUrl: $questUrl,
+            ctaLabel: __('Open quest & fund escrow'),
+            footerLine: __('Thanks for keeping payments on-platform — it protects both sides.'),
+        );
     }
 
     /**
@@ -54,16 +72,18 @@ class ProposalAcceptedClientNotification extends Notification
      */
     public function toArray(object $notifiable): array
     {
-        $this->offer->loadMissing('quest');
+        $this->offer->loadMissing(['quest', 'freelancer']);
         $quest = $this->offer->quest;
+        $freelancerName = $this->offer->freelancer?->name ?? __('The freelancer');
         $href = $quest ? route('quests.show', $quest, absolute: false) : '/';
 
         return [
-            'kind' => 'proposal_accepted_client',
-            'headline' => __('Proposal accepted — fund escrow'),
-            'title' => __('Proposal accepted — fund escrow'),
+            'kind' => 'proposal_award_confirmed_client',
+            'headline' => __('Freelancer confirmed award'),
+            'title' => __('Freelancer confirmed award'),
             'quest_title' => $quest?->title,
-            'body' => __('You accepted a proposal. Fund escrow (including fees) before work is authorised.'),
+            'freelancer_name' => $freelancerName,
+            'body' => __(':name confirmed the award terms. Fund escrow to start work.', ['name' => $freelancerName]),
             'href' => $href,
         ];
     }

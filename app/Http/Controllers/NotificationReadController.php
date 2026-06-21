@@ -68,7 +68,12 @@ class NotificationReadController extends Controller
         }
 
         if (($data['kind'] ?? '') === 'conversation_policy_warning') {
-            $inbox->markConversationPolicyWarnings($user);
+            $warningId = (int) ($data['warning_id'] ?? 0);
+            if ($warningId > 0) {
+                $inbox->markConversationPolicyWarning($user, $warningId);
+            } else {
+                $inbox->markConversationPolicyWarnings($user);
+            }
         }
 
         $target = $this->resolveTargetUrl($notification->data);

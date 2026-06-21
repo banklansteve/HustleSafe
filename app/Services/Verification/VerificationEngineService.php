@@ -204,9 +204,7 @@ class VerificationEngineService
 
     public function isFreelancer(User $user): bool
     {
-        $slug = $user->role?->slug ?? $user->account_type;
-
-        return in_array($slug, ['freelancer', 'seller', 'provider'], true);
+        return $user->usesFreelancerVerificationLimits();
     }
 
     /**
@@ -380,6 +378,8 @@ class VerificationEngineService
             'name' => $user->name,
             'email' => $user->email,
             'role' => $user->role?->slug ?? $user->account_type,
+            'is_freelancer' => $isFreelancer,
+            'limit_catalog' => $isFreelancer ? 'freelancer' : 'client',
             'current_level' => $level,
             'earned_level' => $this->earnedLevel($user),
             'current_label' => $this->levelLabel($level, $user),

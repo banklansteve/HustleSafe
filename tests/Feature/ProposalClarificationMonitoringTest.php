@@ -8,7 +8,9 @@ use App\Models\ProposalClarificationMessage;
 use App\Models\ProposalClarificationThread;
 use App\Models\Quest;
 use App\Models\QuestOffer;
+use App\Models\Role;
 use App\Models\User;
+use App\Services\ConversationMonitoring\ConversationMonitoringAdminService;
 use App\Services\ConversationMonitoring\ConversationMonitoringService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -154,5 +156,60 @@ class ProposalClarificationMonitoringTest extends TestCase
         $this->assertDatabaseMissing('conversation_thread_reviews', [
             'proposal_clarification_thread_id' => $thread->id,
         ]);
+    }
+
+    public function test_super_admin_thread_detail_reveals_flagged_message_with_trigger_highlights(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('conversation_message_flags')) {
+            $this->markTestSkipped('Conversation monitoring tables are not migrated.');
+        }
+
+        $superAdminRoleId = Role::query()->where('slug', 'super_admin')->value('id');
+        if (! $superAdminRoleId) {
+            $this->markTestSkipped('super_admin role is not seeded.');
+        }
+
+        $superAdmin = User::factory()->create(['role_id' => $superAdminRoleId]);
+        $client = User::factory()->create();
+        $freelancer = User::factory()->create();
+        $quest = Quest::factory()->create(['client_id' => $client->id]);
+        $offer = QuestOffer::factory()->create([
+            'quest_id' => $quest->id,
+            'freelancer_id' => $freelancer->id,
+            'status' => 'submitted',
+        ]);
+
+        $thread = ProposalClarificationThread::query()->create([
+            'quest_id' => $quest->id,
+            'quest_offer_id' => $offer->id,
+            'client_id' => $client->id,
+            'freelancer_id' => $freelancer->id,
+            'status' => 'open',
+        ]);
+
+        $message = ProposalClarificationMessage::query()->create([
+            'thread_id' => $thread->id,
+            'author_user_id' => $freelancer->id,
+            'role' => 'freelancer',
+            'prompt_key' => 'reply:1',
+            'body' => 'Please pay me directly outside the platform using my account number 0123456789.',
+        ]);
+
+        app(ConversationMonitoringService::class)->processClarificationMessage($message);
+
+        $review = ConversationThreadReview::query()
+            ->where('proposal_clarification_thread_id', $thread->id)
+            ->firstOrFail();
+
+        $payload = app(ConversationMonitoringAdminService::class)
+            ->threadDetail($review, revealFull: true, viewer: $superAdmin);
+
+        $flagged = collect($payload['flagged_messages'])->first();
+        $this->assertNotNull($flagged);
+        $this->assertTrue($flagged['is_revealed']);
+        $this->assertStringContainsString('0123456789', (string) $flagged['body']);
+        $this->assertNotEmpty($flagged['trigger_highlights']);
+        $this->assertTrue($payload['reveal_full']);
+        $this->assertNotEmpty($payload['conversation_links']);
     }
 }

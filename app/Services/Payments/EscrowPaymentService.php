@@ -311,6 +311,8 @@ class EscrowPaymentService
         ?string $reason = null,
         bool $ignorePolicy = false,
         ?string $releaseTrigger = null,
+        ?int $amountMinor = null,
+        ?int $installmentId = null,
     ): PaymentEscrow {
         if (! $ignorePolicy && ! \App\Support\EscrowReleasePolicy::canReleaseFunds($quest, $actor)) {
             throw ValidationException::withMessages([
@@ -323,7 +325,15 @@ class EscrowPaymentService
             throw ValidationException::withMessages(['escrow' => [__('Escrow is not funded or does not exist.')]]);
         }
 
-        $releasable = $escrow->releasableMinor();
+        $available = $escrow->releasableMinor();
+        if ($available <= 0) {
+            throw ValidationException::withMessages(['escrow' => [__('Nothing left to release on this escrow.')]]);
+        }
+
+        $releasable = $amountMinor !== null
+            ? min(max(0, $amountMinor), $available)
+            : $available;
+
         if ($releasable <= 0) {
             throw ValidationException::withMessages(['escrow' => [__('Nothing left to release on this escrow.')]]);
         }
@@ -335,8 +345,10 @@ class EscrowPaymentService
             throw ValidationException::withMessages(['freelancer' => [__('Freelancer not found.')]]);
         }
 
-        return DB::transaction(function () use ($quest, $escrow, $releasable, $feeMinor, $netMinor, $freelancer, $actor, $reason, $releaseTrigger): PaymentEscrow {
-            $idempotencyKey = 'escrow:release:'.$escrow->id.':'.$releasable;
+        return DB::transaction(function () use ($quest, $escrow, $releasable, $feeMinor, $netMinor, $freelancer, $actor, $reason, $releaseTrigger, $installmentId): PaymentEscrow {
+            $idempotencyKey = $installmentId !== null
+                ? 'escrow:release:'.$escrow->id.':installment:'.$installmentId
+                : 'escrow:release:'.$escrow->id.':'.((int) $escrow->released_minor + $releasable);
 
             $walletTx = $this->wallets->credit(
                 $freelancer,
@@ -366,16 +378,20 @@ class EscrowPaymentService
                 );
             }
 
+            $newReleased = (int) $escrow->released_minor + $releasable;
+            $remaining = max(0, (int) $escrow->amount_minor - $newReleased - (int) $escrow->refunded_minor);
+            $escrowStatus = $remaining > 0 ? 'partially_released' : 'released';
+
             $escrow->update([
-                'status' => 'released',
-                'released_minor' => (int) $escrow->released_minor + $releasable,
+                'status' => $escrowStatus,
+                'released_minor' => $newReleased,
                 'fee_minor' => (int) $escrow->fee_minor + $feeMinor,
                 'released_at' => now(),
             ]);
 
             $quest->update([
                 'paid_out_minor' => (int) $quest->paid_out_minor + $releasable,
-                'escrow_status' => 'released',
+                'escrow_status' => $escrowStatus,
             ]);
 
             $trigger = $releaseTrigger ?? $this->inferReleaseTrigger($actor, $reason);

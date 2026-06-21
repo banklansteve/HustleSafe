@@ -10,9 +10,110 @@ final class QuestSkillDictionaryService
      * @param  list<string>  $exclude
      * @return list<string>
      */
-    public function suggest(?int $leafCategoryId, string $query, array $exclude = [], int $limit = 12): array
+    public function suggest(?int $leafCategoryId, string $query, array $exclude = [], int $limit = 20): array
     {
-        $pool = $this->poolForCategory($leafCategoryId);
+        return $this->suggestFromPool(
+            $this->poolForCategory($leafCategoryId),
+            $query,
+            $exclude,
+            $limit,
+        );
+    }
+
+    /**
+     * @param  list<int>  $leafCategoryIds
+     * @param  list<string>  $exclude
+     * @return list<string>
+     */
+    public function suggestForCategories(array $leafCategoryIds, string $query, array $exclude = [], int $limit = 20): array
+    {
+        return $this->suggestFromPool(
+            $this->poolForCategories($leafCategoryIds),
+            $query,
+            $exclude,
+            $limit,
+        );
+    }
+
+    /**
+     * @param  list<int>  $leafCategoryIds
+     * @return list<string>
+     */
+    public function poolForCategories(array $leafCategoryIds): array
+    {
+        $leafCategoryIds = array_values(array_filter(array_map('intval', $leafCategoryIds)));
+
+        if ($leafCategoryIds === []) {
+            return $this->dedupePreserveCase(array_merge(
+                config('quest_skill_dictionary.common', []),
+                ...array_values(config('quest_skill_dictionary.by_parent', [])),
+            ));
+        }
+
+        $pool = [];
+        foreach ($leafCategoryIds as $leafCategoryId) {
+            $pool = array_merge($pool, $this->poolForCategory($leafCategoryId));
+        }
+
+        return $this->dedupePreserveCase($pool);
+    }
+
+    /**
+     * Resolve user input to the canonical dictionary label (case-insensitive).
+     *
+     * @param  list<int>  $leafCategoryIds
+     */
+    public function resolveCanonical(string $input, array $leafCategoryIds): ?string
+    {
+        $needle = $this->normalize($input);
+        if ($needle === '') {
+            return null;
+        }
+
+        foreach ($this->poolForCategories($leafCategoryIds) as $skill) {
+            if ($this->normalize($skill) === $needle) {
+                return $skill;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $inputs
+     * @param  list<int>  $leafCategoryIds
+     * @return list<string>
+     */
+    public function resolveMany(array $inputs, array $leafCategoryIds): array
+    {
+        $seen = [];
+        $resolved = [];
+
+        foreach ($inputs as $input) {
+            $canonical = $this->resolveCanonical((string) $input, $leafCategoryIds);
+            if ($canonical === null) {
+                continue;
+            }
+
+            $key = $this->normalize($canonical);
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $resolved[] = $canonical;
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @param  list<string>  $pool
+     * @param  list<string>  $exclude
+     * @return list<string>
+     */
+    private function suggestFromPool(array $pool, string $query, array $exclude, int $limit): array
+    {
         $excludeLower = collect($exclude)
             ->map(fn (string $s) => $this->normalize($s))
             ->filter()
