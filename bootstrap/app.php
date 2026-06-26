@@ -108,6 +108,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('review-amendments:expire')->hourly();
         $schedule->command('hr:generate-alerts')->hourly();
         $schedule->command('financial:reconcile')->hourly();
+        $schedule->command('financial:warm-health-dashboard')->everyFiveMinutes();
         $schedule->command('quest-boosts:expire')->everyFiveMinutes();
         $schedule->command('premium-patrol:scan-anomalies')->hourly();
         $schedule->command('quest-patrol:scan')->hourly();

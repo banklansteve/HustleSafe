@@ -180,6 +180,66 @@ final class ProposalMoneyCalculator
     }
 
     /**
+     * Amount credited to the freelancer wallet on escrow release (quote less discount).
+     * Platform fee and VAT are funded by the client on top of this amount.
+     *
+     * @param  array<string, mixed>|null  $pricingSnapshot
+     */
+    public static function freelancerWalletPayoutMinor(?array $pricingSnapshot): int
+    {
+        return self::quoteTotalMinor($pricingSnapshot);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $pricingSnapshot
+     */
+    public static function freelancerInstallmentPayoutMinor(?array $pricingSnapshot, int $installmentCount): int
+    {
+        $total = self::freelancerWalletPayoutMinor($pricingSnapshot);
+        if ($installmentCount < 1) {
+            return $total;
+        }
+
+        return (int) floor($total / $installmentCount);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $pricingSnapshot
+     * @return array{
+     *     professional_fee_minor: int,
+     *     materials_minor: int,
+     *     travel_minor: int,
+     *     discount_minor: int,
+     *     quote_minor: int
+     * }
+     */
+    public static function freelancerQuoteComponents(?array $pricingSnapshot): array
+    {
+        if (! is_array($pricingSnapshot)) {
+            return [
+                'professional_fee_minor' => 0,
+                'materials_minor' => 0,
+                'travel_minor' => 0,
+                'discount_minor' => 0,
+                'quote_minor' => 0,
+            ];
+        }
+
+        $prof = (int) ($pricingSnapshot['professional_fee_minor'] ?? 0);
+        $mat = (int) ($pricingSnapshot['materials_total_minor'] ?? 0);
+        $travel = (int) ($pricingSnapshot['travel_cost_minor'] ?? 0);
+        $discount = (int) ($pricingSnapshot['discount_minor'] ?? 0);
+
+        return [
+            'professional_fee_minor' => $prof,
+            'materials_minor' => $mat,
+            'travel_minor' => $travel,
+            'discount_minor' => $discount,
+            'quote_minor' => max(0, $prof + $mat + $travel - $discount),
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>|null  $pricingSnapshot
      */
     public static function escrowTotalMinor(?array $pricingSnapshot): int

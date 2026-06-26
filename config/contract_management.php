@@ -53,6 +53,9 @@ return [
     'patrol' => [
         'pending_escrow_stale_hours' => 72,
         'delivery_review_stale_hours' => 48,
+        'overdue_delivery_medium_hours' => (int) env('CONTRACT_PATROL_OVERDUE_MEDIUM_HOURS', 24),
+        'overdue_delivery_critical_hours' => (int) env('CONTRACT_PATROL_OVERDUE_CRITICAL_HOURS', 72),
+        'freelancer_inactive_after_award_hours' => (int) env('CONTRACT_PATROL_INACTIVE_AFTER_AWARD_HOURS', 48),
     ],
 
     'quality_audit' => [

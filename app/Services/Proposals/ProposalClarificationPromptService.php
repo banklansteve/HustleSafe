@@ -4,8 +4,9 @@ namespace App\Services\Proposals;
 
 use App\Models\Quest;
 use App\Models\QuestOffer;
-use App\Support\NgnMoney;
-use App\Support\PlatformSettings;
+use App\Services\Quest\QuestRecurringEngagementService;
+use App\Support\EscrowAutoReleasePolicy;
+use App\Support\ProposalMoneyCalculator;
 use Carbon\Carbon;
 
 class ProposalClarificationPromptService
@@ -138,71 +139,187 @@ class ProposalClarificationPromptService
     }
 
     /**
-     * @return array{scope_summary: string, price_minor: int, price_label: string, deadline_label: string|null, deadline_date: string|null, payout: array<string, mixed>}
+     * @return array<string, mixed>
      */
     public function awardTermsSnapshot(Quest $quest, QuestOffer $offer): array
     {
+        $quest->loadMissing('client');
+        $start = $offer->planned_start_date;
         $finish = $offer->planned_finish_date ?? $offer->proposed_completion_date;
         if (! $finish && $offer->estimated_duration_days) {
             $finish = now()->addDays((int) $offer->estimated_duration_days)->toDateString();
         }
 
-        $scope = trim(strip_tags((string) ($offer->scope_detail ?: $offer->pitch ?: '')));
-        if ($scope === '') {
-            $scope = __('Work as described in the accepted proposal and quest brief.');
+        $snapshot = is_array($offer->pricing_snapshot) ? $offer->pricing_snapshot : [];
+        $payout = $this->awardPayoutBreakdown($offer);
+        $finishDate = $finish ? Carbon::parse($finish)->toDateString() : null;
+
+        $terms = [
+            'quest_title' => $quest->title,
+            'client_name' => $quest->client?->name,
+            'offer_id' => $offer->id,
+            'price_minor' => $payout['quote_minor'],
+            'price_label' => $payout['quote_label'],
+            'start_date' => $start ? Carbon::parse($start)->toDateString() : null,
+            'start_label' => $start ? Carbon::parse($start)->format('j M Y') : null,
+            'deadline_label' => $finish ? Carbon::parse($finish)->format('j M Y') : null,
+            'deadline_date' => $finishDate,
+            'duration_days' => $offer->estimated_duration_days ? (int) $offer->estimated_duration_days : null,
+            'duration_label' => $offer->estimated_duration_days
+                ? __(':days days', ['days' => (int) $offer->estimated_duration_days])
+                : null,
+            'progress_report_frequency' => $offer->progress_report_frequency,
+            'progress_report_label' => $this->progressReportLabel($offer),
+            'revisions_included' => (int) ($offer->corrections_included ? ($offer->corrections_rounds ?: 1) : 0),
+            'revision_definition' => $this->deriveRevisionDefinition($offer),
+            'warranty_terms' => $offer->warranty_terms
+                ? str(trim(strip_tags((string) $offer->warranty_terms)))->limit(500)->toString()
+                : null,
+            'payout' => $payout,
+            'release_timing' => $this->releaseTimingSnapshot($finishDate),
+        ];
+
+        $recurring = app(QuestRecurringEngagementService::class);
+        if ($recurring->isRecurring($quest)) {
+            $terms['installment_schedule'] = $this->freelancerInstallmentSchedule($quest, $offer);
         }
 
-        $grossMinor = (int) ($offer->quoted_amount_minor ?? $quest->budget_amount_minor ?? 0);
-        $payout = $this->awardPayoutBreakdown($offer, $grossMinor);
+        return $terms;
+    }
+
+    /**
+     * What the freelancer receives in their wallet when escrow is released.
+     * Platform fee and VAT are client-side charges — not deducted from the freelancer quote.
+     *
+     * @return array<string, mixed>
+     */
+    public function awardPayoutBreakdown(QuestOffer $offer): array
+    {
+        $snapshot = is_array($offer->pricing_snapshot) ? $offer->pricing_snapshot : [];
+        $components = ProposalMoneyCalculator::freelancerQuoteComponents($snapshot);
+        $quoteMinor = $components['quote_minor'] > 0
+            ? $components['quote_minor']
+            : ProposalMoneyCalculator::freelancerWalletPayoutMinor($snapshot);
+
+        if ($quoteMinor <= 0) {
+            $quoteMinor = max(0, (int) ($offer->quoted_amount_minor ?? 0));
+        }
 
         return [
-            'scope_summary' => str($scope)->limit(2000)->toString(),
-            'price_minor' => $grossMinor,
-            'price_label' => $this->money($grossMinor),
-            'deadline_label' => $finish ? Carbon::parse($finish)->format('j M Y') : null,
-            'deadline_date' => $finish ? Carbon::parse($finish)->toDateString() : null,
-            'quest_title' => $quest->title,
-            'offer_id' => $offer->id,
-            'payout' => $payout,
+            'professional_fee_minor' => $components['professional_fee_minor'],
+            'professional_fee_label' => $this->money($components['professional_fee_minor']),
+            'materials_minor' => $components['materials_minor'],
+            'materials_label' => $this->money($components['materials_minor']),
+            'travel_minor' => $components['travel_minor'],
+            'travel_label' => $this->money($components['travel_minor']),
+            'discount_minor' => $components['discount_minor'],
+            'discount_label' => $this->money($components['discount_minor']),
+            'quote_minor' => $quoteMinor,
+            'quote_label' => $this->money($quoteMinor),
+            'net_to_wallet_minor' => $quoteMinor,
+            'net_to_wallet_label' => $this->money($quoteMinor),
+            'summary' => $components['discount_minor'] > 0
+                ? __('When the client approves your finished work, :amount is released to your wallet (your quote including materials and travel, minus the agreed discount).', [
+                    'amount' => $this->money($quoteMinor),
+                ])
+                : __('When the client approves your finished work, :amount is released to your wallet.', [
+                    'amount' => $this->money($quoteMinor),
+                ]),
         ];
     }
 
     /**
-     * What the freelancer should expect in their wallet after escrow release (per full payout).
+     * Recompute payout lines from the live pricing snapshot (fixes stale award_terms_snapshot rows).
      *
+     * @param  array<string, mixed>  $terms
      * @return array<string, mixed>
      */
-    public function awardPayoutBreakdown(QuestOffer $offer, ?int $grossMinor = null): array
+    public function refreshAwardTermsForDisplay(array $terms, QuestOffer $offer): array
     {
-        $snapshot = is_array($offer->pricing_snapshot) ? $offer->pricing_snapshot : [];
-        $grossMinor = $grossMinor ?? (int) ($offer->quoted_amount_minor ?? $snapshot['grand_total_minor'] ?? 0);
-        $feePercent = PlatformSettings::platformFeePercent();
-        $platformFeeMinor = NgnMoney::platformFeeMinor($grossMinor, $feePercent);
-        $netMinor = NgnMoney::netAfterFee($grossMinor, $feePercent);
-        $vatMinor = (int) ($snapshot['vat_minor'] ?? 0);
-        $discountMinor = (int) ($snapshot['discount_minor'] ?? 0);
-        $vatApplies = ($snapshot['vat_applies'] ?? false) !== false && $vatMinor > 0;
+        $payout = $this->awardPayoutBreakdown($offer);
+        $terms['payout'] = $payout;
+        $terms['price_minor'] = $payout['quote_minor'];
+        $terms['price_label'] = $payout['quote_label'];
+
+        return $terms;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function releaseTimingSnapshot(?string $finishDate): ?array
+    {
+        if ($finishDate === null || trim($finishDate) === '') {
+            return null;
+        }
+
+        $tz = 'Africa/Lagos';
+        $due = Carbon::parse($finishDate, $tz)->endOfDay();
+        $releaseAt = EscrowAutoReleasePolicy::releaseAt($due);
+        $hours = EscrowAutoReleasePolicy::releaseHours();
 
         return [
-            'gross_minor' => $grossMinor,
-            'gross_label' => $this->money($grossMinor),
-            'platform_fee_percent' => $feePercent,
-            'platform_fee_minor' => $platformFeeMinor,
-            'platform_fee_label' => $this->money($platformFeeMinor),
-            'vat_minor' => $vatMinor,
-            'vat_label' => $this->money($vatMinor),
-            'vat_applies' => $vatApplies,
-            'discount_minor' => $discountMinor,
-            'discount_label' => $this->money($discountMinor),
-            'net_to_wallet_minor' => $netMinor,
-            'net_to_wallet_label' => $this->money($netMinor),
-            'summary' => __('Accepted job value: :gross. After the client approves your delivery, about :net is paid to your wallet (after the :pct% platform fee of :fee). The client funds :gross into escrow — not the platform fee.', [
-                'gross' => $this->money($grossMinor),
-                'net' => $this->money($netMinor),
-                'pct' => rtrim(rtrim(number_format($feePercent, 2, '.', ''), '0'), '.'),
-                'fee' => $this->money($platformFeeMinor),
-            ]),
+            'headline' => __('After client approves delivery OR'),
+            'auto_release_label' => $releaseAt->timezone($tz)->format('j M Y, g:i A'),
+            'auto_release_hours' => $hours,
+            'footnote' => __('(:hours hours after delivery)', ['hours' => $hours]),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function freelancerInstallmentSchedule(Quest $quest, QuestOffer $offer): array
+    {
+        $recurring = app(QuestRecurringEngagementService::class);
+        $base = $recurring->proposalTermsPayload($quest);
+        $snapshot = is_array($offer->pricing_snapshot) ? $offer->pricing_snapshot : [];
+        $walletTotal = ProposalMoneyCalculator::freelancerWalletPayoutMinor($snapshot);
+        if ($walletTotal <= 0) {
+            $walletTotal = max(0, (int) ($offer->quoted_amount_minor ?? $quest->budget_amount_minor ?? 0));
+        }
+
+        $count = max(1, (int) ($quest->installment_count ?? $base['installment_count'] ?? 1));
+        $perPayment = ProposalMoneyCalculator::freelancerInstallmentPayoutMinor($snapshot, $count);
+        if ($perPayment <= 0 && $count > 0) {
+            $perPayment = (int) floor($walletTotal / $count);
+        }
+
+        return array_merge($base, [
+            'wallet_total_minor' => $walletTotal,
+            'wallet_total_label' => $this->money($walletTotal),
+            'per_payment_minor' => $perPayment,
+            'per_payment_label' => $this->money($perPayment),
+            'summary' => __('You receive :per_payment after each approved period — :count payments totalling :total to your wallet.', [
+                'per_payment' => $this->money($perPayment),
+                'count' => $count,
+                'total' => $this->money($walletTotal),
+            ]),
+        ]);
+    }
+
+    private function progressReportLabel(QuestOffer $offer): ?string
+    {
+        $key = (string) ($offer->progress_report_frequency ?? '');
+        if ($key === '') {
+            return null;
+        }
+
+        if ($key === 'custom') {
+            $note = trim((string) ($offer->progress_report_frequency_note ?? ''));
+
+            return $note !== '' ? $note : __('Custom schedule');
+        }
+
+        return match ($key) {
+            'daily' => __('Daily'),
+            'twice_weekly' => __('Twice weekly'),
+            'weekly' => __('Weekly'),
+            'biweekly' => __('Bi-weekly'),
+            'milestone_based' => __('At milestones'),
+            'on_request' => __('On request'),
+            default => $key,
+        };
     }
 
     /**

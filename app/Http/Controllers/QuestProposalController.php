@@ -10,6 +10,7 @@ use App\Notifications\ProposalViewedMilestoneNotification;
 use App\Services\FreelancerWorkspaceReadinessService;
 use App\Services\Proposals\ProposalClarificationInboxService;
 use App\Services\Proposals\ProposalClarificationService;
+use App\Services\Proposals\ProposalClarificationPromptService;
 use App\Services\QuestProposalPricingHintService;
 use App\Services\Verification\VerificationEngineService;
 use App\Services\UserNotificationInboxService;
@@ -402,7 +403,7 @@ class QuestProposalController extends Controller
             'last_client_view_at' => $offer->last_client_view_at?->timezone('Africa/Lagos')->toIso8601String(),
             'client_pinned_at' => $offer->client_pinned_at !== null,
             'shortlisted_at' => $offer->shortlisted_at?->timezone('Africa/Lagos')->toIso8601String(),
-            'award_terms_snapshot' => $offer->award_terms_snapshot,
+            'award_terms_snapshot' => $this->displayAwardTermsSnapshot($offer, $quest),
             'award_client_confirmed_at' => $offer->award_client_confirmed_at?->timezone('Africa/Lagos')->toIso8601String(),
             'award_freelancer_confirmed_at' => $offer->award_freelancer_confirmed_at?->timezone('Africa/Lagos')->toIso8601String(),
             'freelancer_edit_deadline_at' => $offer->freelancer_edit_deadline_at?->timezone('Africa/Lagos')->toIso8601String(),
@@ -418,5 +419,25 @@ class QuestProposalController extends Controller
             ] : null,
             'platform_fee_percent_display' => PlatformSettings::platformFeePercent(),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function displayAwardTermsSnapshot(QuestOffer $offer, Quest $quest): ?array
+    {
+        $terms = $offer->award_terms_snapshot;
+        if (! is_array($terms)) {
+            return null;
+        }
+
+        $promptService = app(ProposalClarificationPromptService::class);
+        $terms = $promptService->refreshAwardTermsForDisplay($terms, $offer);
+
+        if (app(\App\Services\Quest\QuestRecurringEngagementService::class)->isRecurring($quest)) {
+            $terms['installment_schedule'] = $promptService->freelancerInstallmentSchedule($quest, $offer);
+        }
+
+        return $terms;
     }
 }

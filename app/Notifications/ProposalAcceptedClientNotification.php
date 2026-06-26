@@ -5,8 +5,10 @@ namespace App\Notifications;
 use App\Models\QuestOffer;
 use App\Notifications\Concerns\SendsBrandedMail;
 use App\Services\Proposals\ProposalClarificationPromptService;
+use App\Support\NgnMoney;
 use App\Support\PlatformFeeDisclosure;
 use App\Support\PlatformSettings;
+use App\Support\ProposalMoneyCalculator;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
@@ -32,16 +34,18 @@ class ProposalAcceptedClientNotification extends Notification
         $quest = $this->offer->quest;
         $freelancerName = $this->offer->freelancer?->name ?? __('The freelancer');
         $payout = app(ProposalClarificationPromptService::class)->awardPayoutBreakdown($this->offer);
+        $snapshot = is_array($this->offer->pricing_snapshot) ? $this->offer->pricing_snapshot : [];
+        $escrowMinor = ProposalMoneyCalculator::escrowTotalMinor($snapshot);
         $feePct = PlatformSettings::platformFeePercent();
         $disclosure = PlatformFeeDisclosure::toArray($feePct);
         $questUrl = $quest ? route('quests.show', $quest, absolute: true) : url('/');
 
         $panel = collect([
             __('Worker: :name', ['name' => $freelancerName]),
-            __('Job value (escrow): :amount', ['amount' => $payout['gross_label']]),
+            __('Escrow to fund: :amount', ['amount' => NgnMoney::format($escrowMinor)]),
             __('Platform fee on release: :pct% (:fee)', [
                 'pct' => $disclosure['platform_fee_percent_label'],
-                'fee' => $payout['platform_fee_label'],
+                'fee' => NgnMoney::format((int) ($snapshot['platform_fee_minor'] ?? 0)),
             ]),
             __('Worker receives in wallet: :net', ['net' => $payout['net_to_wallet_label']]),
         ])->implode("\n\n");

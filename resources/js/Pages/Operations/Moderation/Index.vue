@@ -122,9 +122,14 @@
                 <span v-else class="text-xs font-semibold text-slate-400">—</span>
             </template>
             <template #cell-anomaly="{ row }">
-                <span v-if="row.anomaly?.signal" class="rounded-full px-2 py-1 text-[10px] font-black uppercase" :class="anomalyClass(row.anomaly.risk_level)">
-                    {{ row.anomaly.signal }}
-                </span>
+                <div v-if="row.anomaly?.signal" class="max-w-xs">
+                    <span class="rounded-full px-2 py-1 text-[10px] font-black uppercase" :class="anomalyClass(row.anomaly.risk_level)">
+                        {{ row.anomaly.signal }}
+                    </span>
+                    <p v-if="row.anomaly.reason" class="mt-1 line-clamp-2 text-[11px] font-semibold leading-relaxed text-slate-600">
+                        {{ row.anomaly.reason }}
+                    </p>
+                </div>
                 <span v-else class="text-xs font-semibold text-slate-400">—</span>
             </template>
             <template #actions="{ row }">
@@ -144,9 +149,13 @@
                     <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-800">Anomaly alert</p>
                     <div v-for="flag in detail.patrol_flags" :key="flag.id" class="mt-3 border-t border-amber-200/80 pt-3 first:mt-0 first:border-0 first:pt-0">
                         <p class="text-sm font-black text-slate-900">{{ flag.label }} <span class="ml-2 rounded-full px-2 py-0.5 text-[10px] uppercase" :class="anomalyClass(flag.severity)">{{ flag.severity }}</span></p>
+                        <p v-if="flag.reason" class="mt-1 text-xs font-semibold leading-relaxed text-slate-800">{{ flag.reason }}</p>
                         <p class="mt-1 text-xs font-semibold text-slate-600">{{ flag.recommendation }}</p>
                         <p class="mt-1 text-[10px] font-bold uppercase text-slate-500">Detected {{ formatDateTime(flag.detected_at) }}</p>
-                        <div v-if="patrol_capabilities?.quests?.dismiss_anomaly" class="mt-2 flex flex-wrap gap-2">
+                        <div
+                            v-if="(activeModule === 'quests' && patrol_capabilities?.quests?.dismiss_anomaly) || (activeModule === 'proposals' && patrol_capabilities?.proposals?.dismiss_anomaly)"
+                            class="mt-2 flex flex-wrap gap-2"
+                        >
                             <button type="button" class="rounded-lg bg-slate-900 px-3 py-1.5 text-[10px] font-black uppercase text-white" @click="openDismissFlag(flag)">Close alert</button>
                         </div>
                     </div>
@@ -1150,10 +1159,38 @@ const categoryOptions = computed(() => detail.value?.edit_options?.categories ??
 
 const proposalFlagTypes = computed(() => props.options?.proposal_flag_types ?? ['policy_violation', 'other']);
 
-onMounted(() => {
-    const first = currentQueues.value[0];
-    if (first) {
-        loadQueue(first);
+onMounted(async () => {
+    const params = new URLSearchParams(window.location.search);
+    const openId = params.get('open');
+    const module = params.get('module');
+    const searchQuery = params.get('q');
+
+    if (module === 'proposals' || module === 'quests') {
+        activeModule.value = module;
+    }
+
+    if (searchQuery) {
+        queue.search.value = searchQuery;
+    }
+
+    const initialQueue = openId
+        ? (currentQueues.value.find((entry) => entry.key === 'flagged') ?? currentQueues.value[0])
+        : currentQueues.value[0];
+
+    if (initialQueue) {
+        await loadQueue(initialQueue);
+    }
+
+    if (openId) {
+        const match = rawItems.value.find((row) => String(row.id) === String(openId));
+        if (match) {
+            await openDetail(match);
+        } else {
+            await openDetail({
+                id: Number.isNaN(Number(openId)) ? openId : Number(openId),
+                title: searchQuery || `${module === 'proposals' ? 'Proposal' : 'Quest'} #${openId}`,
+            });
+        }
     }
 });
 

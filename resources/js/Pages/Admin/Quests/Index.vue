@@ -634,7 +634,7 @@ import AdminShell from '@/Layouts/AdminShell.vue';
 import { Link, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import { formatClientDate } from '@/utils/questCompletionSchedule';
-import { computed, defineComponent, h, reactive, ref, watch } from 'vue';
+import { computed, defineComponent, h, onMounted, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
     summary: { type: Array, default: () => [] },
@@ -813,6 +813,43 @@ function toggleVisibleSelection() {
         props.quests.data.forEach((quest) => selectedIds.add(quest.id));
     }
 }
+
+async function openQuestFromDeepLink(openKey) {
+    if (!openKey) {
+        return;
+    }
+
+    const match = props.quests.data?.find(
+        (quest) => quest.route_key === openKey
+            || quest.reference_code === openKey
+            || String(quest.id) === String(openKey),
+    );
+
+    if (match) {
+        await openQuest(match);
+
+        return;
+    }
+
+    detailLoading.value = true;
+    try {
+        const { data } = await axios.get(route('admin.quests.detail', openKey));
+        const overview = data?.overview?.quest;
+        if (overview) {
+            activeQuest.value = { ...overview, route_key: openKey };
+            questDetail.value = data;
+        }
+    } finally {
+        detailLoading.value = false;
+    }
+}
+
+onMounted(() => {
+    const openKey = new URLSearchParams(window.location.search).get('open');
+    if (openKey) {
+        openQuestFromDeepLink(openKey);
+    }
+});
 
 async function openQuest(quest) {
     activeQuest.value = quest;

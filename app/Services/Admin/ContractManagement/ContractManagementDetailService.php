@@ -11,9 +11,12 @@ use App\Models\QuestConversationMessage;
 use App\Models\QuestConversationThread;
 use App\Models\QuestDeliverySubmission;
 use App\Models\User;
+use App\Enums\ContractPatrolFlagStatus;
+use App\Models\ContractPatrolFlag;
 use App\Support\EscrowAutoReleasePolicy;
 use App\Support\NgnMoney;
 use App\Support\PlatformSettings;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 final class ContractManagementDetailService
@@ -87,6 +90,7 @@ final class ContractManagementDetailService
             'dispute' => $dispute,
             'escrow' => $escrow,
             'risk' => $risk,
+            'patrol_flags' => $this->patrolFlags($contract),
             'milestones' => $milestones,
             'compliance' => $this->complianceSection($contract),
             'audit_log' => $this->auditLog($contract),
@@ -503,5 +507,34 @@ final class ContractManagementDetailService
         }
 
         return $bytes.'B';
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function patrolFlags(QuestContract $contract): array
+    {
+        if (! Schema::hasTable('contract_patrol_flags')) {
+            return [];
+        }
+
+        return ContractPatrolFlag::query()
+            ->where('quest_contract_id', $contract->id)
+            ->whereIn('status', [ContractPatrolFlagStatus::Open, ContractPatrolFlagStatus::Acknowledged])
+            ->orderByRaw("FIELD(severity, 'critical', 'high', 'medium', 'low')")
+            ->orderByDesc('detected_at')
+            ->get()
+            ->map(fn (ContractPatrolFlag $flag) => [
+                'id' => $flag->id,
+                'label' => $flag->flag_type instanceof \App\Enums\ContractPatrolFlagType
+                    ? $flag->flag_type->label()
+                    : (string) $flag->flag_type,
+                'reason' => (string) ($flag->summary ?: 'Patrol review required'),
+                'severity' => (string) $flag->severity,
+                'status' => $flag->status instanceof ContractPatrolFlagStatus ? $flag->status->value : (string) $flag->status,
+                'detected_at' => $flag->detected_at?->timezone('Africa/Lagos')->toIso8601String(),
+            ])
+            ->values()
+            ->all();
     }
 }

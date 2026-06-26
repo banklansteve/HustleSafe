@@ -64,6 +64,36 @@
                 <p class="mt-1 text-xs text-rose-700">Filed by {{ detail.dispute.filed_by }} · {{ detail.dispute.filed_at }}</p>
             </div>
 
+            <div v-if="detail.patrol_flags?.length" class="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+                <p class="text-[10px] font-black uppercase text-amber-800">Patrol alerts</p>
+                <div v-for="flag in detail.patrol_flags" :key="flag.id" class="mt-3 border-t border-amber-200/80 pt-3 first:mt-0 first:border-0 first:pt-0">
+                    <p class="text-sm font-black text-slate-900">
+                        {{ flag.label }}
+                        <span class="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] uppercase text-amber-900">{{ flag.severity }}</span>
+                    </p>
+                    <p class="mt-1 text-xs font-semibold leading-relaxed text-slate-700">{{ flag.reason }}</p>
+                    <div v-if="isSuperAdmin" class="mt-2 flex flex-wrap gap-2">
+                        <button
+                            v-if="flag.status === 'open'"
+                            type="button"
+                            class="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase text-amber-900 disabled:opacity-50"
+                            :disabled="actionBusy"
+                            @click="ackPatrolFlag(flag.id)"
+                        >
+                            Acknowledge
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded-lg bg-slate-900 px-3 py-1.5 text-[10px] font-black uppercase text-white disabled:opacity-50"
+                            :disabled="actionBusy"
+                            @click="dismissPatrolFlag(flag.id)"
+                        >
+                            Close alert
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <div class="rounded-2xl border p-4">
                 <p class="text-[10px] font-black uppercase text-slate-500">Risk assessment</p>
                 <ul class="mt-2 list-disc space-y-1 pl-4 text-sm text-slate-700">
@@ -303,6 +333,31 @@ function submitHold() {
     postAction('hold-escrow', { reason: holdForm.reason });
     holdForm.reason = '';
     showHoldForm.value = false;
+}
+
+async function ackPatrolFlag(flagId) {
+    actionBusy.value = true;
+    try {
+        await axios.post(route(routeName('contract-management.api.patrol-flags.acknowledge'), flagId));
+        emit('action-done');
+        await loadDetail();
+    } finally {
+        actionBusy.value = false;
+    }
+}
+
+async function dismissPatrolFlag(flagId) {
+    const reason = window.prompt('Reason for closing this patrol alert (optional):') ?? '';
+    actionBusy.value = true;
+    try {
+        await axios.post(route(routeName('contract-management.api.patrol-flags.dismiss'), flagId), {
+            reason: reason.trim() || 'Dismissed from contract detail panel',
+        });
+        emit('action-done');
+        await loadDetail();
+    } finally {
+        actionBusy.value = false;
+    }
 }
 
 watch(

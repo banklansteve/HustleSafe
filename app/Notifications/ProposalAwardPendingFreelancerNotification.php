@@ -30,12 +30,12 @@ class ProposalAwardPendingFreelancerNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $this->offer->loadMissing('quest');
+        $this->offer->loadMissing(['quest.client']);
         $quest = $this->offer->quest;
         $panel = collect([
-            __('Price: :price', ['price' => $this->terms['price_label'] ?? '—']),
-            ! empty($this->terms['deadline_label']) ? __('Target finish: :date', ['date' => $this->terms['deadline_label']]) : null,
-            __('Scope: :scope', ['scope' => str($this->terms['scope_summary'] ?? '')->limit(200)]),
+            __('Client: :name', ['name' => $quest?->client?->name ?? __('The client')]),
+            __('Your payout on release: :amount', ['amount' => $this->terms['payout']['net_to_wallet_label'] ?? $this->terms['price_label'] ?? '—']),
+            ! empty($this->terms['deadline_label']) ? __('Finish by: :date', ['date' => $this->terms['deadline_label']]) : null,
         ])->filter()->implode("\n\n");
 
         return $this->brandedMail(

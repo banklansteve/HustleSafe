@@ -47,6 +47,8 @@ final class FinalizeProposalAwardJob implements ShouldQueue
 
             app(ContractGenerationService::class)->generateFromAward($quest, $offer);
 
+            app(\App\Services\Admin\QuestPatrol\QuestPatrolAnomalyService::class)->scanProposal($offer->fresh(['freelancer', 'quest']));
+
             $surveyService = app(QuestJourneySurveyService::class);
             if ($this->declinedOfferIds !== []) {
                 QuestOffer::query()

@@ -7,7 +7,7 @@ use App\Enums\ContractPatrolFlagType;
 use App\Enums\ContractStatus;
 use App\Models\ContractPatrolFlag;
 use App\Models\QuestContract;
-use Carbon\Carbon;
+use App\Models\User;
 use Illuminate\Support\Facades\Schema;
 
 final class ContractPatrolAnomalyService
@@ -48,11 +48,18 @@ final class ContractPatrolAnomalyService
             return 0;
         }
 
-        $contract->loadMissing(['quest', 'activeDispute']);
+        $contract->loadMissing(['quest', 'activeDispute', 'freelancer']);
         $created = 0;
 
         if ($contract->status === ContractStatus::Disputed || $contract->active_dispute_id) {
-            $created += $this->upsertFlag($contract, ContractPatrolFlagType::ActiveDispute, 'Active dispute requires review') ? 1 : 0;
+            $created += $this->upsertFlag(
+                $contract,
+                ContractPatrolFlagType::ActiveDispute,
+                'Active dispute — escalated to super admin review',
+                'critical',
+                ['escalated_to_super_admin' => true],
+            ) ? 1 : 0;
+            $created += $this->flagRefundBeforeWorkStarts($contract) ? 1 : 0;
         }
 
         if ($contract->flagged_for_review) {
@@ -77,6 +84,10 @@ final class ContractPatrolAnomalyService
 
         $quest = $contract->quest;
         if ($quest !== null) {
+            if ($quest->delivery_acknowledged_at !== null) {
+                $this->clearOverdueDeliveryFlags($contract);
+            }
+
             if ($quest->latest_delivery_submission_id !== null
                 && $quest->delivery_acknowledged_at === null
                 && $quest->delivery_revision_requested_at === null) {
@@ -90,18 +101,186 @@ final class ContractPatrolAnomalyService
 
         if ($contract->status === ContractStatus::Active
             && $contract->agreed_delivery_date !== null
-            && $contract->agreed_delivery_date->lt(now()->startOfDay())
             && ($quest === null || $quest->latest_delivery_submission_id === null)) {
-            $days = $contract->agreed_delivery_date->diffInDays(now());
-            $created += $this->upsertFlag(
-                $contract,
-                ContractPatrolFlagType::OverdueDelivery,
-                "Overdue {$days} day(s) — no delivery submitted",
-                'critical',
-            ) ? 1 : 0;
+            $created += $this->flagTieredOverdueDelivery($contract, $quest) ? 1 : 0;
+        }
+
+        if ($contract->status === ContractStatus::Active && $contract->escrow_funded_at !== null) {
+            $created += $this->flagFreelancerInactiveAfterAward($contract) ? 1 : 0;
         }
 
         return $created;
+    }
+
+    public function clearOverdueDeliveryFlags(QuestContract $contract): void
+    {
+        if (! $this->flagsAvailable()) {
+            return;
+        }
+
+        ContractPatrolFlag::query()
+            ->where('quest_contract_id', $contract->id)
+            ->whereIn('flag_type', [
+                ContractPatrolFlagType::OverdueDelivery->value,
+                ContractPatrolFlagType::OverdueDeliveryMedium->value,
+                ContractPatrolFlagType::OverdueDeliveryCritical->value,
+            ])
+            ->whereIn('status', [ContractPatrolFlagStatus::Open, ContractPatrolFlagStatus::Acknowledged])
+            ->update([
+                'status' => ContractPatrolFlagStatus::Dismissed,
+                'dismissed_at' => now(),
+                'dismissal_reason' => 'Delivery approved — auto-cleared',
+                'resolved_at' => now(),
+            ]);
+    }
+
+    private function flagTieredOverdueDelivery(QuestContract $contract, ?\App\Models\Quest $quest): bool
+    {
+        $due = $contract->agreed_delivery_date;
+        if ($due === null) {
+            return false;
+        }
+
+        $deadline = $due->copy()->endOfDay();
+        if (now()->lte($deadline)) {
+            return false;
+        }
+
+        $hoursOverdue = (int) $deadline->diffInHours(now());
+        $mediumHours = (int) config('contract_management.patrol.overdue_delivery_medium_hours', 24);
+        $criticalHours = (int) config('contract_management.patrol.overdue_delivery_critical_hours', 72);
+        $days = $due->diffInDays(now());
+        $created = false;
+
+        if ($hoursOverdue >= $mediumHours) {
+            $created = $this->upsertFlag(
+                $contract,
+                ContractPatrolFlagType::OverdueDeliveryMedium,
+                "Overdue {$days} day(s) — notify both parties",
+                'medium',
+                ['hours_overdue' => $hoursOverdue, 'days_overdue' => $days],
+            ) || $created;
+        }
+
+        if ($hoursOverdue >= $criticalHours) {
+            $created = $this->upsertFlag(
+                $contract,
+                ContractPatrolFlagType::OverdueDeliveryCritical,
+                "Overdue {$days} day(s) — assign to super admin",
+                'critical',
+                ['hours_overdue' => $hoursOverdue, 'days_overdue' => $days, 'escalated_to_super_admin' => true],
+            ) || $created;
+        }
+
+        return $created;
+    }
+
+    private function flagRefundBeforeWorkStarts(QuestContract $contract): bool
+    {
+        $quest = $contract->quest;
+        $dispute = $contract->activeDispute;
+        if ($quest === null || $dispute === null) {
+            return false;
+        }
+
+        if ($quest->latest_delivery_submission_id !== null) {
+            return false;
+        }
+
+        $requestedOutcome = (string) ($dispute->structured_intake['requested_outcome'] ?? '');
+        if (! in_array($requestedOutcome, ['full_refund', 'partial_refund'], true)) {
+            return false;
+        }
+
+        return $this->upsertFlag(
+            $contract,
+            ContractPatrolFlagType::RefundBeforeWorkStarts,
+            'Client requested refund before any delivery was submitted',
+            'high',
+            [
+                'dispute_id' => $dispute->id,
+                'requested_outcome' => $requestedOutcome,
+            ],
+        );
+    }
+
+    private function flagFreelancerInactiveAfterAward(QuestContract $contract): bool
+    {
+        $freelancer = $contract->freelancer;
+        $awardAt = $contract->activated_at ?? $contract->escrow_funded_at ?? $contract->created_at;
+        if ($freelancer === null || $awardAt === null) {
+            return false;
+        }
+
+        $inactiveHours = (int) config('contract_management.patrol.freelancer_inactive_after_award_hours', 48);
+        if (now()->lt($awardAt->copy()->addHours($inactiveHours))) {
+            return false;
+        }
+
+        $lastActive = $freelancer->last_active_at;
+        if ($lastActive !== null && $lastActive->gte(now()->subHours($inactiveHours))) {
+            return false;
+        }
+
+        $quest = $contract->quest;
+        if ($quest?->latest_delivery_submission_id !== null) {
+            return false;
+        }
+
+        return $this->upsertFlag(
+            $contract,
+            ContractPatrolFlagType::FreelancerInactiveAfterAward,
+            "Freelancer has had no platform activity for {$inactiveHours}+ hours after award",
+            'medium',
+            [
+                'freelancer_id' => $freelancer->id,
+                'award_at' => $awardAt->toIso8601String(),
+                'last_active_at' => $lastActive?->toIso8601String(),
+                'inactive_hours' => $inactiveHours,
+            ],
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private function upsertFlag(
+        QuestContract $contract,
+        ContractPatrolFlagType $type,
+        string $summary,
+        ?string $severity = null,
+        array $meta = [],
+    ): bool {
+        $fingerprint = 'contract:'.$contract->id.':'.$type->value;
+        $existing = ContractPatrolFlag::query()->where('fingerprint', $fingerprint)->first();
+
+        if ($existing && ! in_array($existing->status, [ContractPatrolFlagStatus::Open, ContractPatrolFlagStatus::Acknowledged], true)) {
+            return false;
+        }
+
+        if ($existing) {
+            $existing->forceFill([
+                'summary' => $summary,
+                'severity' => $severity ?? $type->defaultSeverity(),
+                'detected_at' => now(),
+                'meta' => array_merge($existing->meta ?? [], $meta, ['last_scan_at' => now()->toIso8601String()]),
+            ])->save();
+
+            return false;
+        }
+
+        ContractPatrolFlag::query()->create([
+            'quest_contract_id' => $contract->id,
+            'flag_type' => $type,
+            'severity' => $severity ?? $type->defaultSeverity(),
+            'status' => ContractPatrolFlagStatus::Open,
+            'fingerprint' => $fingerprint,
+            'summary' => $summary,
+            'meta' => $meta,
+            'detected_at' => now(),
+        ]);
+
+        return true;
     }
 
     /**
@@ -137,43 +316,7 @@ final class ContractPatrolAnomalyService
             ->all();
     }
 
-    private function upsertFlag(
-        QuestContract $contract,
-        ContractPatrolFlagType $type,
-        string $summary,
-        ?string $severity = null,
-    ): bool {
-        $fingerprint = 'contract:'.$contract->id.':'.$type->value;
-        $existing = ContractPatrolFlag::query()->where('fingerprint', $fingerprint)->first();
-
-        if ($existing && ! in_array($existing->status, [ContractPatrolFlagStatus::Open, ContractPatrolFlagStatus::Acknowledged], true)) {
-            return false;
-        }
-
-        if ($existing) {
-            $existing->forceFill([
-                'summary' => $summary,
-                'detected_at' => now(),
-                'meta' => array_merge($existing->meta ?? [], ['last_scan_at' => now()->toIso8601String()]),
-            ])->save();
-
-            return false;
-        }
-
-        ContractPatrolFlag::query()->create([
-            'quest_contract_id' => $contract->id,
-            'flag_type' => $type,
-            'severity' => $severity ?? $type->defaultSeverity(),
-            'status' => ContractPatrolFlagStatus::Open,
-            'fingerprint' => $fingerprint,
-            'summary' => $summary,
-            'detected_at' => now(),
-        ]);
-
-        return true;
-    }
-
-    public function acknowledge(ContractPatrolFlag $flag, \App\Models\User $staff): ContractPatrolFlag
+    public function acknowledge(ContractPatrolFlag $flag, User $staff): ContractPatrolFlag
     {
         $flag->update([
             'status' => ContractPatrolFlagStatus::Acknowledged,

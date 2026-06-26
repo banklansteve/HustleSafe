@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\AdminEmailBroadcastController;
 use App\Http\Controllers\Admin\AdminEscrowManagementController;
 use App\Http\Controllers\Admin\AdminFinancialControlController;
 use App\Http\Controllers\Admin\AdminFinancialAuditController;
+use App\Http\Controllers\Admin\AdminFinancialHealthController;
 use App\Http\Controllers\Admin\AdminFinancialReviewController;
 use App\Http\Controllers\Admin\AdminPlatformFeeLedgerController;
 use App\Http\Controllers\Admin\AdminPremiumPatrolController;
@@ -76,6 +77,7 @@ Route::get('/lifecycle-analytics', AdminLifecycleAnalyticsController::class)->na
 Route::get('/documentation/dashboard-guide/{topic?}', AdminDocumentationController::class)->name('documentation.guide');
 
 Route::get('/insights', AdminInsightsController::class)->name('insights.index');
+Route::get('/api/insights/content-health', [AdminInsightsController::class, 'contentHealth'])->name('insights.content-health');
 Route::get('/journey-surveys', [AdminQuestJourneySurveyController::class, 'insights'])->name('journey-surveys.insights');
 Route::get('/journey-surveys/responses', [AdminQuestJourneySurveyController::class, 'index'])->name('journey-surveys.index');
 Route::get('/api/journey-surveys/free-text', [AdminQuestJourneySurveyController::class, 'freeTextSearch'])->name('journey-surveys.free-text');
@@ -255,6 +257,17 @@ Route::prefix('revenue-monitor')->name('revenue-monitor.')->group(function (): v
     Route::get('/api/transactions/{type}/{id}', [AdminRevenueMonitorController::class, 'detail'])->name('api.transactions.detail');
     Route::get('/export/csv', [AdminRevenueMonitorController::class, 'exportCsv'])->name('export.csv');
     Route::get('/export/pdf', [AdminRevenueMonitorController::class, 'exportPdf'])->name('export.pdf');
+});
+
+Route::prefix('financial-health')->name('financial-health.')->group(function (): void {
+    Route::get('/', [AdminFinancialHealthController::class, 'index'])->name('index');
+    Route::get('/api/snapshot', [AdminFinancialHealthController::class, 'apiSnapshot'])->name('api.snapshot');
+    Route::get('/export/csv', [AdminFinancialHealthController::class, 'exportCsv'])->name('export.csv');
+    Route::get('/export/pdf', [AdminFinancialHealthController::class, 'exportPdf'])->name('export.pdf');
+    Route::post('/transactions/{record}/note', [AdminFinancialHealthController::class, 'addNote'])->middleware('throttle:30,1')->name('transactions.note');
+    Route::post('/transactions/{record}/hold', [AdminFinancialHealthController::class, 'hold'])->middleware('throttle:30,1')->name('transactions.hold');
+    Route::post('/transactions/{record}/lift-hold', [AdminFinancialHealthController::class, 'liftHold'])->middleware('throttle:30,1')->name('transactions.lift-hold');
+    Route::post('/transactions/{record}/investigate', [AdminFinancialHealthController::class, 'investigate'])->middleware('throttle:30,1')->name('transactions.investigate');
 });
 
 Route::prefix('financial-audit')->name('financial-audit.')->group(function (): void {

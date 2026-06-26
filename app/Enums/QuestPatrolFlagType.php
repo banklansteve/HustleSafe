@@ -25,6 +25,10 @@ enum QuestPatrolFlagType: string
     case SuspiciousEscrowRelease = 'suspicious_escrow_release';
     case RepeatCounterpartyTransactions = 'repeat_counterparty_transactions';
     case CircularPayment = 'circular_payment';
+    case RapidQuestCreation = 'rapid_quest_creation';
+    case NewClientHighValueFirstQuest = 'new_client_high_value_first_quest';
+    case RepeatedClientAwards = 'repeated_client_awards';
+    case NewAccountProposalBurst = 'new_account_proposal_burst';
 
     public function label(): string
     {
@@ -50,6 +54,10 @@ enum QuestPatrolFlagType: string
             self::SuspiciousEscrowRelease => 'Suspicious Escrow Release',
             self::RepeatCounterpartyTransactions => 'Repeat Counterparty Transactions',
             self::CircularPayment => 'Circular Payment Pattern',
+            self::RapidQuestCreation => 'Rapid Quest Creation',
+            self::NewClientHighValueFirstQuest => 'New Client High-Value First Quest',
+            self::RepeatedClientAwards => 'Repeated Client Awards',
+            self::NewAccountProposalBurst => 'New Account Proposal Burst',
         };
     }
 
@@ -57,11 +65,12 @@ enum QuestPatrolFlagType: string
     {
         return match ($this) {
             self::BudgetAnomalyHigh, self::TierMismatch, self::InstantCompletion, self::WinRateAnomaly, self::InstantAward,
-            self::SuspiciousEscrowRelease, self::CircularPayment => 'high',
+            self::SuspiciousEscrowRelease, self::CircularPayment, self::RepeatedClientAwards => 'high',
             self::BoostSpam, self::DuplicateBoost, self::RapidBoostAfterAward, self::DuplicateQuest, self::CategoryShift,
             self::NewAccountUnfamiliarCategory, self::LocationMismatch, self::PriceMismatch, self::ScopeMismatch,
             self::VelocitySpike, self::TemplateSpam, self::PriceAnomaly, self::BudgetAnomalyLow,
-            self::RepeatCounterpartyTransactions => 'medium',
+            self::RepeatCounterpartyTransactions, self::RapidQuestCreation, self::NewClientHighValueFirstQuest,
+            self::NewAccountProposalBurst => 'medium',
         };
     }
 }

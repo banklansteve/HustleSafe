@@ -16,15 +16,21 @@ use App\Models\QuestPatrolFlag;
 use App\Models\User;
 use App\Models\UserIdentityDocument;
 use App\Services\Verification\VerificationEngineService;
+use App\Support\NgnMoney;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 final class QuestPatrolAnomalyService
 {
     /** @var array<int, array{median: int, sample: int}>|null */
     private ?array $categoryBands = null;
+
+    public function __construct(
+        private readonly VerificationEngineService $verificationEngine,
+    ) {}
 
     public function flagsAvailable(): bool
     {
@@ -101,6 +107,9 @@ final class QuestPatrolAnomalyService
         $created += $this->flagCategoryShift($quest) ? 1 : 0;
         $created += $this->flagInstantCompletion($quest) ? 1 : 0;
         $created += $this->flagBoostPatterns($quest) ? 1 : 0;
+        $created += $this->flagRapidQuestCreation($quest) ? 1 : 0;
+        $created += $this->flagLocationMismatch($quest) ? 1 : 0;
+        $created += $this->flagNewClientHighValueFirstQuest($quest) ? 1 : 0;
 
         return $created;
     }
@@ -116,8 +125,286 @@ final class QuestPatrolAnomalyService
         $created += $this->flagProposalPriceMismatch($proposal) ? 1 : 0;
         $created += $this->flagVelocitySpike($proposal) ? 1 : 0;
         $created += $this->flagWinRateAnomaly($proposal) ? 1 : 0;
+        $created += $this->flagTemplateSpam($proposal) ? 1 : 0;
+        $created += $this->flagPriceAnomaly($proposal) ? 1 : 0;
+        $created += $this->flagRepeatedClientAwards($proposal) ? 1 : 0;
+        $created += $this->flagTierOneVelocitySpike($proposal) ? 1 : 0;
+        $created += $this->flagNewAccountProposalBurst($proposal) ? 1 : 0;
 
         return $created;
+    }
+
+    private function flagRapidQuestCreation(Quest $quest): bool
+    {
+        $clientId = $quest->client_id;
+        if (! $clientId) {
+            return false;
+        }
+
+        $hours = (int) config('quest_patrol.rapid_quest_creation_window_hours', 24);
+        $threshold = (int) config('quest_patrol.rapid_quest_creation_threshold', 3);
+        $count = Quest::query()
+            ->where('client_id', $clientId)
+            ->where('created_at', '>=', now()->subHours($hours))
+            ->count();
+
+        if ($count < $threshold) {
+            return false;
+        }
+
+        return $this->upsertFlag(
+            QuestPatrolSubjectType::Quest,
+            $quest->id,
+            QuestPatrolFlagType::RapidQuestCreation,
+            "quest:rapid_creation:{$clientId}:{$hours}",
+            ['quest_count' => $count, 'window_hours' => $hours],
+            'medium',
+        );
+    }
+
+    private function flagLocationMismatch(Quest $quest): bool
+    {
+        $client = $quest->client;
+        if (! $client || ! $quest->state_id || ! $client->state_id) {
+            return false;
+        }
+
+        if ((int) $client->state_id === (int) $quest->state_id) {
+            return false;
+        }
+
+        return $this->upsertFlag(
+            QuestPatrolSubjectType::Quest,
+            $quest->id,
+            QuestPatrolFlagType::LocationMismatch,
+            "quest:location_mismatch:{$quest->id}",
+            [
+                'client_state_id' => (int) $client->state_id,
+                'quest_state_id' => (int) $quest->state_id,
+                'freelancer_location_pref' => $quest->freelancer_location_pref instanceof \App\Enums\QuestFreelancerLocationPref
+                    ? $quest->freelancer_location_pref->value
+                    : (string) ($quest->freelancer_location_pref ?? ''),
+            ],
+            'medium',
+        );
+    }
+
+    private function flagNewClientHighValueFirstQuest(Quest $quest): bool
+    {
+        $client = $quest->client;
+        if (! $client) {
+            return false;
+        }
+
+        $thresholdMinor = (int) config('quest_patrol.new_client_high_value_minor', 500_000_00);
+        if ((int) $quest->budget_amount_minor < $thresholdMinor) {
+            return false;
+        }
+
+        $priorQuestCount = Quest::query()
+            ->where('client_id', $client->id)
+            ->where('id', '!=', $quest->id)
+            ->count();
+
+        if ($priorQuestCount > 0) {
+            return false;
+        }
+
+        return $this->upsertFlag(
+            QuestPatrolSubjectType::Quest,
+            $quest->id,
+            QuestPatrolFlagType::NewClientHighValueFirstQuest,
+            "quest:new_client_high_value:{$client->id}",
+            [
+                'budget_minor' => (int) $quest->budget_amount_minor,
+                'threshold_minor' => $thresholdMinor,
+            ],
+            'medium',
+        );
+    }
+
+    private function flagTemplateSpam(QuestOffer $proposal): bool
+    {
+        $normalized = $this->normalizedProposalText($proposal);
+        if ($normalized === '') {
+            return false;
+        }
+
+        $threshold = (int) config('quest_patrol.template_spam_quest_threshold', 5);
+        $questCount = QuestOffer::query()
+            ->where('freelancer_id', $proposal->freelancer_id)
+            ->where('id', '!=', $proposal->id)
+            ->get(['quest_id', 'pitch', 'scope_detail'])
+            ->filter(fn (QuestOffer $row) => $this->normalizedProposalText($row) === $normalized)
+            ->pluck('quest_id')
+            ->unique()
+            ->count() + 1;
+
+        if ($questCount < $threshold) {
+            return false;
+        }
+
+        return $this->upsertFlag(
+            QuestPatrolSubjectType::Proposal,
+            $proposal->id,
+            QuestPatrolFlagType::TemplateSpam,
+            "proposal:template_spam:{$proposal->freelancer_id}:".sha1($normalized),
+            ['quest_count' => $questCount, 'threshold' => $threshold],
+            'medium',
+        );
+    }
+
+    private function flagPriceAnomaly(QuestOffer $proposal): bool
+    {
+        $quest = $proposal->quest;
+        $quoted = (int) ($proposal->quoted_amount_minor ?? 0);
+        if (! $quest?->quest_category_id || $quoted <= 0) {
+            return false;
+        }
+
+        $band = $this->categoryBands()[$quest->quest_category_id] ?? null;
+        if (! $band || $band['sample'] < 5 || $band['median'] <= 0) {
+            return false;
+        }
+
+        $undercutPercent = (int) config('quest_patrol.price_anomaly_undercut_percent', 50);
+        $floorMinor = (int) floor($band['median'] * ((100 - $undercutPercent) / 100));
+        if ($quoted >= $floorMinor) {
+            return false;
+        }
+
+        return $this->upsertFlag(
+            QuestPatrolSubjectType::Proposal,
+            $proposal->id,
+            QuestPatrolFlagType::PriceAnomaly,
+            "proposal:price_anomaly:{$proposal->id}",
+            [
+                'quoted_minor' => $quoted,
+                'market_median_minor' => $band['median'],
+                'undercut_percent' => round((1 - ($quoted / $band['median'])) * 100, 1),
+            ],
+            'medium',
+        );
+    }
+
+    private function flagRepeatedClientAwards(QuestOffer $proposal): bool
+    {
+        $quest = $proposal->quest;
+        $clientId = $quest?->client_id;
+        $freelancerId = $proposal->freelancer_id;
+        if (! $clientId || ! $freelancerId) {
+            return false;
+        }
+
+        if (! in_array((string) $proposal->status, ['accepted', 'pending_award'], true)) {
+            return false;
+        }
+
+        $days = (int) config('quest_patrol.repeated_client_award_window_days', 90);
+        $threshold = (int) config('quest_patrol.repeated_client_award_threshold', 2);
+        $awardCount = Quest::query()
+            ->where('client_id', $clientId)
+            ->where('freelancer_id', $freelancerId)
+            ->where('updated_at', '>=', now()->subDays($days))
+            ->count();
+
+        if ($awardCount < $threshold) {
+            return false;
+        }
+
+        return $this->upsertFlag(
+            QuestPatrolSubjectType::Proposal,
+            $proposal->id,
+            QuestPatrolFlagType::RepeatedClientAwards,
+            "proposal:repeated_awards:{$clientId}:{$freelancerId}:{$days}",
+            [
+                'client_id' => (int) $clientId,
+                'freelancer_id' => (int) $freelancerId,
+                'award_count' => $awardCount,
+                'window_days' => $days,
+            ],
+            'high',
+        );
+    }
+
+    private function flagTierOneVelocitySpike(QuestOffer $proposal): bool
+    {
+        $freelancer = $proposal->freelancer;
+        if (! $freelancer || ! $this->isLowTierFreelancer($freelancer)) {
+            return false;
+        }
+
+        $hours = (int) config('quest_patrol.tier1_proposal_velocity_window_hours', 24);
+        $threshold = (int) config('quest_patrol.tier1_proposal_velocity_threshold', 50);
+        $count = QuestOffer::query()
+            ->where('freelancer_id', $freelancer->id)
+            ->where('created_at', '>=', now()->subHours($hours))
+            ->count();
+
+        if ($count < $threshold) {
+            return false;
+        }
+
+        return $this->upsertFlag(
+            QuestPatrolSubjectType::Proposal,
+            $proposal->id,
+            QuestPatrolFlagType::VelocitySpike,
+            "proposal:tier1_velocity:{$freelancer->id}:{$hours}",
+            [
+                'proposal_count' => $count,
+                'verification_tier' => $freelancer->verification_tier,
+                'window_hours' => $hours,
+            ],
+            'high',
+        );
+    }
+
+    private function flagNewAccountProposalBurst(QuestOffer $proposal): bool
+    {
+        $freelancer = $proposal->freelancer;
+        if (! $freelancer?->created_at) {
+            return false;
+        }
+
+        $maxAgeHours = (int) config('quest_patrol.new_account_proposal_age_hours', 24);
+        if ($freelancer->created_at->diffInHours(now()) > $maxAgeHours) {
+            return false;
+        }
+
+        $threshold = (int) config('quest_patrol.new_account_proposal_burst_threshold', 10);
+        $count = QuestOffer::query()
+            ->where('freelancer_id', $freelancer->id)
+            ->where('created_at', '>=', now()->subHours($maxAgeHours))
+            ->count();
+
+        if ($count < $threshold) {
+            return false;
+        }
+
+        return $this->upsertFlag(
+            QuestPatrolSubjectType::Proposal,
+            $proposal->id,
+            QuestPatrolFlagType::NewAccountProposalBurst,
+            "proposal:new_account_burst:{$freelancer->id}:{$maxAgeHours}",
+            [
+                'proposal_count' => $count,
+                'account_age_hours' => $freelancer->created_at->diffInHours(now()),
+            ],
+            'high',
+        );
+    }
+
+    private function normalizedProposalText(QuestOffer $proposal): string
+    {
+        return Str::of(strip_tags((string) $proposal->pitch.' '.(string) $proposal->scope_detail))
+            ->lower()
+            ->squish()
+            ->toString();
+    }
+
+    private function isLowTierFreelancer(User $user): bool
+    {
+        return $this->verificationEngine->limitLevel($user) <= 1;
     }
 
     /**
@@ -292,9 +579,13 @@ final class QuestPatrolAnomalyService
             return false;
         }
 
-        $limit = app(VerificationEngineService::class)->clientPostingLimitMinor($client);
         $budget = (int) $quest->budget_amount_minor;
-        if ($limit <= 0 || $budget <= $limit) {
+        $context = $this->verificationEngine->clientPostingLimitAuditContext($client, $budget);
+        $fingerprint = "quest:tier_mismatch:{$quest->id}";
+
+        if (! ($context['exceeds'] ?? false)) {
+            $this->resolveOpenTierMismatchFlag($fingerprint);
+
             return false;
         }
 
@@ -302,14 +593,22 @@ final class QuestPatrolAnomalyService
             QuestPatrolSubjectType::Quest,
             $quest->id,
             QuestPatrolFlagType::TierMismatch,
-            "quest:tier_mismatch:{$quest->id}",
-            [
-                'budget_minor' => $budget,
-                'tier_limit_minor' => $limit,
-                'client_tier' => $client->verification_tier,
-            ],
+            $fingerprint,
+            $context,
             'high',
         );
+    }
+
+    private function resolveOpenTierMismatchFlag(string $fingerprint): void
+    {
+        QuestPatrolFlag::query()
+            ->where('fingerprint', $fingerprint)
+            ->where('flag_type', QuestPatrolFlagType::TierMismatch->value)
+            ->where('status', QuestPatrolFlagStatus::Open->value)
+            ->update([
+                'status' => QuestPatrolFlagStatus::Resolved->value,
+                'resolved_at' => now(),
+            ]);
     }
 
     private function flagDuplicateQuest(Quest $quest): bool
@@ -823,6 +1122,7 @@ final class QuestPatrolAnomalyService
 
         return [
             'signal' => $type?->label() ?? $top->flag_type,
+            'reason' => $this->reasonForFlag($top),
             'risk_level' => $top->severity,
             'flags_count' => $flags->count(),
             'top_flag_type' => $top->flag_type,
@@ -831,11 +1131,175 @@ final class QuestPatrolAnomalyService
     }
 
     /**
+     * @return list<array<string, mixed>>
+     */
+    public function openFlagReasonRowsForQuest(int $questId): array
+    {
+        return $this->openFlagReasonRows('quest', $questId);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function openFlagReasonRowsForProposal(int $proposalId): array
+    {
+        return $this->openFlagReasonRows('proposal', $proposalId);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function openFlagReasonRows(string $subjectType, int $subjectId): array
+    {
+        if (! $this->flagsAvailable()) {
+            return [];
+        }
+
+        return QuestPatrolFlag::query()
+            ->where('subject_type', $subjectType)
+            ->where('subject_id', $subjectId)
+            ->where('status', QuestPatrolFlagStatus::Open->value)
+            ->orderByRaw("FIELD(severity, 'high', 'medium', 'low')")
+            ->orderByDesc('detected_at')
+            ->get()
+            ->map(fn (QuestPatrolFlag $flag) => [
+                'id' => $flag->id,
+                'source' => 'patrol',
+                'label' => $flag->typeEnum()?->label() ?? $flag->flag_type,
+                'reason' => $this->reasonForFlag($flag),
+                'recommendation' => $this->recommendationFor($flag),
+                'severity' => $flag->severity,
+                'detected_at' => $flag->detected_at?->toIso8601String(),
+            ])
+            ->values()
+            ->all();
+    }
+
+    public function reasonForFlag(QuestPatrolFlag $flag, ?array $meta = null): string
+    {
+        if ($meta === null && $flag->flag_type === QuestPatrolFlagType::TierMismatch->value) {
+            $meta = $this->resolvedFlagMeta($flag);
+        } else {
+            $meta = $meta ?? (is_array($flag->meta) ? $flag->meta : []);
+        }
+
+        return match ($flag->flag_type) {
+            QuestPatrolFlagType::BudgetAnomalyHigh->value => isset($meta['deviation_percent'])
+                ? sprintf(
+                    'Budget %s is %.0f%% above the category median%s.',
+                    NgnMoney::format((int) ($meta['budget_minor'] ?? 0)),
+                    (float) $meta['deviation_percent'],
+                    isset($meta['market_median_minor']) ? ' ('.NgnMoney::format((int) $meta['market_median_minor']).')' : '',
+                )
+                : 'Budget is unusually high for this category.',
+            QuestPatrolFlagType::BudgetAnomalyLow->value => isset($meta['deviation_percent'])
+                ? sprintf(
+                    'Budget %s is %.0f%% below the category median.',
+                    NgnMoney::format((int) ($meta['budget_minor'] ?? 0)),
+                    abs((float) $meta['deviation_percent']),
+                )
+                : 'Budget is unusually low for this category.',
+            QuestPatrolFlagType::TierMismatch->value => $this->tierMismatchReason($meta),
+            QuestPatrolFlagType::RapidQuestCreation->value => sprintf(
+                '%d quests posted within %d hours.',
+                (int) ($meta['quest_count'] ?? 0),
+                (int) ($meta['window_hours'] ?? 24),
+            ),
+            QuestPatrolFlagType::LocationMismatch->value => 'Quest requires local freelancers but the client and quest states do not align.',
+            QuestPatrolFlagType::NewClientHighValueFirstQuest->value => sprintf(
+                'First quest from a new client is %s (threshold %s).',
+                NgnMoney::format((int) ($meta['budget_minor'] ?? 0)),
+                NgnMoney::format((int) ($meta['threshold_minor'] ?? 500_000_00)),
+            ),
+            QuestPatrolFlagType::TemplateSpam->value => sprintf(
+                'Same proposal text reused on %d quests (threshold %d).',
+                (int) ($meta['quest_count'] ?? 0),
+                (int) ($meta['threshold'] ?? 0),
+            ),
+            QuestPatrolFlagType::PriceAnomaly->value => sprintf(
+                'Quoted %s is %.0f%% below the category median of %s.',
+                NgnMoney::format((int) ($meta['quoted_minor'] ?? 0)),
+                (float) ($meta['undercut_percent'] ?? 0),
+                NgnMoney::format((int) ($meta['market_median_minor'] ?? 0)),
+            ),
+            QuestPatrolFlagType::RepeatedClientAwards->value => sprintf(
+                'Same freelancer awarded %d times by this client in %d days.',
+                (int) ($meta['award_count'] ?? 0),
+                (int) ($meta['window_days'] ?? 30),
+            ),
+            QuestPatrolFlagType::VelocitySpike->value => isset($meta['verification_tier'])
+                ? sprintf(
+                    'Tier %s freelancer submitted %d proposals in %d hours.',
+                    $meta['verification_tier'],
+                    (int) ($meta['proposal_count'] ?? 0),
+                    (int) ($meta['window_hours'] ?? 24),
+                )
+                : sprintf(
+                    '%d proposals submitted in %d hours.',
+                    (int) ($meta['proposal_count'] ?? 0),
+                    (int) ($meta['window_hours'] ?? 24),
+                ),
+            QuestPatrolFlagType::NewAccountProposalBurst->value => sprintf(
+                'New account submitted %d proposals within %d hours of signup.',
+                (int) ($meta['proposal_count'] ?? 0),
+                (int) ($meta['account_age_hours'] ?? 0),
+            ),
+            QuestPatrolFlagType::DuplicateQuest->value => sprintf(
+                '%d duplicate quest(s) with the same title posted recently.',
+                (int) ($meta['duplicate_count'] ?? 0),
+            ),
+            QuestPatrolFlagType::CategoryShift->value => 'Client posted in a category outside their recent posting pattern.',
+            QuestPatrolFlagType::NewAccountUnfamiliarCategory->value => 'New account posted a high-value quest in an unfamiliar category.',
+            QuestPatrolFlagType::InstantCompletion->value => sprintf(
+                'Quest marked complete only %d minutes after award.',
+                (int) ($meta['minutes'] ?? 0),
+            ),
+            QuestPatrolFlagType::BoostSpam->value => sprintf(
+                '%d boosts applied within the patrol window.',
+                (int) ($meta['boost_count'] ?? 0),
+            ),
+            QuestPatrolFlagType::DuplicateBoost->value => sprintf(
+                '%d overlapping boosts detected on this quest.',
+                (int) ($meta['boost_count'] ?? 0),
+            ),
+            QuestPatrolFlagType::PriceMismatch->value => sprintf(
+                'Proposal %s is %.0f%% of the quest budget %s.',
+                NgnMoney::format((int) ($meta['quoted_minor'] ?? 0)),
+                (float) ($meta['ratio_percent'] ?? 0),
+                NgnMoney::format((int) ($meta['budget_minor'] ?? 0)),
+            ),
+            QuestPatrolFlagType::WinRateAnomaly->value => sprintf(
+                'Freelancer win rate %.0f%% across %d submissions (%d awards) in the patrol window.',
+                (float) ($meta['win_rate_percent'] ?? 0),
+                (int) ($meta['submitted'] ?? 0),
+                (int) ($meta['awarded'] ?? 0),
+            ),
+            QuestPatrolFlagType::SuspiciousEscrowRelease->value => sprintf(
+                'Escrow released after %d hours with %d messages and %d deliverables.',
+                (int) ($meta['funded_to_released_hours'] ?? 0),
+                (int) ($meta['messages_exchanged'] ?? 0),
+                (int) ($meta['deliverables_submitted'] ?? 0),
+            ),
+            QuestPatrolFlagType::RepeatCounterpartyTransactions->value => sprintf(
+                '%d funded contracts between the same client and freelancer in %d days.',
+                (int) ($meta['transactions'] ?? 0),
+                (int) ($meta['window_days'] ?? 30),
+            ),
+            QuestPatrolFlagType::CircularPayment->value => sprintf(
+                '%d reverse transactions detected between the same client and freelancer.',
+                (int) ($meta['reverse_transactions'] ?? 0),
+            ),
+            default => $flag->typeEnum()?->label() ?? 'Patrol review required.',
+        };
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function flagPayload(QuestPatrolFlag $flag): array
     {
         $type = $flag->typeEnum();
+        $meta = $this->resolvedFlagMeta($flag);
 
         return [
             'id' => $flag->id,
@@ -843,10 +1307,80 @@ final class QuestPatrolAnomalyService
             'label' => $type?->label() ?? $flag->flag_type,
             'severity' => $flag->severity,
             'status' => $flag->status,
-            'meta' => $flag->meta ?? [],
+            'meta' => $meta,
             'detected_at' => $flag->detected_at?->toIso8601String(),
+            'reason' => $this->reasonForFlag($flag, $meta),
             'recommendation' => $this->recommendationFor($flag),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private function tierMismatchReason(array $meta): string
+    {
+        $budgetMinor = (int) ($meta['budget_minor'] ?? 0);
+        $limitMinor = (int) ($meta['limit_minor'] ?? $meta['tier_limit_minor'] ?? 0);
+        $limitSource = (string) ($meta['limit_source'] ?? 'tier');
+
+        if ($limitSource === 'restricted') {
+            return sprintf(
+                'Budget %s exceeds the posting limit because verification is restricted.',
+                NgnMoney::format($budgetMinor),
+            );
+        }
+
+        if ($limitSource === 'custom') {
+            return sprintf(
+                'Budget %s exceeds the custom posting cap of %s.',
+                NgnMoney::format($budgetMinor),
+                NgnMoney::format($limitMinor),
+            );
+        }
+
+        $limitLabel = (string) ($meta['limit_level_label'] ?? ('L'.($meta['limit_level'] ?? '—')));
+
+        return sprintf(
+            'Budget %s exceeds the %s posting limit of %s.',
+            NgnMoney::format($budgetMinor),
+            $limitLabel,
+            NgnMoney::format($limitMinor),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolvedFlagMeta(QuestPatrolFlag $flag): array
+    {
+        $meta = is_array($flag->meta) ? $flag->meta : [];
+
+        if ($flag->flag_type !== QuestPatrolFlagType::TierMismatch->value) {
+            return $meta;
+        }
+
+        if ($flag->subject_type !== QuestPatrolSubjectType::Quest->value) {
+            return $meta;
+        }
+
+        $quest = Quest::query()->with('client')->find($flag->subject_id);
+        if (! $quest?->client) {
+            return $meta;
+        }
+
+        $fresh = $this->verificationEngine->clientPostingLimitAuditContext(
+            $quest->client,
+            (int) $quest->budget_amount_minor,
+        );
+
+        if (! ($fresh['exceeds'] ?? false) && $flag->isOpen()) {
+            $flag->forceFill([
+                'status' => QuestPatrolFlagStatus::Resolved->value,
+                'resolved_at' => now(),
+            ])->save();
+        }
+
+        return array_merge($meta, $fresh);
     }
 
     private function recommendationFor(QuestPatrolFlag $flag): string
@@ -860,6 +1394,13 @@ final class QuestPatrolAnomalyService
             QuestPatrolFlagType::SuspiciousEscrowRelease->value => 'Escrow was released with no deliverables and near-silent chat. Confirm a genuine task was delivered before clearing; freeze release and request proof if accounts appear linked.',
             QuestPatrolFlagType::RepeatCounterpartyTransactions->value => 'Same client and freelancer transact repeatedly. Verify the work is real and check for KYC/IP overlap suggesting one operator funding their own payout.',
             QuestPatrolFlagType::CircularPayment->value => 'Funds move in both directions between these two accounts. Treat as a strong laundering signal — escalate to financial review and hold payouts.',
+            QuestPatrolFlagType::RapidQuestCreation->value => 'Client posted several quests in a short window. Review for spam listings or structuring.',
+            QuestPatrolFlagType::LocationMismatch->value => 'Quest requires local freelancers but client and quest states differ. Confirm the location requirement is legitimate.',
+            QuestPatrolFlagType::NewClientHighValueFirstQuest->value => 'First quest from a new client exceeds ₦500k. Verify client identity and funding source.',
+            QuestPatrolFlagType::TemplateSpam->value => 'Same proposal text reused across multiple quests. Review for template spam or bot behaviour.',
+            QuestPatrolFlagType::PriceAnomaly->value => 'Proposal undercuts category market rate by more than 50%. Check for lowball bait or misunderstanding of scope.',
+            QuestPatrolFlagType::RepeatedClientAwards->value => 'Same freelancer awarded repeatedly by one client. Review for collusion or self-dealing.',
+            QuestPatrolFlagType::NewAccountProposalBurst->value => 'Brand-new account submitting many proposals quickly. Treat as possible bot behaviour.',
             default => 'Review details and dismiss if this is a false positive.',
         };
     }

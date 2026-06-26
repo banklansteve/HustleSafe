@@ -149,9 +149,6 @@ class QuestProposalLifecycleController extends Controller
         $terms['revisions_included'] = (int) ($offer->corrections_included ? ($offer->corrections_rounds ?: 1) : 0);
         $terms['revision_definition'] = $promptService->deriveRevisionDefinition($offer);
         $terms['deliverables'] = $promptService->deriveDeliverables($quest, $offer);
-        if ($recurring->isRecurring($quest)) {
-            $terms['installment_schedule'] = $recurring->proposalTermsPayload($quest);
-        }
 
         $offer->update([
             'status' => 'pending_award',

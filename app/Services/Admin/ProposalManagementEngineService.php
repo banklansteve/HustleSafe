@@ -12,6 +12,7 @@ use App\Models\QuestCategory;
 use App\Models\QuestOffer;
 use App\Models\User;
 use App\Services\AdminActivityLogger;
+use App\Services\Verification\VerificationEngineService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -30,6 +31,7 @@ class ProposalManagementEngineService
 
     public function __construct(
         private readonly AdminActivityLogger $activity,
+        private readonly VerificationEngineService $verificationEngine,
     ) {}
 
     public function dashboard(Request $request): array
@@ -276,7 +278,7 @@ class ProposalManagementEngineService
             'auto_flagged' => $this->flagsAvailable() ? $query->whereHas('activeAdminProposalFlags', fn (Builder $flag) => $flag->whereIn('type', ['off_platform_contact', 'solicitation', 'lowball_bid', 'copy_paste', 'velocity_spam', 'high_value_low_tier'])) : $query->whereRaw('1 = 0'),
             'manual_flagged' => $this->flagsAvailable() ? $query->whereHas('activeAdminProposalFlags', fn (Builder $flag) => $flag->whereNotIn('type', ['off_platform_contact', 'solicitation', 'lowball_bid', 'copy_paste', 'velocity_spam', 'high_value_low_tier'])) : $query->whereRaw('1 = 0'),
             'off_platform' => $query->where(fn (Builder $sub) => $sub->where('pitch', 'regexp', '(\\+?234|0)[789][01][0-9]{8}|whatsapp|telegram|instagram|http|www\\.')->orWhere('scope_detail', 'regexp', '(\\+?234|0)[789][01][0-9]{8}|whatsapp|telegram|instagram|http|www\\.')),
-            'high_value_low_tier' => $query->whereHas('quest', fn (Builder $quest) => $quest->where('budget_amount_minor', '>=', 50000000))->whereHas('freelancer', fn (Builder $user) => $user->whereIn('verification_tier', ['basic', 'none', 'starter'])->orWhereNull('verification_tier')),
+            'high_value_low_tier' => $this->applyHighValueLowTierFilter($query),
             'prior_actions' => $query->whereHas('freelancer', fn (Builder $user) => $user->whereIn('id', AdminActivityLog::query()->select('subject_id')->where('subject_type', User::class))),
             'accepted_today' => $query->where('status', 'accepted')->where('updated_at', '>=', now()->startOfDay()),
             default => null,
@@ -618,8 +620,21 @@ class ProposalManagementEngineService
         if ($this->similarityScore($proposal) > 75) {
             $signals[] = ['key' => 'copy_paste', 'name' => 'Copy-paste similarity', 'severity' => 'medium', 'explanation' => 'This proposal is highly similar to the freelancer’s recent proposals.', 'evidence' => $this->similarityScore($proposal).'% similarity score.'];
         }
-        if ($budget >= 50000000 && in_array(strtolower((string) $proposal->freelancer?->verification_tier), ['', 'basic', 'none', 'starter'], true)) {
-            $signals[] = ['key' => 'high_value_low_tier', 'name' => 'High-value Quest from low-tier freelancer', 'severity' => 'high', 'explanation' => 'A low-tier freelancer is bidding on a high-value Quest.', 'evidence' => $this->money($budget).' Quest budget.'];
+        $freelancer = $proposal->freelancer;
+        if ($freelancer && $budget > 0 && $this->verificationEngine->exceedsFreelancerProposalLimit($freelancer, $budget)) {
+            $context = $this->verificationEngine->freelancerProposalLimitAuditContext($freelancer, $budget);
+            $signals[] = [
+                'key' => 'high_value_low_tier',
+                'name' => 'High-value Quest from low-tier freelancer',
+                'severity' => 'high',
+                'explanation' => 'The quest budget exceeds this freelancer\'s verification posting limit.',
+                'evidence' => sprintf(
+                    '%s quest budget exceeds %s limit of %s.',
+                    $this->money($budget),
+                    $context['limit_level_label'] ?? 'verification',
+                    $this->money((int) ($context['limit_minor'] ?? 0)),
+                ),
+            ];
         }
         if (AdminActivityLog::query()->where('subject_type', User::class)->where('subject_id', $proposal->freelancer_id)->exists()) {
             $signals[] = ['key' => 'prior_admin_actions', 'name' => 'Prior admin actions', 'severity' => 'medium', 'explanation' => 'This freelancer has previous admin activity attached to their account.', 'evidence' => 'Admin activity log contains user-level entries.'];
@@ -831,6 +846,32 @@ class ProposalManagementEngineService
     private function percentage(int $numerator, int $denominator): string
     {
         return round(($numerator / max(1, $denominator)) * 100).'%';
+    }
+
+    private function applyHighValueLowTierFilter(Builder $query): void
+    {
+        $limitMap = $this->verificationEngine->limits()['freelancer_proposal_minor'] ?? [];
+        if ($limitMap === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $levelExpr = 'coalesce(users.current_verification_level, users.verification_tier, 0)';
+        $caseParts = [];
+        foreach ($limitMap as $level => $limit) {
+            $caseParts[] = 'when '.$levelExpr.' = '.(int) $level.' then '.(int) $limit;
+        }
+
+        $tierLimitCase = 'case '.implode(' ', $caseParts).' else 0 end';
+        $effectiveLimitCase = 'case when users.custom_freelancer_proposal_limit_minor is not null then users.custom_freelancer_proposal_limit_minor else ('.$tierLimitCase.') end';
+
+        $query->whereHas('quest', fn (Builder $quest) => $quest->where('budget_amount_minor', '>', 0))
+            ->whereHas('freelancer', function (Builder $freelancer) use ($effectiveLimitCase): void {
+                $freelancer->whereRaw(
+                    '(select q.budget_amount_minor from quests q where q.id = quest_offers.quest_id limit 1) > ('.$effectiveLimitCase.')'
+                );
+            });
     }
 
     private function money(int $minor): string

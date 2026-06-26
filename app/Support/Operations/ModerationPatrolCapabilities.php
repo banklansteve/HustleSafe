@@ -41,6 +41,7 @@ final class ModerationPatrolCapabilities
                 'request_revision' => $isSuper,
                 'remove_proposal' => $isSuper,
                 'create_template' => $isSuper,
+                'dismiss_anomaly' => $isSuper,
             ],
         ];
     }

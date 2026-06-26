@@ -94,6 +94,7 @@ class AdminQuestReleaseController extends Controller
             $this->events->record($quest->fresh(), 'sa_delivery_approved', $request->user(), $request, [
                 'reason' => $data['reason'],
             ]);
+            app(\App\Services\Moderation\ModerationDetectionHookService::class)->deliveryApproved($quest);
             $quest->refresh();
         }
 

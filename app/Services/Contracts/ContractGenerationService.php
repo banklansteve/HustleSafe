@@ -18,6 +18,7 @@ use App\Notifications\ContractPendingEscrowFreelancerNotification;
 use App\Notifications\ContractPendingEscrowClientNotification;
 use App\Support\EscrowAutoReleasePolicy;
 use App\Support\PlatformSettings;
+use App\Support\ProposalMoneyCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -39,13 +40,16 @@ class ContractGenerationService
         $terms = $offer->award_terms_snapshot ?? [];
         $pricing = is_array($offer->pricing_snapshot) ? $offer->pricing_snapshot : [];
 
-        $totalMinor = (int) ($offer->quoted_amount_minor ?? $terms['price_minor'] ?? 0);
+        $totalMinor = ProposalMoneyCalculator::freelancerWalletPayoutMinor($pricing);
+        if ($totalMinor <= 0) {
+            $totalMinor = (int) ($offer->quoted_amount_minor ?? $terms['price_minor'] ?? 0);
+        }
         $platformFeeMinor = (int) ($pricing['platform_fee_minor'] ?? 0);
         $platformFeePercent = PlatformSettings::platformFeePercent();
         if ($platformFeeMinor <= 0 && $totalMinor > 0) {
             $platformFeeMinor = (int) round($totalMinor * ($platformFeePercent / 100));
         }
-        $freelancerNetMinor = max(0, $totalMinor - $platformFeeMinor);
+        $freelancerNetMinor = $totalMinor;
 
         $deliverables = $this->parseDeliverables($offer, $terms);
         $deliveryDate = $terms['deadline_date'] ?? ($offer->planned_finish_date?->toDateString() ?? $offer->proposed_completion_date?->toDateString());

@@ -40,6 +40,8 @@ class QuestCompletionController extends Controller
             'escrow_status' => $quest->escrow_status,
         ]);
 
+        app(\App\Services\Moderation\ModerationDetectionHookService::class)->deliveryApproved($quest);
+
         $quest->refresh();
         if (EscrowReleasePolicy::requiresSuperAdminAuthorization($quest) && ! EscrowReleasePolicy::hasSuperAdminAuthorization($quest)) {
             app(\App\Services\Platform\PlatformSlaService::class)->start(

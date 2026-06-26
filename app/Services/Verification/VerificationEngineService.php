@@ -565,9 +565,117 @@ class VerificationEngineService
 
     public function freelancerCanProposeForBudget(User $user, int $budgetMinor): bool
     {
+        return ! $this->exceedsFreelancerProposalLimit($user, $budgetMinor);
+    }
+
+    public function exceedsClientPostingLimit(User $user, int $budgetMinor): bool
+    {
+        $limit = $this->clientPostingLimitMinor($user);
+
+        return $budgetMinor > 0 && ($limit <= 0 || $budgetMinor > $limit);
+    }
+
+    public function exceedsFreelancerProposalLimit(User $user, int $valueMinor): bool
+    {
         $limit = $this->freelancerProposalLimitMinor($user);
 
-        return $limit > 0 && $budgetMinor > 0 && $budgetMinor <= $limit;
+        return $valueMinor > 0 && ($limit <= 0 || $valueMinor > $limit);
+    }
+
+    /**
+     * @return array{
+     *     budget_minor: int,
+     *     limit_minor: int,
+     *     tier_limit_minor: int,
+     *     verification_level: int,
+     *     limit_level: int,
+     *     verification_level_label: string,
+     *     limit_level_label: string,
+     *     limit_source: 'restricted'|'custom'|'tier',
+     *     exceeds: bool,
+     * }
+     */
+    public function clientPostingLimitAuditContext(User $user, int $budgetMinor): array
+    {
+        if ($user->verification_restricted_at !== null) {
+            return [
+                'budget_minor' => $budgetMinor,
+                'limit_minor' => 0,
+                'tier_limit_minor' => 0,
+                'verification_level' => $this->resolvedVerificationLevel($user),
+                'limit_level' => 0,
+                'verification_level_label' => $this->levelLabel($this->resolvedVerificationLevel($user), $user),
+                'limit_level_label' => $this->levelLabel(0, $user),
+                'limit_source' => 'restricted',
+                'exceeds' => $budgetMinor > 0,
+            ];
+        }
+
+        $limitLevel = $this->limitLevel($user);
+        $verificationLevel = $this->resolvedVerificationLevel($user);
+        $limitMinor = $this->clientPostingLimitMinor($user);
+        $tierLimitMinor = $this->limitAtLevel($user, $limitLevel);
+        $limitSource = $user->custom_client_post_limit_minor !== null ? 'custom' : 'tier';
+
+        return [
+            'budget_minor' => $budgetMinor,
+            'limit_minor' => $limitMinor,
+            'tier_limit_minor' => $tierLimitMinor,
+            'verification_level' => $verificationLevel,
+            'limit_level' => $limitLevel,
+            'verification_level_label' => $this->levelLabel($verificationLevel, $user),
+            'limit_level_label' => $this->levelLabel($limitLevel, $user),
+            'limit_source' => $limitSource,
+            'exceeds' => $this->exceedsClientPostingLimit($user, $budgetMinor),
+        ];
+    }
+
+    /**
+     * @return array{
+     *     value_minor: int,
+     *     limit_minor: int,
+     *     tier_limit_minor: int,
+     *     verification_level: int,
+     *     limit_level: int,
+     *     verification_level_label: string,
+     *     limit_level_label: string,
+     *     limit_source: 'restricted'|'custom'|'tier',
+     *     exceeds: bool,
+     * }
+     */
+    public function freelancerProposalLimitAuditContext(User $user, int $valueMinor): array
+    {
+        if ($user->verification_restricted_at !== null) {
+            return [
+                'value_minor' => $valueMinor,
+                'limit_minor' => 0,
+                'tier_limit_minor' => 0,
+                'verification_level' => $this->resolvedVerificationLevel($user),
+                'limit_level' => 0,
+                'verification_level_label' => $this->levelLabel($this->resolvedVerificationLevel($user), $user),
+                'limit_level_label' => $this->levelLabel(0, $user),
+                'limit_source' => 'restricted',
+                'exceeds' => $valueMinor > 0,
+            ];
+        }
+
+        $limitLevel = $this->limitLevel($user);
+        $verificationLevel = $this->resolvedVerificationLevel($user);
+        $limitMinor = $this->freelancerProposalLimitMinor($user);
+        $tierLimitMinor = $this->limitAtLevel($user, $limitLevel);
+        $limitSource = $user->custom_freelancer_proposal_limit_minor !== null ? 'custom' : 'tier';
+
+        return [
+            'value_minor' => $valueMinor,
+            'limit_minor' => $limitMinor,
+            'tier_limit_minor' => $tierLimitMinor,
+            'verification_level' => $verificationLevel,
+            'limit_level' => $limitLevel,
+            'verification_level_label' => $this->levelLabel($verificationLevel, $user),
+            'limit_level_label' => $this->levelLabel($limitLevel, $user),
+            'limit_source' => $limitSource,
+            'exceeds' => $this->exceedsFreelancerProposalLimit($user, $valueMinor),
+        ];
     }
 
     public function assertClientCanPostQuest(User $user, int $budgetMinor): void

@@ -20,6 +20,7 @@ return [
     ],
 
     'limits' => [
+        // Deprecated: tier financial limits live in VerificationEngineService (config/verification_engine.php + kyc_settings.verification_limits).
         'tier_1_client_quest_minor' => 25_000_000,
         'tier_2_client_quest_minor' => 100_000_000,
         'tier_4_single_withdrawal_minor' => 500_000_000,

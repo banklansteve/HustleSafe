@@ -315,7 +315,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import axios from 'axios';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import OperationsShell from '@/Layouts/OperationsShell.vue';
@@ -469,6 +469,26 @@ function openContractByRef(ref) {
     panelOpen.value = true;
     activeTab.value = 'contracts';
 }
+
+onMounted(() => {
+    const params = new URLSearchParams(window.location.search);
+    const openRef = params.get('open');
+    const q = params.get('q');
+
+    if (q) {
+        filters.value.q = q;
+    }
+
+    if (openRef) {
+        if (q) {
+            reloadListing().finally(() => openContractByRef(openRef));
+        } else {
+            openContractByRef(openRef);
+        }
+    } else if (q) {
+        reloadListing();
+    }
+});
 
 function onActionDone() {
     toast.value = 'Action saved.';

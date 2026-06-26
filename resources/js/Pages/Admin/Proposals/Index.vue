@@ -571,7 +571,7 @@ import AdminTabs from '@/Components/Admin/AdminTabs.vue';
 import AdminShell from '@/Layouts/AdminShell.vue';
 import { router } from '@inertiajs/vue3';
 import axios from 'axios';
-import { computed, defineComponent, h, reactive, ref, watch } from 'vue';
+import { computed, defineComponent, h, onMounted, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
     summary: { type: Array, default: () => [] },
@@ -733,6 +733,44 @@ function toggleVisibleSelection() {
         props.proposals.data.forEach((proposal) => selectedIds.add(proposal.id));
     }
 }
+
+async function openProposalFromDeepLink(openKey) {
+    if (!openKey) {
+        return;
+    }
+
+    const match = props.proposals.data?.find(
+        (proposal) => String(proposal.id) === String(openKey)
+            || proposal.reference_code === openKey,
+    );
+
+    if (match) {
+        await openProposal(match);
+
+        return;
+    }
+
+    detailLoading.value = true;
+    try {
+        const { data } = await axios.get(route('admin.proposals.detail', openKey));
+        const overview = data?.overview?.proposal;
+        if (overview) {
+            activeProposal.value = overview;
+            proposalDetail.value = data;
+        }
+    } catch (error) {
+        toast(error.response?.data?.message || 'Could not load proposal details.', 'error');
+    } finally {
+        detailLoading.value = false;
+    }
+}
+
+onMounted(() => {
+    const openKey = new URLSearchParams(window.location.search).get('open');
+    if (openKey) {
+        openProposalFromDeepLink(openKey);
+    }
+});
 
 async function openProposal(proposal) {
     activeProposal.value = proposal;

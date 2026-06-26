@@ -221,19 +221,34 @@
             >
                 <p class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-900">Confirm your award</p>
                 <p class="mt-1 text-xs leading-relaxed">
-                    The client selected you. Review the contract snapshot below and confirm — then they can fund escrow.
+                    The client selected you. Review the contract summary below and confirm — then they can fund escrow.
                 </p>
-                <ul v-if="awardTerms" class="mt-3 space-y-2 text-xs font-semibold text-emerald-950/90">
-                    <li>Price: <span class="font-black">{{ awardTerms.price_label }}</span></li>
-                    <li v-if="awardTerms.deadline_label">Target finish: <span class="font-black">{{ awardTerms.deadline_label }}</span></li>
-                    <li class="leading-relaxed">Scope: {{ awardTerms.scope_summary }}</li>
-                </ul>
+                <div v-if="freelancerAwardContract" class="mt-3 space-y-3 rounded-xl border border-emerald-200/80 bg-white/70 p-3 text-xs font-semibold text-emerald-950">
+                    <div>
+                        <p v-if="freelancerAwardContract.questTitle" class="font-black text-emerald-900">{{ freelancerAwardContract.questTitle }}</p>
+                        <p v-if="freelancerAwardContract.clientName" class="mt-0.5 text-emerald-900/80">Client: <span class="font-black">{{ freelancerAwardContract.clientName }}</span></p>
+                    </div>
+                    <dl class="grid gap-2 sm:grid-cols-2">
+                        <div v-if="freelancerAwardContract.startLabel">
+                            <dt class="text-[10px] font-black uppercase tracking-wide text-emerald-800/80">Start</dt>
+                            <dd class="font-black">{{ freelancerAwardContract.startLabel }}</dd>
+                        </div>
+                        <div v-if="freelancerAwardContract.deadlineLabel">
+                            <dt class="text-[10px] font-black uppercase tracking-wide text-emerald-800/80">Finish by</dt>
+                            <dd class="font-black">{{ freelancerAwardContract.deadlineLabel }}</dd>
+                        </div>
+                        <div v-if="freelancerAwardContract.payout?.walletLabel" class="sm:col-span-2">
+                            <dt class="text-[10px] font-black uppercase tracking-wide text-emerald-800/80">Paid to your wallet</dt>
+                            <dd class="font-black text-emerald-800">{{ freelancerAwardContract.payout.walletLabel }}</dd>
+                        </div>
+                    </dl>
+                </div>
                 <button
                     type="button"
                     class="mt-3 rounded-full bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-emerald-800"
                     @click="openModal('confirm_award')"
                 >
-                    Confirm award terms
+                    Review &amp; confirm contract
                 </button>
             </section>
 
@@ -715,34 +730,141 @@
                         </template>
 
                         <template v-else-if="activeModal === 'confirm_award'">
-                            <div v-if="awardTermsPreview.payout" class="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-                                <p class="text-[10px] font-black uppercase tracking-wide text-emerald-900">What you are accepting</p>
-                                <ul class="mt-3 space-y-2 text-sm font-semibold text-emerald-950">
-                                    <li class="flex flex-wrap justify-between gap-2">
-                                        <span>Your quote</span>
-                                        <span class="font-black">{{ awardTermsPreview.payout.quote_label || awardTermsPreview.payout.net_quote_label }}</span>
-                                    </li>
-                                    <li v-if="Number(awardTermsPreview.payout.discount_minor) > 0" class="flex flex-wrap justify-between gap-2 text-emerald-900/90">
-                                        <span>Discount</span>
-                                        <span class="font-black">−{{ awardTermsPreview.payout.discount_label }}</span>
-                                    </li>
-                                    <li class="flex flex-wrap justify-between gap-2 border-t border-emerald-200/80 pt-2 text-base">
-                                        <span class="font-black">Net quote</span>
-                                        <span class="font-black text-emerald-800">{{ awardTermsPreview.payout.net_quote_label || awardTermsPreview.payout.quote_label }}</span>
+                            <div v-if="freelancerAwardContract" class="space-y-4">
+                                <div class="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-emerald-900">Job</p>
+                                    <p v-if="freelancerAwardContract.questTitle" class="mt-2 text-sm font-black text-emerald-950">
+                                        {{ freelancerAwardContract.questTitle }}
+                                    </p>
+                                    <p v-if="freelancerAwardContract.clientName" class="mt-1 text-xs font-semibold text-emerald-900/90">
+                                        Client: <span class="font-black">{{ freelancerAwardContract.clientName }}</span>
+                                    </p>
+
+                                    <dl class="mt-4 grid gap-3 sm:grid-cols-2">
+                                        <div v-if="freelancerAwardContract.startLabel" class="rounded-xl border border-emerald-200/70 bg-white/80 px-3 py-2.5">
+                                            <dt class="text-[10px] font-black uppercase tracking-wide text-emerald-800/80">Planned start</dt>
+                                            <dd class="mt-0.5 text-sm font-black text-emerald-950">{{ freelancerAwardContract.startLabel }}</dd>
+                                        </div>
+                                        <div v-if="freelancerAwardContract.deadlineLabel" class="rounded-xl border border-emerald-200/70 bg-white/80 px-3 py-2.5">
+                                            <dt class="text-[10px] font-black uppercase tracking-wide text-emerald-800/80">Finish by</dt>
+                                            <dd class="mt-0.5 text-sm font-black text-emerald-950">{{ freelancerAwardContract.deadlineLabel }}</dd>
+                                        </div>
+                                        <div v-if="freelancerAwardContract.durationLabel" class="rounded-xl border border-emerald-200/70 bg-white/80 px-3 py-2.5">
+                                            <dt class="text-[10px] font-black uppercase tracking-wide text-emerald-800/80">Estimated duration</dt>
+                                            <dd class="mt-0.5 text-sm font-black text-emerald-950">{{ freelancerAwardContract.durationLabel }}</dd>
+                                        </div>
+                                        <div v-if="freelancerAwardContract.progressLabel" class="rounded-xl border border-emerald-200/70 bg-white/80 px-3 py-2.5">
+                                            <dt class="text-[10px] font-black uppercase tracking-wide text-emerald-800/80">Progress updates</dt>
+                                            <dd class="mt-0.5 text-sm font-black text-emerald-950">{{ freelancerAwardContract.progressLabel }}</dd>
+                                        </div>
+                                    </dl>
+                                </div>
+
+                                <div v-if="freelancerAwardContract.installmentSchedule?.required" class="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-violet-900">Ongoing payment schedule</p>
+                                    <p class="mt-2 text-sm font-black text-violet-950">
+                                        {{ freelancerAwardContract.installmentSchedule.per_payment_label || freelancerAwardContract.installmentSchedule.installment_amount_label }}
+                                        per {{ freelancerAwardContract.installmentSchedule.frequency_label?.toLowerCase() || 'period' }}
+                                    </p>
+                                    <p class="mt-1 text-xs font-semibold text-violet-900/90">
+                                        {{ freelancerAwardContract.installmentSchedule.installment_count }} payments
+                                        · {{ freelancerAwardContract.installmentSchedule.wallet_total_label || freelancerAwardContract.installmentSchedule.total_budget_label }} total to your wallet
+                                    </p>
+                                    <p v-if="freelancerAwardContract.installmentSchedule.summary" class="mt-2 text-xs font-semibold leading-relaxed text-violet-900/90">
+                                        {{ freelancerAwardContract.installmentSchedule.summary }}
+                                    </p>
+                                </div>
+
+                                <div v-else-if="freelancerAwardContract.payout" class="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Your payment on release</p>
+                                    <ul class="mt-3 space-y-2 text-sm font-semibold text-slate-800">
+                                        <li
+                                            v-if="Number(freelancerAwardContract.payout.professionalFeeMinor) > 0"
+                                            class="flex flex-wrap justify-between gap-2"
+                                        >
+                                            <span>Professional fee</span>
+                                            <span class="font-black">{{ freelancerAwardContract.payout.professionalFeeLabel }}</span>
+                                        </li>
+                                        <li
+                                            v-if="Number(freelancerAwardContract.payout.materialsMinor) > 0"
+                                            class="flex flex-wrap justify-between gap-2"
+                                        >
+                                            <span>Materials &amp; parts</span>
+                                            <span class="font-black">{{ freelancerAwardContract.payout.materialsLabel }}</span>
+                                        </li>
+                                        <li
+                                            v-if="Number(freelancerAwardContract.payout.travelMinor) > 0"
+                                            class="flex flex-wrap justify-between gap-2"
+                                        >
+                                            <span>Travel</span>
+                                            <span class="font-black">{{ freelancerAwardContract.payout.travelLabel }}</span>
+                                        </li>
+                                        <li
+                                            v-if="Number(freelancerAwardContract.payout.discountMinor) > 0"
+                                            class="flex flex-wrap justify-between gap-2 text-slate-700"
+                                        >
+                                            <span>Discount</span>
+                                            <span class="font-black">−{{ freelancerAwardContract.payout.discountLabel }}</span>
+                                        </li>
+                                        <li class="flex flex-wrap justify-between gap-2 border-t border-slate-200 pt-2 text-base">
+                                            <span class="font-black text-emerald-900">Paid to your wallet</span>
+                                            <span class="font-black text-emerald-800">{{ freelancerAwardContract.payout.walletLabel }}</span>
+                                        </li>
+                                    </ul>
+                                    <p v-if="freelancerAwardContract.payout.summary" class="mt-3 text-xs font-semibold leading-relaxed text-slate-600">
+                                        {{ freelancerAwardContract.payout.summary }}
+                                    </p>
+                                </div>
+
+                                <div
+                                    v-if="freelancerAwardContract.revisionDefinition"
+                                    class="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                                >
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Revisions in your quote</p>
+                                    <p class="mt-2 text-xs font-semibold leading-relaxed text-slate-800">
+                                        {{ freelancerAwardContract.revisionDefinition }}
+                                    </p>
+                                </div>
+
+                                <div
+                                    v-if="freelancerAwardContract.warranty"
+                                    class="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                                >
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Warranty in your quote</p>
+                                    <p class="mt-2 text-xs font-semibold leading-relaxed text-slate-800">{{ freelancerAwardContract.warranty }}</p>
+                                </div>
+
+                                <div
+                                    v-if="freelancerAwardContract.releaseTiming"
+                                    class="rounded-2xl border border-sky-200 bg-sky-50/80 p-4 text-xs font-semibold text-sky-950"
+                                >
+                                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-sky-900">Release timing</p>
+                                    <p class="mt-2 leading-relaxed">{{ freelancerAwardContract.releaseTiming.headline }}</p>
+                                    <p class="mt-1 font-black text-sky-950">
+                                        Auto-releases: {{ freelancerAwardContract.releaseTiming.auto_release_label }}
+                                    </p>
+                                    <p v-if="freelancerAwardContract.releaseTiming.footnote" class="mt-1 text-sky-900/80">
+                                        {{ freelancerAwardContract.releaseTiming.footnote }}
+                                    </p>
+                                </div>
+
+                                <ul class="list-disc space-y-2 pl-4 text-xs font-semibold text-slate-700">
+                                    <li>You may start only after the client funds escrow for this job.</li>
+                                    <li>
+                                        See our
+                                        <a :href="route('legal.terms')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Terms</a>,
+                                        <a :href="route('legal.escrow')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Escrow Policy</a>,
+                                        and
+                                        <a :href="route('legal.dispute')" target="_blank" rel="noopener noreferrer" class="font-black text-primary-800 underline">Dispute Policy</a>.
                                     </li>
                                 </ul>
-                                <p class="mt-3 text-xs font-semibold leading-relaxed text-emerald-900/90">
-                                    {{ awardTermsPreview.payout.summary }}
-                                </p>
                             </div>
-                            <ul v-if="awardTerms" class="mt-4 list-disc space-y-2 pl-4 text-xs font-semibold text-slate-700">
-                                <li>Price: <span class="font-black">{{ awardTerms.price_label }}</span></li>
-                                <li v-if="awardTerms.deadline_label">Finish by: <span class="font-black">{{ awardTerms.deadline_label }}</span></li>
-                                <li class="leading-relaxed">{{ awardTerms.scope_summary }}</li>
-                            </ul>
+
                             <label class="mt-4 flex cursor-pointer items-start gap-3 text-sm font-semibold text-slate-800">
                                 <input v-model="confirmAwardForm.confirm_award_terms" type="checkbox" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                <span>I accept this job at the quoted amount above. The client funds escrow separately with platform fees and taxes.</span>
+                                <span>
+                                    I agree to the terms of this contract — including the timeline, payment amount, and platform rules linked above.
+                                </span>
                             </label>
                             <InputError :message="confirmAwardForm.errors.confirm_award_terms" />
                         </template>
@@ -1081,6 +1203,59 @@ const awardTermsPreview = computed(() => {
     };
 });
 
+const freelancerAwardContract = computed(() => {
+    const terms = awardTerms.value;
+    const offer = props.offer;
+    const snapshot = offer.pricing_snapshot || {};
+    const payoutSource = terms?.payout;
+
+    const profMinor = Number(snapshot.professional_fee_minor ?? payoutSource?.professional_fee_minor ?? 0);
+    const matMinor = Number(snapshot.materials_total_minor ?? payoutSource?.materials_minor ?? 0);
+    const travelMinor = Number(snapshot.travel_cost_minor ?? payoutSource?.travel_minor ?? 0);
+    const discountMinor = Number(snapshot.discount_minor ?? payoutSource?.discount_minor ?? 0);
+    const walletMinor = Math.max(
+        0,
+        profMinor + matMinor + travelMinor - discountMinor,
+        Number(offer.quote_total_minor ?? offer.quoted_amount_minor ?? 0),
+    );
+
+    const payout = walletMinor > 0
+        ? {
+            professionalFeeMinor: profMinor,
+            professionalFeeLabel: formatBudget(profMinor),
+            materialsMinor: matMinor,
+            materialsLabel: formatBudget(matMinor),
+            travelMinor,
+            travelLabel: formatBudget(travelMinor),
+            discountMinor,
+            discountLabel: formatBudget(discountMinor),
+            walletMinor,
+            walletLabel: formatBudget(walletMinor),
+            summary: discountMinor > 0
+                ? `When the client approves your finished work, ${formatBudget(walletMinor)} is released to your wallet (your quote including materials and travel, minus the agreed discount).`
+                : `When the client approves your finished work, ${formatBudget(walletMinor)} is released to your wallet.`,
+        }
+        : null;
+
+    const finishDate = terms?.deadline_date || offer.planned_finish_date || offer.proposed_completion_date;
+    const releaseTiming = terms?.release_timing || buildReleaseTiming(finishDate);
+
+    return {
+        questTitle: terms?.quest_title || props.quest?.title || null,
+        clientName: terms?.client_name || props.quest?.client?.name || null,
+        startLabel: terms?.start_label || formatContractDate(offer.planned_start_date),
+        deadlineLabel: terms?.deadline_label || formatContractDate(finishDate),
+        durationLabel: terms?.duration_label || (offer.estimated_duration_days ? `${offer.estimated_duration_days} days` : null),
+        progressLabel: terms?.progress_report_label || progressLabel(offer.progress_report_frequency),
+        installmentSchedule: terms?.installment_schedule || null,
+        payout,
+        releaseTiming,
+        revisionDefinition: terms?.revision_definition || revisionDefinitionFromOffer(offer),
+        revisionsIncluded: terms?.revisions_included ?? (offer.corrections_included ? (offer.corrections_rounds || 1) : 0),
+        warranty: terms?.warranty_terms || (offer.warranty_terms ? String(offer.warranty_terms).trim() : null) || null,
+    };
+});
+
 const clientDecisionOffer = computed(
     () => props.is_client && props.quest.status === 'open' && ['submitted', 'shortlisted'].includes(localOfferStatus.value),
 );
@@ -1142,7 +1317,7 @@ const modalIntro = computed(() => {
         return 'Check the price, job, and finish date below. The worker must also confirm before you pay.';
     }
     if (m === 'confirm_award') {
-        return 'The client chose you for this job. Confirm so they can pay into escrow.';
+        return 'The client chose you for this job. Read the contract summary carefully before you confirm.';
     }
     if (m === 'cancel_award') {
         return 'This withdraws the award before any escrow payment. The quest returns to open proposals.';
@@ -1401,6 +1576,18 @@ function progressLabel(key) {
     return progressLabels[key] || key || '—';
 }
 
+function revisionDefinitionFromOffer(offer) {
+    if (!offer?.corrections_included) {
+        return 'Small touch-ups after delivery are not included unless you both agree separately.';
+    }
+
+    const rounds = Math.max(1, Number(offer.corrections_rounds || 1));
+
+    return rounds === 1
+        ? 'One round of small fixes is included — correcting mistakes in the finished work, not adding new work.'
+        : `${rounds} rounds of small fixes are included — correcting mistakes in the finished work, not adding new work.`;
+}
+
 function formatBudget(minor) {
     if (minor === undefined || minor === null) {
         return '—';
@@ -1424,6 +1611,54 @@ function formatWhen(iso) {
         return new Date(iso).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Lagos' });
     } catch {
         return '';
+    }
+}
+
+function formatContractDate(value) {
+    if (!value) {
+        return null;
+    }
+
+    try {
+        const normalized = String(value).includes('T') ? value : `${value}T12:00:00`;
+
+        return new Date(normalized).toLocaleDateString('en-NG', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'Africa/Lagos',
+        });
+    } catch {
+        return String(value);
+    }
+}
+
+function buildReleaseTiming(finishDate) {
+    if (!finishDate) {
+        return null;
+    }
+
+    const hours = Number(page.props.escrow_auto_release_hours ?? 72);
+    try {
+        const due = new Date(`${finishDate}T23:59:59+01:00`);
+        const releaseAt = new Date(due.getTime() + hours * 60 * 60 * 1000);
+        const autoReleaseLabel = releaseAt.toLocaleString('en-NG', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'Africa/Lagos',
+        });
+
+        return {
+            headline: 'After client approves delivery OR',
+            auto_release_label: autoReleaseLabel,
+            footnote: `(${hours} hours after delivery)`,
+        };
+    } catch {
+        return null;
     }
 }
 </script>

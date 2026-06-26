@@ -4,6 +4,11 @@
         subtitle="Premium-grade intelligence for GMV, revenue, conversion, trust, geography, escrow, payouts, and retention."
     >
         <div class="space-y-6">
+            <ContentHealthInsightsPanel
+                :modules="content_health"
+                :drill-down-url="content_health_drill_down_url"
+            />
+
             <section class="grid gap-4 xl:grid-cols-[0.9fr_1.6fr_1fr]">
                 <InsightCard title="Platform Health Score" eyebrow="Vital sign" class="xl:row-span-2">
                     <GaugeChart :score="insights.health_score.score" :label="insights.health_score.label" />
@@ -94,12 +99,15 @@
 
 <script setup>
 import AdminShell from '@/Layouts/AdminShell.vue';
+import ContentHealthInsightsPanel from '@/Components/Admin/ContentHealthInsightsPanel.vue';
 import SupportTicketAnalyticsPanel from '@/Components/Admin/SupportTicketAnalyticsPanel.vue';
 import DashboardCharts from '@/Pages/Admin/DashboardCharts.vue';
 import { computed, defineComponent, h, ref } from 'vue';
 
 const props = defineProps({
     insights: { type: Object, required: true },
+    content_health: { type: Object, required: true },
+    content_health_drill_down_url: { type: String, required: true },
     operational_charts: { type: Object, default: () => ({}) },
     operational_leaderboards: { type: Object, default: () => ({ freelancers: [], clients: [] }) },
     support_ticket_analytics: { type: Object, default: () => ({}) },

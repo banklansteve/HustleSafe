@@ -25,6 +25,7 @@ use App\Models\User;
 use App\Models\UserActivityPatrolFlag;
 use App\Models\UserIdentityDocument;
 use App\Models\UserVerification;
+use App\Services\Verification\VerificationEngineService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -36,6 +37,7 @@ final class UserActivityPatrolAnomalyService
 
     public function __construct(
         private readonly UserActivityPatrolBroadcastService $broadcast,
+        private readonly VerificationEngineService $verificationEngine,
     ) {}
 
     public function scanAll(): int
@@ -1521,19 +1523,37 @@ final class UserActivityPatrolAnomalyService
     private function scanAccountInconsistency(): int
     {
         $created = 0;
-        $thresholdMinor = 2_000_000_00;
 
         User::query()
-            ->where('verification_tier', '<=', 2)
-            ->whereHas('questOffers', fn ($q) => $q->whereHas('quest', fn ($qq) => $qq->where('budget_amount_minor', '>=', $thresholdMinor)))
-            ->chunk(50, function ($users) use (&$created, $thresholdMinor): void {
+            ->whereHas('role', fn ($role) => $role->where('slug', 'freelancer'))
+            ->whereHas('questOffers.quest', fn ($quest) => $quest->where('budget_amount_minor', '>', 0))
+            ->with(['questOffers:id,freelancer_id,quest_id', 'questOffers.quest:id,budget_amount_minor'])
+            ->chunk(50, function ($users) use (&$created): void {
                 foreach ($users as $user) {
+                    $maxBudgetMinor = (int) $user->questOffers
+                        ->map(fn (QuestOffer $offer) => (int) ($offer->quest?->budget_amount_minor ?? 0))
+                        ->max();
+
+                    if ($maxBudgetMinor <= 0 || ! $this->verificationEngine->exceedsFreelancerProposalLimit($user, $maxBudgetMinor)) {
+                        continue;
+                    }
+
+                    $context = $this->verificationEngine->freelancerProposalLimitAuditContext($user, $maxBudgetMinor);
                     $created += $this->upsertFlag(
                         $user,
                         UserActivityAnomalyType::AccountInconsistency,
                         "account_inconsistency:{$user->id}",
-                        'Tier '.($user->verification_tier ?? 0).' activity on high-value quests',
-                        ['tier' => $user->verification_tier, 'threshold_minor' => $thresholdMinor],
+                        sprintf(
+                            '%s activity on quests above the %s proposal limit.',
+                            $context['limit_level_label'] ?? 'verification',
+                            $context['limit_level_label'] ?? 'current',
+                        ),
+                        [
+                            'limit_level' => $context['limit_level'] ?? null,
+                            'limit_level_label' => $context['limit_level_label'] ?? null,
+                            'limit_minor' => $context['limit_minor'] ?? null,
+                            'max_budget_minor' => $maxBudgetMinor,
+                        ],
                         44,
                     ) ? 1 : 0;
                 }

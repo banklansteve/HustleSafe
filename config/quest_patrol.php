@@ -11,6 +11,17 @@ return [
     'win_rate_window_days' => (int) env('QUEST_PATROL_WIN_RATE_DAYS', 7),
     'win_rate_threshold_percent' => (int) env('QUEST_PATROL_WIN_RATE_THRESHOLD', 80),
     'new_account_days' => (int) env('QUEST_PATROL_NEW_ACCOUNT_DAYS', 14),
+    'rapid_quest_creation_threshold' => (int) env('QUEST_PATROL_RAPID_QUEST_THRESHOLD', 3),
+    'rapid_quest_creation_window_hours' => (int) env('QUEST_PATROL_RAPID_QUEST_HOURS', 24),
+    'new_client_high_value_minor' => (int) env('QUEST_PATROL_NEW_CLIENT_HIGH_VALUE_MINOR', 500_000_00),
+    'template_spam_quest_threshold' => (int) env('QUEST_PATROL_TEMPLATE_SPAM_THRESHOLD', 5),
+    'price_anomaly_undercut_percent' => (int) env('QUEST_PATROL_PRICE_ANOMALY_UNDERCUT_PERCENT', 50),
+    'tier1_proposal_velocity_threshold' => (int) env('QUEST_PATROL_TIER1_VELOCITY_THRESHOLD', 50),
+    'tier1_proposal_velocity_window_hours' => (int) env('QUEST_PATROL_TIER1_VELOCITY_HOURS', 24),
+    'new_account_proposal_age_hours' => (int) env('QUEST_PATROL_NEW_ACCOUNT_PROPOSAL_AGE_HOURS', 24),
+    'new_account_proposal_burst_threshold' => (int) env('QUEST_PATROL_NEW_ACCOUNT_PROPOSAL_BURST', 10),
+    'repeated_client_award_threshold' => (int) env('QUEST_PATROL_REPEATED_AWARD_THRESHOLD', 2),
+    'repeated_client_award_window_days' => (int) env('QUEST_PATROL_REPEATED_AWARD_DAYS', 90),
 
     // Anti money-laundering / collusion scanning of funded + released quests.
     'laundering_scan_days' => (int) env('QUEST_PATROL_LAUNDERING_SCAN_DAYS', 45),
