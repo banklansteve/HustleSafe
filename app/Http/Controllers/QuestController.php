@@ -314,6 +314,16 @@ class QuestController extends Controller
             $redirect->with('show_boost_upsell', true);
         }
 
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->recordModel(
+            $user,
+            'quest.created',
+            $publish ? 'Posted quest' : 'Saved quest draft',
+            $quest,
+            $quest->title.($quest->reference_code ? ' · '.$quest->reference_code : ''),
+            ['status' => $status instanceof \BackedEnum ? $status->value : (string) $status],
+            $request,
+        );
+
         return $redirect;
     }
 
@@ -349,6 +359,20 @@ class QuestController extends Controller
                 if (in_array($vc, [1, 3, 5, 10, 20, 50], true)) {
                     $quest->client?->notify(new QuestListingPulseNotification($quest->fresh(), $vc));
                 }
+            }
+        }
+
+        if ($user !== null) {
+            $auditKey = 'quest-audit-view:'.$quest->id.':'.$user->id.':'.now()->toDateString();
+            if (Cache::add($auditKey, 1, now()->endOfDay())) {
+                app(\App\Services\UserActivity\UserActivityRecorder::class)->recordModel(
+                    $user,
+                    'quest.viewed',
+                    'Viewed quest',
+                    $quest,
+                    $quest->title.($quest->reference_code ? ' · '.$quest->reference_code : ''),
+                    request: $request,
+                );
             }
         }
 
@@ -669,6 +693,15 @@ class QuestController extends Controller
             }
         }
 
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->recordModel(
+            $request->user(),
+            'quest.updated',
+            'Updated quest',
+            $quest->fresh(),
+            $quest->title.($quest->reference_code ? ' · '.$quest->reference_code : ''),
+            request: $request,
+        );
+
         return back()->with('success', __('Quest updated.'));
     }
 
@@ -695,6 +728,17 @@ class QuestController extends Controller
     public function destroy(Request $request, Quest $quest): RedirectResponse
     {
         $this->authorize('delete', $quest);
+
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->record(
+            $request->user(),
+            'quest.deleted',
+            'Deleted quest',
+            $quest->title.($quest->reference_code ? ' · '.$quest->reference_code : ''),
+            Quest::class,
+            (int) $quest->id,
+            ['reference_code' => $quest->reference_code],
+            $request,
+        );
 
         $quest->delete();
 
@@ -989,6 +1033,7 @@ class QuestController extends Controller
     {
         $isStaff = $viewer && in_array($viewer->role?->slug, ['admin', 'super_admin'], true);
         $isOwner = $viewer && (int) $viewer->id === (int) $quest->client_id;
+        $isParty = $viewer && $quest->isParty($viewer);
         $showInternalCodes = $isOwner || $isStaff;
         $activeBoost = QuestBoost::query()
             ->where('quest_id', $quest->id)
@@ -1104,6 +1149,13 @@ class QuestController extends Controller
 
         if ($isOwner && $viewer) {
             $data = array_merge($data, app(QuestListingExpiryService::class)->clientPayload($quest, $viewer));
+        }
+
+        if (! $isParty && ! $isStaff) {
+            unset($data['completion_schedule'], $data['due_at']);
+            if ($quest->freelancer_id !== null) {
+                unset($data['delivery_deadline'], $data['estimated_delivery_date']);
+            }
         }
 
         return $data;

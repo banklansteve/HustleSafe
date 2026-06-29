@@ -21,6 +21,28 @@
                 <Link v-if="contract.dispute_url" :href="contract.dispute_url" class="ml-1 font-black underline">Open dispute case</Link>
             </div>
 
+            <section
+                v-if="contract.disputes?.length"
+                class="rounded-2xl border border-slate-200 bg-white p-4 ring-1 ring-slate-100"
+            >
+                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Dispute history on this contract</p>
+                <p class="mt-1 text-xs font-medium text-slate-600">Only one dispute can be active at a time. Closed cases remain on record.</p>
+                <ul class="mt-3 space-y-2">
+                    <li
+                        v-for="item in contract.disputes"
+                        :key="item.uuid"
+                        class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-xs font-semibold"
+                    >
+                        <span>
+                            <Link :href="item.url" class="font-black text-primary-800 underline">{{ item.reference }}</Link>
+                            · {{ item.status_label }}
+                            <span v-if="item.is_active" class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase text-amber-900">Active</span>
+                        </span>
+                        <span class="text-slate-500">{{ formatWhen(item.created_at) }}</span>
+                    </li>
+                </ul>
+            </section>
+
             <div class="grid gap-4 sm:grid-cols-2">
                 <section
                     v-if="role.is_client && contract.escrow?.is_held"

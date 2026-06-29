@@ -329,6 +329,12 @@ class StaffNotificationCentreService
                     'conversation' => $data['conversation_id'] ?? null,
                 ]));
             }
+            if (in_array($notification->category, ['dispute', 'disputes'], true)) {
+                $uuid = (string) ($data['dispute_uuid'] ?? '');
+                if ($uuid !== '') {
+                    return route('admin.disputes.index', ['q' => $uuid]);
+                }
+            }
             if ($notification->category === 'dispute' && ! empty($data['dispute_id'])) {
                 return route('admin.disputes.index', ['dispute' => $data['dispute_id']]);
             }
@@ -358,6 +364,16 @@ class StaffNotificationCentreService
                 'open_messenger' => 1,
                 'conversation' => $data['conversation_id'] ?? null,
             ]));
+        }
+
+        if (in_array($notification->category, ['dispute', 'disputes'], true)) {
+            $uuid = (string) ($data['dispute_uuid'] ?? '');
+            if ($uuid !== '') {
+                return route('operations.disputes.index', ['q' => $uuid]);
+            }
+            if (! empty($data['dispute_id'])) {
+                return route('operations.disputes.index', ['q' => (string) $data['dispute_id']]);
+            }
         }
 
         if ($notification->category === 'dispute' && ! empty($data['dispute_id'])) {

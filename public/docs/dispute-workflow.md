@@ -1,5 +1,7 @@
 # HustleSafe dispute workflow (operator spec)
 
+> **Updated:** See [dispute-negotiation-flow.md](./dispute-negotiation-flow.md) for the full multi-phase peer negotiation, mediation, Super Admin approval, and binding appeal process.
+
 This document describes the **v1** dispute rails shipped in the application. Payment disbursement still depends on the escrow gateway; timers, evidence, and audit events are live today.
 
 ## Core philosophy

@@ -255,12 +255,19 @@ Route::get('/disputes/export', [OperationsDisputesController::class, 'export'])-
 Route::get('/api/disputes', [OperationsDisputesController::class, 'listing'])->name('api.disputes.listing');
 Route::get('/api/disputes/{dispute}', [OperationsDisputesController::class, 'detail'])->name('api.disputes.detail');
 Route::post('/api/disputes/{dispute}/claim', [OperationsDisputesController::class, 'claim'])->middleware('throttle:60,1')->name('api.disputes.claim');
+Route::post('/api/disputes/{dispute}/acknowledge', [OperationsDisputesController::class, 'acknowledge'])->middleware('throttle:30,1')->name('api.disputes.acknowledge');
+Route::post('/api/disputes/{dispute}/checklist', [OperationsDisputesController::class, 'checklist'])->middleware('throttle:60,1')->name('api.disputes.checklist');
+Route::post('/api/disputes/{dispute}/evidence-reviewed', [OperationsDisputesController::class, 'evidenceReviewed'])->middleware('throttle:60,1')->name('api.disputes.evidence_reviewed');
+Route::post('/api/disputes/{dispute}/awaiting-info', [OperationsDisputesController::class, 'awaitingInfo'])->middleware('throttle:30,1')->name('api.disputes.awaiting_info');
+Route::post('/api/disputes/{dispute}/request-reassignment', [OperationsDisputesController::class, 'requestReassignment'])->middleware('throttle:10,1')->name('api.disputes.request_reassignment');
 Route::post('/api/disputes/{dispute}/notes', [OperationsDisputesController::class, 'internalNote'])->middleware('throttle:60,1')->name('api.disputes.notes');
 Route::post('/api/disputes/{dispute}/notices', [OperationsDisputesController::class, 'notice'])->middleware('throttle:60,1')->name('api.disputes.notices');
 Route::post('/api/disputes/{dispute}/contact', [OperationsDisputesController::class, 'contact'])->middleware('throttle:60,1')->name('api.disputes.contact');
 Route::post('/api/disputes/{dispute}/evidence', [OperationsDisputesController::class, 'requestEvidence'])->middleware('throttle:30,1')->name('api.disputes.evidence');
-Route::patch('/api/disputes/{dispute}/tier', [OperationsDisputesController::class, 'tier'])->middleware('throttle:60,1')->name('api.disputes.tier');
-Route::post('/api/disputes/{dispute}/ruling', [OperationsDisputesController::class, 'ruling'])->middleware('throttle:20,1')->name('api.disputes.ruling');
+Route::post('/api/disputes/{dispute}/assessment', [OperationsDisputesController::class, 'assessment'])->middleware('throttle:30,1')->name('api.disputes.assessment');
+Route::post('/api/disputes/{dispute}/ready-for-decision', [OperationsDisputesController::class, 'readyForDecision'])->middleware('throttle:30,1')->name('api.disputes.ready_for_decision');
+Route::post('/api/disputes/{dispute}/approve-mutual', [OperationsDisputesController::class, 'approveMutualAgreement'])->middleware('throttle:20,1')->name('api.disputes.approve_mutual');
+Route::post('/api/disputes/{dispute}/respond-guidance', [OperationsDisputesController::class, 'respondGuidance'])->middleware('throttle:30,1')->name('api.disputes.respond_guidance');
 
 Route::get('/payment-monitoring', [OperationsPaymentMonitoringController::class, 'index'])->name('payment-monitoring.index');
 Route::get('/api/payment-monitoring', [OperationsPaymentMonitoringController::class, 'listing'])->name('api.payment-monitoring.listing');

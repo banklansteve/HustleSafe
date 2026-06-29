@@ -7,6 +7,30 @@ namespace App\Support;
  */
 class UserAgentFriendly
 {
+    /**
+     * @return array{label: string, browser: ?string, os: ?string, device: ?string}
+     */
+    public static function details(?string $userAgent): array
+    {
+        if ($userAgent === null || trim($userAgent) === '') {
+            return [
+                'label' => __('Unknown device'),
+                'browser' => null,
+                'os' => null,
+                'device' => null,
+            ];
+        }
+
+        $ua = strtolower($userAgent);
+
+        return [
+            'label' => self::label($userAgent),
+            'browser' => self::detectBrowser($ua),
+            'os' => self::detectOs($ua),
+            'device' => self::detectDevice($ua),
+        ];
+    }
+
     public static function label(?string $userAgent): string
     {
         if ($userAgent === null || trim($userAgent) === '') {

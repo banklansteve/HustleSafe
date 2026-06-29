@@ -111,6 +111,15 @@ class QuestOfferController extends Controller
             $verificationEngine->recordArbitrationAgreement($quest, $offer, $user, 'freelancer');
         }
 
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->recordModel(
+            $user,
+            'proposal.created',
+            'Submitted proposal',
+            $offer,
+            $quest->title.($quest->reference_code ? ' · '.$quest->reference_code : ''),
+            request: $request,
+        );
+
         if ($escrowMinor >= (int) ($verificationEngine->safeguards()['anomaly_high_value_minor'] ?? 0)) {
             $quest->loadMissing(['client', 'questCategory', 'stateModel']);
             app(AdminActivityFeedService::class)->record(
@@ -188,6 +197,15 @@ class QuestOfferController extends Controller
 
         DeliverQuestOfferClientNotification::dispatch($offer->id, 'updated')->afterResponse();
         ScanContentForModerationJob::dispatch(QuestOffer::class, (int) $offer->id)->afterResponse();
+
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->recordModel(
+            $request->user(),
+            'proposal.updated',
+            'Updated proposal',
+            $offer->fresh(),
+            $quest->title.($quest->reference_code ? ' · '.$quest->reference_code : ''),
+            request: $request,
+        );
 
         return redirect()
             ->route('quests.proposals.show', [$quest, $offer])

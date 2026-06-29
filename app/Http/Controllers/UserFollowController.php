@@ -67,6 +67,17 @@ class UserFollowController extends Controller
             ->where('following_id', $target->id)
             ->exists();
 
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->record(
+            $viewer,
+            $following ? 'user.followed' : 'user.unfollowed',
+            $following ? 'Followed member' : 'Unfollowed member',
+            $target->name.($target->username ? ' (@'.$target->username.')' : ''),
+            User::class,
+            (int) $target->id,
+            ['target_username' => $target->username],
+            $request,
+        );
+
         $followersCount = UserFollow::query()->where('following_id', $target->id)->count();
         $followingCount = UserFollow::query()->where('follower_id', $target->id)->count();
 

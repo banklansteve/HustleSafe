@@ -5,11 +5,13 @@ namespace App\Services\Quest;
 use App\Enums\QuestStatus;
 use App\Models\Quest;
 use App\Models\User;
+use App\Services\QuestEngagementLifecycleService;
+use App\Support\EscrowAutoReleasePolicy;
 
 class EscrowTransparencyTimelineService
 {
     /**
-     * @return array{stages: list<array<string, mixed>>, current_stage: ?string, escrow_status: ?string}
+     * @return array<string, mixed>
      */
     public function build(Quest $quest): array
     {
@@ -26,10 +28,36 @@ class EscrowTransparencyTimelineService
             ?? collect($stages)->reverse()->first(fn (array $s) => $s['status'] === 'completed')['key']
             ?? 'funded';
 
-        return [
+        return array_merge([
             'stages' => $stages,
             'current_stage' => $current,
             'escrow_status' => $quest->escrow_status,
+        ], $this->scheduleSummary($quest));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function scheduleSummary(Quest $quest): array
+    {
+        $due = app(QuestEngagementLifecycleService::class)->expectedCompletionAt($quest);
+        if ($due === null) {
+            return [];
+        }
+
+        $timezone = config('app.timezone');
+        $dueLocalized = $due->copy()->timezone($timezone);
+        $autoRelease = EscrowAutoReleasePolicy::releaseAt($due);
+        $autoLocalized = $autoRelease->copy()->timezone($timezone);
+
+        return [
+            'expected_delivery_at' => $due->toIso8601String(),
+            'expected_delivery_label' => $dueLocalized->isoFormat('dddd, D MMMM YYYY [at] h:mm A'),
+            'auto_release_at' => $autoRelease->toIso8601String(),
+            'auto_release_label' => $autoLocalized->isoFormat('dddd, D MMMM YYYY [at] h:mm A'),
+            'auto_release_hours' => EscrowAutoReleasePolicy::releaseHours(),
+            'auto_release_note' => EscrowAutoReleasePolicy::plainEnglish(),
+            'seconds_until_auto_release' => (int) max(0, now()->diffInSeconds($autoRelease, false)),
         ];
     }
 

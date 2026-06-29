@@ -65,7 +65,7 @@ final class LegalDocumentPresenter
         $selfHours = (int) config('disputes.self_resolution_response_hours', 48);
         $rulingHours = (int) config('disputes.formal_no_response_ruling_hours', 72);
         $completionWindow = (int) config('disputes.max_days_after_completion_to_open', 14);
-        $resolutionFee = (float) config('disputes.platform_resolution_fee_percent', 2.0);
+        $resolutionFee = (float) config('disputes.platform_resolution_fee_percent', 0);
 
         return [
             'platform_name' => config('app.name', 'HustleSafe'),
@@ -202,7 +202,8 @@ final class LegalDocumentPresenter
                     'title' => '8. Disputes (summary)',
                     'paragraphs' => [
                         'If something goes wrong, either party may open a structured dispute while escrow is active or within :dispute_completion_days days after completion (subject to minimum contract value rules).',
-                        'Disputes run in timed stages so cases do not stall. Full rules are in our Dispute Policy at :dispute_url.',
+                        'Disputes run in timed stages — peer negotiation, staff mediation, Super Admin approval, and limited appeals — so cases do not stall.',
+                        'By posting a quest or sending a proposal you agree that platform dispute outcomes are binding. Full rules are in our Dispute Policy at :dispute_url.',
                     ],
                 ],
                 [
@@ -460,8 +461,8 @@ final class LegalDocumentPresenter
             'summary' => $this->fill([
                 'A dispute is a formal way to resolve a serious disagreement about a funded quest or completed job.',
                 'Either the client or freelancer may open a dispute in allowed situations. Escrow is frozen while the case is active.',
-                'Cases start with a :self_resolution_hours-hour self-resolution window where both parties can talk and propose a settlement.',
-                'If timers are missed, the case escalates for staff review with clear evidence requirements.',
+                'Cases run through timed peer negotiation (up to two proposals per party), optional staff mediation, Super Admin approval, and limited appeal windows.',
+                'Outcomes decided through this process are binding. By using HustleSafe you agree not to pursue external mediation for platform-resolved disputes.',
             ]),
             'sections' => $this->fillSections([
                 [
@@ -482,7 +483,7 @@ final class LegalDocumentPresenter
                         'Disputes are available to the client and assigned freelancer once a proposal is accepted and escrow is funded (or shortly after completion in limited cases).',
                         'The contract value must meet the minimum dispute amount (currently :min_dispute_amount). Smaller matters should be resolved through support.',
                         'You may open a dispute within :dispute_completion_days days after a job is marked complete if new issues come to light.',
-                        'Only one open dispute is allowed per quest at a time.',
+                        'Only one open dispute is allowed per contract at a time. Previous disputes must be closed before opening another.',
                     ],
                     'bullets' => [
                         'Examples for clients: work not delivered, quality far below the agreed brief, refund issues after work started.',
@@ -501,27 +502,44 @@ final class LegalDocumentPresenter
                 ],
                 [
                     'id' => 'self-resolution',
-                    'title' => '4. Stage 1 — Self-resolution (:self_resolution_hours hours)',
+                    'title' => '4. Stage 1 — Peer negotiation (up to 2 proposals each)',
                     'paragraphs' => [
-                        'The other party has :self_resolution_hours hours to respond with their side and evidence.',
-                        'Both parties can post messages and settlement offers (for example a partial refund split) inside the dispute thread.',
-                        'If you reach agreement, record the settlement on the platform so escrow can be split accordingly.',
-                        'Adding a new message may refresh the response timer so both sides have fair time to reply.',
+                        'After a dispute opens, both parties enter a structured negotiation window. Each party may submit up to two formal resolution proposals (for example payment splits, revisions, timeline extensions, or scope adjustments).',
+                        'The other party may accept a proposal, counter with an alternative, or — on a final offer only — reject and escalate to staff mediation.',
+                        'Each response step has a visible deadline (typically 24 hours). Missed deadlines may escalate the case to mediation automatically.',
+                        'If both parties accept the same proposal at any point, the settlement is submitted to Customer Support for approval before funds move.',
                     ],
                 ],
                 [
-                    'id' => 'escalation',
-                    'title' => '5. Stage 2 — Escalation and staff review',
+                    'id' => 'mutual-approval',
+                    'title' => '5. Mutual agreement approval',
                     'paragraphs' => [
-                        'If required responses are missed, the dispute escalates to formal review. Both parties may be asked to submit a final evidence summary within :formal_ruling_hours hours.',
-                        'HustleSafe staff (operations or admin team) review the contract, quest messages, deliverables, and dispute uploads.',
-                        'Staff may request more information, suggest a settlement, or apply a ruling that splits escrow according to the evidence.',
-                        'A platform dispute resolution fee of approximately :dispute_resolution_fee% may apply to certain formal outcomes as disclosed in the dispute flow.',
+                        'When both parties accept a negotiated outcome, HustleSafe staff verify that terms match escrow, are clear, and show no fraud indicators before executing payment.',
+                        'After staff approval, either party may appeal within four (4) days if they believe the approval was incorrect. If no appeal is filed, the dispute is finalized.',
+                    ],
+                ],
+                [
+                    'id' => 'mediation',
+                    'title' => '6. Staff mediation and Super Admin approval',
+                    'paragraphs' => [
+                        'If peer negotiation ends without agreement, a staff mediator reviews all proposals, evidence, messages, and contract terms. Staff submit a written assessment and recommendation.',
+                        'Before mediation concludes, both parties must acknowledge that the platform’s final decision will be binding. By posting a quest or sending a proposal on HustleSafe, you have already agreed to resolve disputes through our platform process — external legal mediation or arbitration is not available for disputes handled here.',
+                        'A Super Admin reviews the staff recommendation and must approve before a decision is issued to the parties.',
+                        'Parties receive a rejection window (typically 48 hours) to appeal the issued decision with reasons and a proposed alternative. If no appeal is filed, the decision is enforced and escrow is distributed accordingly.',
+                    ],
+                ],
+                [
+                    'id' => 'appeals-final',
+                    'title' => '7. Appeals and final binding outcomes',
+                    'paragraphs' => [
+                        'Each party may file one appeal during an open appeal window, explaining why the decision is unfair and what outcome they consider fair.',
+                        'The other party may submit a short response. A Super Admin conducts a final review. The outcome after appeal review is permanent and cannot be appealed again on HustleSafe.',
+                        'Abuse of the dispute or appeal system can affect account standing, including warnings, suspension, or permanent removal.',
                     ],
                 ],
                 [
                     'id' => 'evidence',
-                    'title' => '6. Evidence we consider',
+                    'title' => '8. Evidence we consider',
                     'bullets' => [
                         'The generated contract and any accepted amendments or delivery extensions.',
                         'Quest thread messages and clarification history on HustleSafe.',
@@ -535,26 +553,35 @@ final class LegalDocumentPresenter
                 ],
                 [
                     'id' => 'outcomes',
-                    'title' => '7. Possible outcomes',
+                    'title' => '9. Possible outcomes',
                     'bullets' => [
                         'Full release to the freelancer.',
                         'Full refund to the client.',
                         'Partial split agreed by both parties.',
                         'Partial split decided by staff after review.',
-                        'Dispute withdrawn if parties solve the issue privately on-platform.',
+                        'Revision, redo, or repair with extended delivery time.',
+                        'Scope or timeline adjustments agreed in negotiation.',
+                    ],
+                ],
+                [
+                    'id' => 'binding-consent',
+                    'title' => '10. Binding platform dispute resolution',
+                    'paragraphs' => [
+                        'By posting a quest, sending a proposal, accepting work, or funding escrow on HustleSafe, you agree that disputes arising from that engagement will be resolved exclusively through HustleSafe’s dispute process described in this policy and our Terms of Service.',
+                        'You waive any right to pursue external mediation, arbitration, or court action for escrow or contract outcomes that HustleSafe has resolved through this process, except where applicable law requires otherwise.',
+                        'You are responsible for reading stage notices, deadlines, and binding acknowledgments shown in the dispute interface and in email notifications.',
                     ],
                 ],
                 [
                     'id' => 'appeals',
-                    'title' => '8. Appeals and repeat disputes',
+                    'title' => '11. Repeat disputes and account review',
                     'paragraphs' => [
-                        'Limited appeals may be available where our rules allow. Abuse of the dispute system can affect account standing.',
-                        'Users with a pattern of lost disputes may receive additional review under our trust policies.',
+                        'Users with a pattern of lost disputes or abusive filings may receive additional review under our trust policies.',
                     ],
                 ],
                 [
                     'id' => 'related-dispute',
-                    'title' => '9. Related documents',
+                    'title' => '12. Related documents',
                     'paragraphs' => [
                         'Escrow rules during disputes are in our Escrow Policy at :escrow_url.',
                         'General platform rules are in the Terms of Service at :terms_url.',

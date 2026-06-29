@@ -15,6 +15,6 @@ class QuestDisputeMutualResolveController extends Controller
 
         $workflow->recordMutualResolveAck($request->user(), $dispute);
 
-        return back()->with('success', __('Your agreement to resolve was recorded.'));
+        return back()->with('success', __('Your agreement was recorded. Customer Support is notified automatically when both parties confirm.'));
     }
 }

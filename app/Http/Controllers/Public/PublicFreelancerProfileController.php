@@ -45,6 +45,22 @@ class PublicFreelancerProfileController extends Controller
 
         $settings = $user->effectivePublicProfileSettings();
 
+        if ($viewer !== null) {
+            $profileKey = 'profile-audit-view:'.$user->id.':'.$viewer->id.':'.now()->toDateString();
+            if (\Illuminate\Support\Facades\Cache::add($profileKey, 1, now()->endOfDay())) {
+                app(\App\Services\UserActivity\UserActivityRecorder::class)->record(
+                    $viewer,
+                    'profile.viewed',
+                    'Viewed freelancer profile',
+                    $user->name.($user->username ? ' (@'.$user->username.')' : ''),
+                    User::class,
+                    (int) $user->id,
+                    ['target_username' => $user->username],
+                    $request,
+                );
+            }
+        }
+
         $reviewBase = Review::query()
             ->where('reviewee_id', $user->id)
             ->where('status', ReviewStatus::Published);

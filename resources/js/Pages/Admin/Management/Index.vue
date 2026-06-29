@@ -63,7 +63,7 @@
                     </Link>
                     <template v-if="resource_key === 'users'">
                         <Link
-                            :href="route('admin.management.users.activity', row.id)"
+                            :href="route('admin.user-activity-history.index', { user_id: row.id })"
                             class="mr-2 text-xs font-bold text-teal-600 underline dark:text-teal-300"
                         >
                             Activity

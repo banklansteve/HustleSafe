@@ -9,7 +9,7 @@ use App\Http\Controllers\Admin\AdminContentModerationController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\AdminDocumentationController;
 use App\Http\Controllers\Admin\AdminDirectMessageController;
-use App\Http\Controllers\Admin\AdminDisputesController;
+use App\Http\Controllers\Admin\AdminDisputeManagementController;
 use App\Http\Controllers\Admin\AdminEngagementPolicyController;
 use App\Http\Controllers\Admin\AdminEmailBroadcastController;
 use App\Http\Controllers\Admin\AdminEscrowManagementController;
@@ -54,6 +54,7 @@ use App\Http\Controllers\Admin\AdminPortfolioReviewController;
 use App\Http\Controllers\Admin\AdminProposalsController;
 use App\Http\Controllers\Admin\AdminPromotionsGrowthController;
 use App\Http\Controllers\Admin\AdminUserActivityController;
+use App\Http\Controllers\Admin\AdminUserActivityHistoryController;
 use App\Http\Controllers\Admin\AdminReportsController;
 use App\Http\Controllers\Admin\AdminQuestsController;
 use App\Http\Controllers\Admin\AdminSettingsController;
@@ -585,6 +586,8 @@ Route::delete('/communications/email-broadcasts/templates/{template}', [AdminEma
     ->name('communications.email-broadcasts.templates.destroy');
 
 Route::get('/live-activity', [AdminLiveActivityController::class, 'index'])->name('live-activity.index');
+Route::get('/user-activity-history', [AdminUserActivityHistoryController::class, 'index'])->name('user-activity-history.index');
+Route::get('/api/user-activity-history/timeline', [AdminUserActivityHistoryController::class, 'timeline'])->name('api.user-activity-history.timeline');
 Route::get('/live-activity/events', [AdminLiveActivityController::class, 'events'])->name('live-activity.events');
 Route::get('/live-activity/support-tickets', [AdminLiveActivityController::class, 'supportTickets'])->name('live-activity.support-tickets');
 Route::get('/live-activity/support-tickets/{ticket}', [AdminLiveActivityController::class, 'supportTicket'])->name('live-activity.support-tickets.show');
@@ -793,8 +796,32 @@ Route::post('/users/{user}/impersonate', [AdminUsersController::class, 'imperson
     ->middleware('throttle:10,1')
     ->name('users.impersonate');
 
-Route::get('/disputes', [AdminDisputesController::class, 'index'])->name('disputes.index');
-Route::get('/disputes/export', [AdminDisputesController::class, 'export'])->name('disputes.export');
+Route::get('/disputes', [AdminDisputeManagementController::class, 'index'])->name('disputes.index');
+Route::get('/disputes/export', [AdminDisputeManagementController::class, 'export'])->name('disputes.export');
+Route::get('/api/disputes', [AdminDisputeManagementController::class, 'listing'])->name('api.disputes.listing');
+Route::get('/api/disputes/{dispute}', [AdminDisputeManagementController::class, 'detail'])->name('api.disputes.detail');
+Route::post('/api/disputes/{dispute}/decision', [AdminDisputeManagementController::class, 'decision'])->middleware('throttle:20,1')->name('api.disputes.decision');
+Route::post('/api/disputes/{dispute}/reassign', [AdminDisputeManagementController::class, 'reassign'])->middleware('throttle:20,1')->name('api.disputes.reassign');
+Route::post('/api/disputes/{dispute}/request-review', [AdminDisputeManagementController::class, 'requestReview'])->middleware('throttle:30,1')->name('api.disputes.request_review');
+Route::post('/api/disputes/{dispute}/finalize', [AdminDisputeManagementController::class, 'finalize'])->middleware('throttle:20,1')->name('api.disputes.finalize');
+Route::post('/api/disputes/{dispute}/acknowledge-party-resolution', [AdminDisputeManagementController::class, 'acknowledgePartyResolution'])->middleware('throttle:20,1')->name('api.disputes.acknowledge_party_resolution');
+Route::post('/api/disputes/{dispute}/appeal-review', [AdminDisputeManagementController::class, 'appealReview'])->middleware('throttle:20,1')->name('api.disputes.appeal_review');
+Route::post('/api/disputes/{dispute}/resolve-appeal', [AdminDisputeManagementController::class, 'resolveAppeal'])->middleware('throttle:20,1')->name('api.disputes.resolve_appeal');
+Route::post('/api/disputes/{dispute}/approve-assessment', [AdminDisputeManagementController::class, 'approveAssessment'])->middleware('throttle:30,1')->name('api.disputes.approve_assessment');
+Route::post('/api/disputes/{dispute}/super-admin-note', [AdminDisputeManagementController::class, 'superAdminNote'])->middleware('throttle:60,1')->name('api.disputes.super_admin_note');
+Route::post('/api/disputes/{dispute}/request-clarification', [AdminDisputeManagementController::class, 'requestClarification'])->middleware('throttle:30,1')->name('api.disputes.request_clarification');
+Route::post('/api/disputes/{dispute}/request-evidence', [AdminDisputeManagementController::class, 'requestEvidence'])->middleware('throttle:30,1')->name('api.disputes.request_evidence');
+Route::post('/api/disputes/{dispute}/message-party', [AdminDisputeManagementController::class, 'messageParty'])->middleware('throttle:30,1')->name('api.disputes.message_party');
+Route::post('/api/disputes/{dispute}/hold', [AdminDisputeManagementController::class, 'hold'])->middleware('throttle:20,1')->name('api.disputes.hold');
+Route::post('/api/disputes/{dispute}/release-hold', [AdminDisputeManagementController::class, 'releaseHold'])->middleware('throttle:20,1')->name('api.disputes.release_hold');
+Route::post('/api/disputes/{dispute}/rate-assessment', [AdminDisputeManagementController::class, 'rateAssessment'])->middleware('throttle:30,1')->name('api.disputes.rate_assessment');
+Route::post('/api/disputes/{dispute}/mediation', [AdminDisputeManagementController::class, 'scheduleMediation'])->middleware('throttle:20,1')->name('api.disputes.mediation');
+Route::post('/api/disputes/{dispute}/chargeback-flag', [AdminDisputeManagementController::class, 'flagChargeback'])->middleware('throttle:20,1')->name('api.disputes.chargeback_flag');
+Route::post('/api/disputes/{dispute}/pattern-investigation', [AdminDisputeManagementController::class, 'patternInvestigation'])->middleware('throttle:20,1')->name('api.disputes.pattern_investigation');
+Route::post('/api/disputes/{dispute}/precedent', [AdminDisputeManagementController::class, 'createPrecedent'])->middleware('throttle:20,1')->name('api.disputes.precedent');
+Route::post('/api/disputes/{dispute}/generate-report', [AdminDisputeManagementController::class, 'generateReport'])->middleware('throttle:10,1')->name('api.disputes.generate_report');
+Route::get('/api/disputes/{dispute}/report', [AdminDisputeManagementController::class, 'downloadReport'])->name('api.disputes.download_report');
+Route::post('/api/disputes/{dispute}/seal', [AdminDisputeManagementController::class, 'sealArchive'])->middleware('throttle:10,1')->name('api.disputes.seal');
 
 Route::get('/activity', [AdminActivityLogController::class, 'index'])->name('activity.index');
 Route::get('/activity/digest', AdminStaffActivityDigestController::class)->name('activity.digest');

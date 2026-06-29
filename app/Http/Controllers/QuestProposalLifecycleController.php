@@ -10,6 +10,7 @@ use App\Http\Requests\Quests\ConfirmProposalAwardRequest;
 use App\Models\PaymentEscrow;
 use App\Models\Quest;
 use App\Models\QuestOffer;
+use App\Models\User;
 use App\Notifications\ProposalAwardPendingFreelancerNotification;
 use App\Notifications\ProposalDeclinedFreelancerNotification;
 use App\Notifications\ProposalEscrowFundedFreelancerNotification;
@@ -44,6 +45,15 @@ class QuestProposalLifecycleController extends Controller
 
         $result = $shortlists->toggle($quest, $offer);
         $fresh = $offer->fresh();
+
+        $this->recordProposalActivity(
+            $request->user(),
+            $result['shortlisted'] ? 'proposal.shortlisted' : 'proposal.unshortlisted',
+            $result['shortlisted'] ? 'Shortlisted proposal' : 'Removed proposal from shortlist',
+            $quest,
+            $fresh,
+            $request,
+        );
 
         try {
             broadcast(new QuestProposalListUpdated((int) $quest->id));
@@ -97,6 +107,8 @@ class QuestProposalLifecycleController extends Controller
         $offer->freelancer?->notify(new ProposalDeclinedFreelancerNotification($offer));
 
         app(\App\Services\Quest\QuestJourneySurveyService::class)->onProposalRejected($quest, $offer, 'declined');
+
+        $this->recordProposalActivity($request->user(), 'proposal.declined', 'Declined proposal', $quest, $offer, $request);
 
         return back()->with('success', __('Proposal declined. The freelancer has been notified.'));
     }
@@ -165,6 +177,8 @@ class QuestProposalLifecycleController extends Controller
         }
 
         $offer->freelancer?->notify(new ProposalAwardPendingFreelancerNotification($offer, $terms));
+
+        $this->recordProposalActivity($request->user(), 'proposal.award_initiated', 'Initiated proposal award', $quest, $offer, $request);
 
         return back()->with('success', __('You chose this worker. They must confirm before you can pay into escrow.'));
     }
@@ -256,6 +270,8 @@ class QuestProposalLifecycleController extends Controller
         $quest->refresh()->loadMissing('client');
         $quest->client?->notify(new \App\Notifications\ProposalAcceptedClientNotification($offer));
 
+        $this->recordProposalActivity($request->user(), 'proposal.award_confirmed', 'Confirmed proposal award', $quest, $offer, $request);
+
         return back()
             ->with('success', __('Award confirmed — the client can now fund escrow to start work.'));
     }
@@ -274,6 +290,8 @@ class QuestProposalLifecycleController extends Controller
             $request->user(),
             $request->validated('reason'),
         );
+
+        $this->recordProposalActivity($request->user(), 'proposal.award_cancelled', 'Cancelled proposal award', $quest, $offer, $request);
 
         return redirect()
             ->route('quests.client.proposals.index', $quest)
@@ -398,6 +416,8 @@ class QuestProposalLifecycleController extends Controller
         $clarifications->closeForOffer($offer);
         $quest->client?->notify(new ProposalWithdrawnClientNotification($offer));
 
+        $this->recordProposalActivity($request->user(), 'proposal.withdrawn', 'Withdrew proposal', $quest, $offer, $request);
+
         return redirect()
             ->route('quests.show', $quest)
             ->with('success', $wasShortlisted
@@ -426,5 +446,24 @@ class QuestProposalLifecycleController extends Controller
         if (in_array($offer->status, ['withdrawn', 'declined'], true)) {
             throw ValidationException::withMessages(['proposal' => __('This proposal is closed.')]);
         }
+    }
+
+    protected function recordProposalActivity(
+        User $user,
+        string $action,
+        string $title,
+        Quest $quest,
+        QuestOffer $offer,
+        ?Request $request = null,
+    ): void {
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->recordModel(
+            $user,
+            $action,
+            $title,
+            $offer,
+            $quest->title.($quest->reference_code ? ' · '.$quest->reference_code : ''),
+            ['quest_id' => $quest->id, 'quest_reference' => $quest->reference_code],
+            $request,
+        );
     }
 }

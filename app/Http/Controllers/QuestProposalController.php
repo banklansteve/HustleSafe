@@ -197,9 +197,12 @@ class QuestProposalController extends Controller
             }
         }
 
-        $commerce = QuestCommerceUi::disputeForQuest($quest, $user);
-        $commerce = array_merge($commerce, QuestCommerceUi::fundingForOffer($quest, $offer, $user));
-        $commerce = array_merge($commerce, QuestCommerceUi::partyExtras($quest, $user));
+        $commerce = [];
+        if (! $isObserver) {
+            $commerce = QuestCommerceUi::disputeForQuest($quest, $user);
+            $commerce = array_merge($commerce, QuestCommerceUi::fundingForOffer($quest, $offer, $user));
+            $commerce = array_merge($commerce, QuestCommerceUi::partyExtras($quest, $user));
+        }
 
         $preferenceResponses = (! $isObserver && $isClient)
             ? app(\App\Services\Quest\ProposalPreferenceResponseService::class)->displayForOffer($offer, $quest)

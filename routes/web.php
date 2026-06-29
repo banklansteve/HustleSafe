@@ -42,6 +42,7 @@ use App\Http\Controllers\QuestConversationController;
 use App\Http\Controllers\QuestDisputeController;
 use App\Http\Controllers\QuestDisputeMessageController;
 use App\Http\Controllers\QuestDisputeMutualResolveController;
+use App\Http\Controllers\QuestDisputeResolutionController;
 use App\Http\Controllers\QuestDisputeSettlementController;
 use App\Http\Controllers\FreelancerProposalsController;
 use App\Http\Controllers\QuestBrowseController;
@@ -252,6 +253,30 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/disputes/{dispute}/mutual-resolve', [QuestDisputeMutualResolveController::class, 'store'])
         ->middleware('throttle:20,1')
         ->name('disputes.mutual-resolve.store');
+    Route::post('/disputes/{dispute}/resolution-requests', [QuestDisputeResolutionController::class, 'store'])
+        ->middleware('throttle:20,1')
+        ->name('disputes.resolution-requests.store');
+    Route::post('/disputes/{dispute}/negotiation/propose', [\App\Http\Controllers\QuestDisputeNegotiationController::class, 'propose'])
+        ->middleware('throttle:30,1')
+        ->name('disputes.negotiation.propose');
+    Route::post('/disputes/{dispute}/negotiation/offers/{offer}/accept', [\App\Http\Controllers\QuestDisputeNegotiationController::class, 'accept'])
+        ->middleware('throttle:30,1')
+        ->whereNumber('offer')
+        ->name('disputes.negotiation.accept');
+    Route::post('/disputes/{dispute}/negotiation/offers/{offer}/reject', [\App\Http\Controllers\QuestDisputeNegotiationController::class, 'reject'])
+        ->middleware('throttle:20,1')
+        ->whereNumber('offer')
+        ->name('disputes.negotiation.reject');
+    Route::post('/disputes/{dispute}/negotiation/acknowledge-binding', [\App\Http\Controllers\QuestDisputeNegotiationController::class, 'acknowledgeBinding'])
+        ->middleware('throttle:20,1')
+        ->name('disputes.negotiation.acknowledge_binding');
+
+    Route::post('/disputes/{dispute}/appeals', [\App\Http\Controllers\QuestDisputeAppealController::class, 'store'])
+        ->middleware('throttle:10,1')
+        ->name('disputes.appeals.store');
+    Route::post('/disputes/{dispute}/appeals/{appeal}/respond', [\App\Http\Controllers\QuestDisputeAppealController::class, 'respond'])
+        ->middleware('throttle:20,1')
+        ->name('disputes.appeals.respond');
 
     Route::get('/quests/explore', QuestExploreController::class)->name('quests.explore');
     Route::get('/quests/browse', QuestBrowseController::class)

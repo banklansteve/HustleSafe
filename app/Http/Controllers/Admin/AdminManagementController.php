@@ -33,7 +33,7 @@ class AdminManagementController extends Controller
         private AdminActivityFeedService $feed,
     ) {}
 
-    public function index(Request $request): Response
+    public function index(Request $request): Response|\Illuminate\Http\RedirectResponse
     {
         $groups = AdminManagementRegistry::groupedForUi();
         $resourceKey = (string) $request->query('resource', $groups[0]['resources'][0]['key'] ?? 'users');
@@ -43,6 +43,16 @@ class AdminManagementController extends Controller
         }
 
         $definition = AdminManagementRegistry::resource($resourceKey);
+
+        if (isset($definition['custom_route'])) {
+            return redirect()->route((string) $definition['custom_route'], array_filter([
+                'user_id' => $request->query('user_id'),
+                'from' => $request->query('from'),
+                'to' => $request->query('to'),
+                'registry' => 1,
+            ]));
+        }
+
         $perPage = min(50, max(10, (int) $request->input('per_page', 20)));
         $search = trim((string) $request->input('q', ''));
 

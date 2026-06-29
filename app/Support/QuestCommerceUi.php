@@ -8,6 +8,7 @@ use App\Models\QuestContract;
 use App\Models\QuestDispute;
 use App\Models\QuestOffer;
 use App\Models\User;
+use App\Services\Disputes\DisputePartyPresenter;
 use App\Services\Disputes\QuestDisputeWorkflowService;
 use App\Services\Quest\DisputePreventionPromptService;
 use App\Services\Quest\EscrowTransparencyTimelineService;
@@ -58,10 +59,14 @@ final class QuestCommerceUi
             return $base;
         }
 
+        $offer = $quest->acceptedOffer;
+
         $active = QuestDispute::query()
             ->where('quest_id', $quest->id)
-            ->whereNotIn('status', [QuestDisputeStatus::Resolved, QuestDisputeStatus::ClosedWithdrawn])
-            ->first();
+            ->when($offer !== null, fn ($q) => $q->where('quest_offer_id', $offer->id))
+            ->orderByDesc('id')
+            ->get()
+            ->first(fn (QuestDispute $dispute): bool => $dispute->isActiveOnContract());
 
         if ($active !== null) {
             return [
@@ -71,6 +76,7 @@ final class QuestCommerceUi
                     'uuid' => $active->uuid,
                     'url' => route('disputes.show', $active),
                     'status' => $active->status->value,
+                    'status_label' => app(DisputePartyPresenter::class)->statusLabel($active),
                 ],
                 'dispute_block_reason' => null,
             ];

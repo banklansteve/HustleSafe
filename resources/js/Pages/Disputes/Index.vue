@@ -45,7 +45,7 @@
                             </p>
                         </div>
                         <div class="flex shrink-0 flex-col items-end gap-1 text-xs font-black uppercase tracking-wide text-slate-600">
-                            <span class="rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200">{{ d.status }}</span>
+                            <span class="rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200">{{ d.status_label || d.status }}</span>
                             <span class="text-[10px] font-semibold text-slate-400">{{ formatWhen(d.updated_at) }}</span>
                         </div>
                     </Link>

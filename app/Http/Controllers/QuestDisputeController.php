@@ -8,6 +8,11 @@ use App\Http\Requests\Disputes\StoreQuestDisputeRequest;
 use App\Models\Quest;
 use App\Models\QuestDispute;
 use App\Models\User;
+use App\Services\Disputes\DisputeIntakeFormService;
+use App\Services\Disputes\DisputePartyPresenter;
+use App\Services\Disputes\DisputeResolutionMatrixService;
+use App\Services\Disputes\DisputeResolutionRequestService;
+use App\Services\Disputes\DisputePartyWorkflowService;
 use App\Services\Disputes\QuestDisputeWorkflowService;
 use App\Services\Admin\AdminActivityFeedService;
 use App\Support\QuestCommerceUi;
@@ -36,9 +41,11 @@ class QuestDisputeController extends Controller
             ->map(fn (QuestDispute $d) => [
                 'uuid' => $d->uuid,
                 'status' => $d->status->value,
+                'status_label' => app(DisputePartyPresenter::class)->statusLabel($d),
                 'phase' => $d->phase->value,
                 'reason' => $d->reason,
                 'reason_label' => QuestDisputeReason::tryFrom($d->reason)?->label() ?? $d->reason,
+                'category_label' => QuestDisputeReason::tryFrom($d->reason)?->category()->label(),
                 'quest_title' => $d->quest?->title,
                 'url' => route('disputes.show', $d),
                 'updated_at' => $d->updated_at?->timezone('Africa/Lagos')->toIso8601String(),
@@ -73,7 +80,7 @@ class QuestDisputeController extends Controller
         }
 
         $party = app(QuestDisputeWorkflowService::class)->partyFor($user, $quest) ?? 'client';
-        $reasons = QuestDisputeReason::forParty($party);
+        $intakeForm = app(DisputeIntakeFormService::class);
 
         return Inertia::render('Disputes/Create', [
             'quest' => [
@@ -82,20 +89,9 @@ class QuestDisputeController extends Controller
             ],
             'offer_id' => $offer->id,
             'party' => $party,
-            'reason_options' => collect($reasons)->map(fn (QuestDisputeReason $r) => [
-                'value' => $r->value,
-                'label' => $r->label(),
-            ])->values()->all(),
+            'intake' => $intakeForm->createPayload($quest, $offer, $party),
             'philosophy' => config('disputes.philosophy', []),
-            'policy' => [
-                'minimum_disputed_amount_minor' => (int) config('disputes.minimum_disputed_amount_minor', 500_000),
-                'max_days_after_completion' => (int) config('disputes.max_days_after_completion_to_open', 14),
-                'self_resolution_hours' => (int) config('disputes.self_resolution_response_hours', 48),
-                'formal_ruling_hours' => (int) config('disputes.formal_no_response_ruling_hours', 72),
-                'platform_fee_percent' => (float) config('disputes.platform_resolution_fee_percent', 2),
-                'max_appeals' => (int) config('disputes.max_appeals_per_dispute', 1),
-                'suspension_threshold' => (int) config('disputes.account_suspension_review_after_lost_disputes', 3),
-            ],
+            'policy' => $this->policyPayload($user),
             'store_url' => route('quests.disputes.store', $quest->getRouteKey()),
             'workflow_doc_url' => asset('docs/dispute-workflow.md'),
         ]);
@@ -116,15 +112,32 @@ class QuestDisputeController extends Controller
         }
 
         $reason = QuestDisputeReason::from($request->validated('reason'));
+        $party = $workflow->partyFor($user, $quest) ?? 'client';
+        $intakeService = app(DisputeIntakeFormService::class);
+
+        $structuredIntake = $intakeService->normalizeIntake(
+            $request->validated('structured_intake') ?? [],
+            $reason,
+            $party,
+            $user,
+            $quest,
+        );
 
         $dispute = $workflow->open(
             $user,
             $quest,
             $offer,
             $reason,
-            $request->validated('structured_intake') ?? [],
+            $structuredIntake,
             $request->validated('opening_summary'),
         );
+
+        $evidenceFiles = array_values(array_filter($request->file('evidence_files', [])));
+        if ($evidenceFiles !== []) {
+            $stored = $intakeService->storeEvidenceFiles($dispute->uuid, $evidenceFiles);
+            $merged = array_merge($dispute->structured_intake ?? [], ['evidence_files' => $stored]);
+            $dispute->update(['structured_intake' => $merged]);
+        }
         $quest->loadMissing(['client', 'freelancer', 'questCategory', 'stateModel']);
         app(AdminActivityFeedService::class)->record(
             'disputes',
@@ -149,7 +162,7 @@ class QuestDisputeController extends Controller
 
         return redirect()
             ->route('disputes.show', $dispute)
-            ->with('success', __('Dispute file created — both parties were notified with next steps.'));
+            ->with('success', __('Dispute file opened. The other party has been emailed and both of you can track progress on the dispute page.'));
     }
 
     public function show(Request $request, QuestDispute $dispute): Response
@@ -157,11 +170,12 @@ class QuestDisputeController extends Controller
         $this->authorize('view', $dispute);
 
         $dispute->load([
-            'quest.client:id,first_name,name,slug',
-            'quest.freelancer:id,first_name,name,slug',
-            'openedBy:id,first_name,name',
+            'quest.client:id,first_name,name,slug,avatar_url,email',
+            'quest.freelancer:id,first_name,name,slug,avatar_url,email',
+            'openedBy:id,first_name,name,slug,avatar_url',
             'messages.user:id,first_name,name,slug,avatar_url',
             'settlementOffers.offeredBy:id,first_name,name',
+            'resolutionRequests.requestedBy:id,first_name,name',
             'events.actor:id,first_name,name',
         ]);
 
@@ -169,19 +183,11 @@ class QuestDisputeController extends Controller
 
         return Inertia::render('Disputes/Show', [
             'dispute' => $this->disputePayload($dispute, $user),
+            'workflow' => app(DisputePartyWorkflowService::class)->forDispute($dispute, $user),
             'can_participate' => $user?->can('participate', $dispute) ?? false,
             'sla_expectation' => app(\App\Services\Platform\PlatformSlaService::class)->userExpectationForSubject('dispute_resolution', $dispute),
             'philosophy' => config('disputes.philosophy', []),
-            'policy' => [
-                'minimum_disputed_amount_minor' => (int) config('disputes.minimum_disputed_amount_minor', 500_000),
-                'max_days_after_completion' => (int) config('disputes.max_days_after_completion_to_open', 14),
-                'self_resolution_hours' => (int) config('disputes.self_resolution_response_hours', 48),
-                'formal_ruling_hours' => (int) config('disputes.formal_no_response_ruling_hours', 72),
-                'platform_fee_percent' => (float) config('disputes.platform_resolution_fee_percent', 2),
-                'max_appeals' => (int) config('disputes.max_appeals_per_dispute', 1),
-                'suspension_threshold' => (int) config('disputes.account_suspension_review_after_lost_disputes', 3),
-            ],
-            'workflow_doc_url' => asset('docs/dispute-workflow.md'),
+            'policy' => $this->policyPayload($user),
         ]);
     }
 
@@ -191,6 +197,16 @@ class QuestDisputeController extends Controller
     protected function disputePayload(QuestDispute $dispute, ?User $viewer): array
     {
         $quest = $dispute->quest;
+        $workflow = app(QuestDisputeWorkflowService::class);
+        $partyPresenter = app(DisputePartyPresenter::class);
+        $viewerRole = $viewer && $quest ? $workflow->partyFor($viewer, $quest) : null;
+        $matrix = app(DisputeResolutionMatrixService::class);
+        $resolutionRequests = app(DisputeResolutionRequestService::class);
+        $other = $viewer && $quest ? $quest->oppositeParty($viewer) : null;
+        $openedByClient = $quest !== null && (int) $dispute->opened_by_user_id === (int) $quest->client_id;
+
+        $dispute->loadMissing('contract');
+        $contract = $dispute->contract;
 
         $settlementOffers = $dispute->settlementOffers->sortByDesc('id')->values()->map(function ($o) use ($dispute, $viewer) {
             $row = [
@@ -225,53 +241,105 @@ class QuestDisputeController extends Controller
 
         return [
             'uuid' => $dispute->uuid,
+            'reference' => $dispute->displayReference(),
             'status' => $dispute->status->value,
+            'status_label' => $partyPresenter->statusLabel($dispute),
             'phase' => $dispute->phase->value,
             'reason' => $dispute->reason,
             'reason_label' => QuestDisputeReason::tryFrom($dispute->reason)?->label() ?? $dispute->reason,
+            'category_label' => QuestDisputeReason::tryFrom($dispute->reason)?->category()->label()
+                ?? ($dispute->structured_intake['category_label'] ?? null),
+            'intake_labels' => app(DisputeIntakeFormService::class)->displayLabels(),
             'structured_intake' => $dispute->structured_intake ?? [],
             'opening_summary' => $dispute->opening_summary,
             'disputed_amount_minor' => (int) $dispute->disputed_amount_minor,
             'response_required_by' => $dispute->response_required_by?->timezone('Africa/Lagos')->toIso8601String(),
             'ruling_required_by' => $dispute->ruling_required_by?->timezone('Africa/Lagos')->toIso8601String(),
             'awaiting_user_id' => $dispute->awaiting_user_id,
+            'awaiting_viewer' => $viewer !== null && (int) $dispute->awaiting_user_id === (int) $viewer->id,
             'resolution_outcome' => $dispute->resolution_outcome,
+            'resolution_outcome_label' => app(\App\Services\Disputes\DisputeResolutionOutcomeLabelService::class)->label($dispute->resolution_outcome),
+            'party_self_resolved' => in_array((string) $dispute->resolution_outcome, ['settlement_accepted', 'mutual_resolve'], true),
             'final_client_share_percent' => $dispute->final_client_share_percent,
             'client_agrees_resolve_at' => $dispute->client_agrees_resolve_at?->timezone('Africa/Lagos')->toIso8601String(),
             'freelancer_agrees_resolve_at' => $dispute->freelancer_agrees_resolve_at?->timezone('Africa/Lagos')->toIso8601String(),
             'escalated_at' => $dispute->escalated_at?->timezone('Africa/Lagos')->toIso8601String(),
+            'viewer_role' => $viewerRole,
+            'opened_by' => [
+                'id' => $dispute->openedBy?->id,
+                'name' => $dispute->openedBy?->name,
+                'first_name' => $dispute->openedBy?->first_name,
+                'party' => $openedByClient ? 'client' : 'freelancer',
+            ],
+            'other_party' => $other ? [
+                'id' => $other->id,
+                'name' => $other->name,
+                'first_name' => $other->first_name,
+                'slug' => $other->slug,
+                'avatar_url' => $other->avatar_url,
+                'role' => $viewerRole === 'client' ? 'freelancer' : 'client',
+            ] : null,
             'quest' => [
                 'title' => $quest?->title,
                 'route_key' => $quest?->getRouteKey(),
             ],
-            'messages' => $dispute->messages->map(fn ($m) => [
-                'id' => $m->id,
-                'kind' => $m->kind->value,
-                'body' => $m->body,
-                'structured_key' => $m->structured_key,
-                'structured_payload' => $m->structured_payload,
-                'created_at' => $m->created_at?->timezone('Africa/Lagos')->toIso8601String(),
-                'user' => $m->user ? [
-                    'id' => $m->user->id,
-                    'name' => $m->user->name,
-                    'first_name' => $m->user->first_name,
-                ] : null,
-            ])->values()->all(),
+            'contract' => $contract ? [
+                'reference_code' => $contract->reference_code,
+                'url' => route('contracts.show', $contract->reference_code),
+            ] : null,
+            'contract_disputes' => $contract
+                ? app(\App\Services\Disputes\DisputeManagementPresenter::class)->contractDisputeHistory($contract)
+                : [],
+            'messages' => $partyPresenter->visibleMessages($dispute->messages, $dispute),
             'settlement_offers' => $settlementOffers,
-            'events' => $dispute->events->map(fn ($e) => [
-                'action' => $e->action,
-                'properties' => $e->properties ?? [],
-                'created_at' => $e->created_at?->timezone('Africa/Lagos')->toIso8601String(),
-                'actor' => $e->actor ? [
-                    'id' => $e->actor->id,
-                    'name' => $e->actor->name,
-                ] : null,
-            ])->values()->all(),
+            'events' => $partyPresenter->visibleEvents($dispute->events),
             'urls' => [
                 'message' => route('disputes.messages.store', $dispute),
                 'settlement' => route('disputes.settlement-offers.store', $dispute),
                 'mutual_resolve' => route('disputes.mutual-resolve.store', $dispute),
+                'resolution_request' => route('disputes.resolution-requests.store', $dispute),
+                'negotiation_propose' => route('disputes.negotiation.propose', $dispute),
+                'negotiation_acknowledge_binding' => route('disputes.negotiation.acknowledge_binding', $dispute),
+                'appeal_store' => route('disputes.appeals.store', $dispute),
             ],
+            'resolution_options' => $viewerRole ? $matrix->optionsForActor($viewerRole) : [],
+            'resolution_requests' => $resolutionRequests->listForDispute($dispute),
+            'negotiation' => app(\App\Services\Disputes\DisputeNegotiationService::class)->payloadForParty($dispute, $viewer),
+            'appeal' => $viewer ? app(\App\Services\Disputes\DisputeAppealService::class)->payloadForParty($dispute, $viewer) : null,
+        ];
+    }
+
+    /**
+     * @return array<string, int|float|bool>
+     */
+    protected function policyPayload(?User $viewer = null): array
+    {
+        $reviewThreshold = (int) config('disputes.account_review_after_dispute_count', 3);
+        $userDisputeCount = 0;
+
+        if ($viewer !== null) {
+            $userDisputeCount = QuestDispute::query()
+                ->where(function ($q) use ($viewer): void {
+                    $q->where('opened_by_user_id', $viewer->id)
+                        ->orWhereHas('quest', function ($quest) use ($viewer): void {
+                            $quest->where('client_id', $viewer->id)
+                                ->orWhere('freelancer_id', $viewer->id);
+                        });
+                })
+                ->count();
+        }
+
+        return [
+            'minimum_disputed_amount_minor' => (int) config('disputes.minimum_disputed_amount_minor', 500_000),
+            'max_days_after_completion' => (int) config('disputes.max_days_after_completion_to_open', 14),
+            'self_resolution_hours' => (int) config('disputes.self_resolution_response_hours', 48),
+            'formal_ruling_hours' => (int) config('disputes.formal_no_response_ruling_hours', 72),
+            'platform_fee_percent' => (float) config('disputes.platform_resolution_fee_percent', 0),
+            'resolution_fee_charged' => false,
+            'max_appeals' => (int) config('disputes.max_appeals_per_dispute', 1),
+            'review_after_dispute_count' => $reviewThreshold,
+            'user_dispute_count' => $userDisputeCount,
+            'user_near_review_threshold' => $userDisputeCount >= max(1, $reviewThreshold - 1),
         ];
     }
 }

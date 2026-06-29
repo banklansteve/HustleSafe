@@ -67,10 +67,11 @@ enum QuestPatrolFlagType: string
             self::BudgetAnomalyHigh, self::TierMismatch, self::InstantCompletion, self::WinRateAnomaly, self::InstantAward,
             self::SuspiciousEscrowRelease, self::CircularPayment, self::RepeatedClientAwards => 'high',
             self::BoostSpam, self::DuplicateBoost, self::RapidBoostAfterAward, self::DuplicateQuest, self::CategoryShift,
-            self::NewAccountUnfamiliarCategory, self::LocationMismatch, self::PriceMismatch, self::ScopeMismatch,
+            self::NewAccountUnfamiliarCategory, self::PriceMismatch, self::ScopeMismatch,
             self::VelocitySpike, self::TemplateSpam, self::PriceAnomaly, self::BudgetAnomalyLow,
             self::RepeatCounterpartyTransactions, self::RapidQuestCreation, self::NewClientHighValueFirstQuest,
             self::NewAccountProposalBurst => 'medium',
+            self::LocationMismatch => 'low',
         };
     }
 }

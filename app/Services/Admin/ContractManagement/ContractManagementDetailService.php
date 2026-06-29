@@ -100,7 +100,7 @@ final class ContractManagementDetailService
             'links' => [
                 'full_contract' => route('admin.contracts.view', $contract->reference_code),
                 'escrow_ledger' => $quest ? route('admin.financial-audit.escrow-ledger', ['q' => $contract->reference_code]) : null,
-                'dispute_console' => $contract->active_dispute_id
+                'dispute_console' => $dispute !== null
                     ? route('admin.disputes.index', ['q' => $contract->reference_code])
                     : null,
             ],
@@ -319,27 +319,38 @@ final class ContractManagementDetailService
      */
     private function disputeSection(QuestContract $contract): ?array
     {
-        $dispute = $contract->activeDispute;
-        if ($dispute === null && $contract->status !== ContractStatus::Disputed) {
+        $disputes = \App\Models\QuestDispute::query()
+            ->where('quest_id', $contract->quest_id)
+            ->where('quest_offer_id', $contract->quest_offer_id)
+            ->with('openedBy:id,name')
+            ->orderByDesc('id')
+            ->get();
+
+        if ($disputes->isEmpty() && $contract->status !== ContractStatus::Disputed) {
             return null;
         }
 
-        if ($dispute === null) {
-            return ['active' => true, 'summary' => 'Contract marked disputed — details loading.'];
-        }
+        $active = $disputes->first(fn (\App\Models\QuestDispute $d) => $d->isActiveOnContract());
 
         return [
-            'active' => $dispute->resolved_at === null,
-            'id' => $dispute->id,
-            'uuid' => $dispute->uuid,
-            'reference' => 'DSP-'.Str::upper(Str::substr($dispute->uuid, 0, 8)),
-            'filed_by' => $dispute->openedBy?->name,
-            'filed_at' => $dispute->created_at?->timezone('Africa/Lagos')->format('j M Y, g:i A'),
-            'status' => $dispute->status instanceof \App\Enums\QuestDisputeStatus ? $dispute->status->value : (string) $dispute->status,
-            'reason' => $dispute->reason,
-            'amount_formatted' => NgnMoney::format((int) ($dispute->disputed_amount_minor ?? 0)),
-            'evidence_count' => 0,
-            'resolved_at' => $dispute->resolved_at?->timezone('Africa/Lagos')->format('j M Y'),
+            'active' => $active !== null,
+            'count' => $disputes->count(),
+            'items' => $disputes->map(fn (\App\Models\QuestDispute $dispute) => [
+                'id' => $dispute->id,
+                'uuid' => $dispute->uuid,
+                'reference' => $dispute->displayReference(),
+                'filed_by' => $dispute->openedBy?->name,
+                'filed_at' => $dispute->created_at?->timezone('Africa/Lagos')->format('j M Y, g:i A'),
+                'status' => $dispute->status instanceof \App\Enums\QuestDisputeStatus ? $dispute->status->value : (string) $dispute->status,
+                'management_status_label' => $dispute->management_status?->label(),
+                'is_active' => $dispute->isActiveOnContract(),
+                'amount_formatted' => NgnMoney::format((int) ($dispute->disputed_amount_minor ?? 0)),
+                'resolved_at' => $dispute->resolved_at?->timezone('Africa/Lagos')->format('j M Y'),
+                'admin_url' => route('admin.disputes.index', ['q' => $dispute->uuid]),
+            ])->values()->all(),
+            'summary' => $active
+                ? __('Active dispute on this contract')
+                : ($disputes->isNotEmpty() ? __(':count dispute(s) on record — none active', ['count' => $disputes->count()]) : 'Contract marked disputed — details loading.'),
         ];
     }
 

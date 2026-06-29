@@ -69,6 +69,16 @@ class EscrowPaymentService
             return $escrow;
         });
 
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->record(
+            $client,
+            'escrow.funding_started',
+            'Started escrow funding',
+            $quest->title.($quest->reference_code ? ' · '.$quest->reference_code : ''),
+            PaymentEscrow::class,
+            (int) $escrow->id,
+            ['amount_minor' => $amountMinor, 'reference' => $escrow->reference],
+        );
+
         $reference = 'HSE-'.$escrow->reference.'-'.Str::lower(Str::random(6));
 
         QuestFundingIntent::query()->create([

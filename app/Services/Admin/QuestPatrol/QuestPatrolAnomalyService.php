@@ -15,6 +15,7 @@ use App\Models\QuestOffer;
 use App\Models\QuestPatrolFlag;
 use App\Models\User;
 use App\Models\UserIdentityDocument;
+use App\Services\Matching\QuestRemoteMatchPolicy;
 use App\Services\Verification\VerificationEngineService;
 use App\Support\NgnMoney;
 use Carbon\Carbon;
@@ -30,6 +31,7 @@ final class QuestPatrolAnomalyService
 
     public function __construct(
         private readonly VerificationEngineService $verificationEngine,
+        private readonly QuestRemoteMatchPolicy $remoteMatchPolicy,
     ) {}
 
     public function flagsAvailable(): bool
@@ -42,6 +44,8 @@ final class QuestPatrolAnomalyService
         if (! $this->flagsAvailable()) {
             return 0;
         }
+
+        $this->reconcileLocationMismatchFlags();
 
         $created = 0;
         Quest::query()
@@ -164,12 +168,24 @@ final class QuestPatrolAnomalyService
 
     private function flagLocationMismatch(Quest $quest): bool
     {
+        $fingerprint = "quest:location_mismatch:{$quest->id}";
+
+        if ($this->remoteMatchPolicy->isLocationAgnostic($quest)) {
+            $this->resolveOpenPatrolFlag($fingerprint, QuestPatrolFlagType::LocationMismatch);
+
+            return false;
+        }
+
         $client = $quest->client;
         if (! $client || ! $quest->state_id || ! $client->state_id) {
+            $this->resolveOpenPatrolFlag($fingerprint, QuestPatrolFlagType::LocationMismatch);
+
             return false;
         }
 
         if ((int) $client->state_id === (int) $quest->state_id) {
+            $this->resolveOpenPatrolFlag($fingerprint, QuestPatrolFlagType::LocationMismatch);
+
             return false;
         }
 
@@ -177,15 +193,16 @@ final class QuestPatrolAnomalyService
             QuestPatrolSubjectType::Quest,
             $quest->id,
             QuestPatrolFlagType::LocationMismatch,
-            "quest:location_mismatch:{$quest->id}",
+            $fingerprint,
             [
                 'client_state_id' => (int) $client->state_id,
                 'quest_state_id' => (int) $quest->state_id,
                 'freelancer_location_pref' => $quest->freelancer_location_pref instanceof \App\Enums\QuestFreelancerLocationPref
                     ? $quest->freelancer_location_pref->value
                     : (string) ($quest->freelancer_location_pref ?? ''),
+                'requires_local_presence' => true,
             ],
-            'medium',
+            'low',
         );
     }
 
@@ -584,7 +601,7 @@ final class QuestPatrolAnomalyService
         $fingerprint = "quest:tier_mismatch:{$quest->id}";
 
         if (! ($context['exceeds'] ?? false)) {
-            $this->resolveOpenTierMismatchFlag($fingerprint);
+            $this->resolveOpenPatrolFlag($fingerprint, QuestPatrolFlagType::TierMismatch);
 
             return false;
         }
@@ -599,16 +616,46 @@ final class QuestPatrolAnomalyService
         );
     }
 
-    private function resolveOpenTierMismatchFlag(string $fingerprint): void
+    private function resolveOpenPatrolFlag(string $fingerprint, QuestPatrolFlagType $type): void
     {
         QuestPatrolFlag::query()
             ->where('fingerprint', $fingerprint)
-            ->where('flag_type', QuestPatrolFlagType::TierMismatch->value)
+            ->where('flag_type', $type->value)
             ->where('status', QuestPatrolFlagStatus::Open->value)
             ->update([
                 'status' => QuestPatrolFlagStatus::Resolved->value,
                 'resolved_at' => now(),
             ]);
+    }
+
+    private function reconcileLocationMismatchFlags(): void
+    {
+        QuestPatrolFlag::query()
+            ->where('flag_type', QuestPatrolFlagType::LocationMismatch->value)
+            ->where('status', QuestPatrolFlagStatus::Open->value)
+            ->where('subject_type', QuestPatrolSubjectType::Quest->value)
+            ->orderByDesc('id')
+            ->limit(500)
+            ->get()
+            ->each(function (QuestPatrolFlag $flag): void {
+                $quest = Quest::query()->with('client')->find($flag->subject_id);
+                if (! $quest) {
+                    $this->resolveOpenPatrolFlag($flag->fingerprint, QuestPatrolFlagType::LocationMismatch);
+
+                    return;
+                }
+
+                if ($this->remoteMatchPolicy->isLocationAgnostic($quest)) {
+                    $this->resolveOpenPatrolFlag($flag->fingerprint, QuestPatrolFlagType::LocationMismatch);
+
+                    return;
+                }
+
+                $client = $quest->client;
+                if (! $client || ! $quest->state_id || ! $client->state_id || (int) $client->state_id === (int) $quest->state_id) {
+                    $this->resolveOpenPatrolFlag($flag->fingerprint, QuestPatrolFlagType::LocationMismatch);
+                }
+            });
     }
 
     private function flagDuplicateQuest(Quest $quest): bool
@@ -1395,7 +1442,7 @@ final class QuestPatrolAnomalyService
             QuestPatrolFlagType::RepeatCounterpartyTransactions->value => 'Same client and freelancer transact repeatedly. Verify the work is real and check for KYC/IP overlap suggesting one operator funding their own payout.',
             QuestPatrolFlagType::CircularPayment->value => 'Funds move in both directions between these two accounts. Treat as a strong laundering signal — escalate to financial review and hold payouts.',
             QuestPatrolFlagType::RapidQuestCreation->value => 'Client posted several quests in a short window. Review for spam listings or structuring.',
-            QuestPatrolFlagType::LocationMismatch->value => 'Quest requires local freelancers but client and quest states differ. Confirm the location requirement is legitimate.',
+            QuestPatrolFlagType::LocationMismatch->value => 'On-site quest location differs from the client profile state. Confirm the work location is legitimate — low priority for remote-friendly categories.',
             QuestPatrolFlagType::NewClientHighValueFirstQuest->value => 'First quest from a new client exceeds ₦500k. Verify client identity and funding source.',
             QuestPatrolFlagType::TemplateSpam->value => 'Same proposal text reused across multiple quests. Review for template spam or bot behaviour.',
             QuestPatrolFlagType::PriceAnomaly->value => 'Proposal undercuts category market rate by more than 50%. Check for lowball bait or misunderstanding of scope.',

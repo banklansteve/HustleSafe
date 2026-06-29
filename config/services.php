@@ -74,4 +74,9 @@ return [
         'version' => env('ANTHROPIC_VERSION', '2023-06-01'),
     ],
 
+    'termii' => [
+        'api_key' => env('TERMII_API_KEY'),
+        'sender_id' => env('TERMII_SENDER_ID', 'HustleSafe'),
+    ],
+
 ];

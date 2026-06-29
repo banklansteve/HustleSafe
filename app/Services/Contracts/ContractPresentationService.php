@@ -183,6 +183,7 @@ class ContractPresentationService
             'dispute_url' => $contract->activeDispute
                 ? route('disputes.show', $contract->activeDispute)
                 : null,
+            'disputes' => $this->contractDisputes($contract),
             'quest_url' => $quest ? route('quests.show', $quest->getRouteKey()) : null,
             'escrow_expires_at' => $contract->escrow_expires_at?->timezone('Africa/Lagos')->toIso8601String(),
             'delivery_countdown' => $this->deliveryCountdown($contract),
@@ -649,5 +650,28 @@ class ContractPresentationService
             'financial_centre_url' => route('admin.financial.index', ['tab' => 'escrow']),
             'documentation_url' => route('admin.documentation.guide', ['topic' => 'payments-escrow']),
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function contractDisputes(QuestContract $contract): array
+    {
+        return \App\Models\QuestDispute::query()
+            ->where('quest_id', $contract->quest_id)
+            ->where('quest_offer_id', $contract->quest_offer_id)
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (\App\Models\QuestDispute $dispute) => [
+                'reference' => $dispute->displayReference(),
+                'uuid' => $dispute->uuid,
+                'url' => route('disputes.show', $dispute),
+                'status_label' => app(\App\Services\Disputes\DisputePartyPresenter::class)->statusLabel($dispute),
+                'management_status_label' => $dispute->management_status?->label() ?? (string) $dispute->management_status,
+                'is_active' => $dispute->isActiveOnContract(),
+                'created_at' => $dispute->created_at?->timezone('Africa/Lagos')->toIso8601String(),
+            ])
+            ->values()
+            ->all();
     }
 }

@@ -4,6 +4,7 @@ namespace App\Services\Disputes;
 
 use App\Enums\DisputeMessageKind;
 use App\Enums\DisputeSettlementOfferStatus;
+use App\Enums\QuestDisputeManagementStatus;
 use App\Enums\QuestDisputePhase;
 use App\Enums\QuestDisputeReason;
 use App\Enums\QuestDisputeStatus;
@@ -13,7 +14,9 @@ use App\Models\DisputeMessage;
 use App\Models\DisputeSettlementOffer;
 use App\Models\Quest;
 use App\Models\QuestDispute;
+use App\Models\QuestOffer;
 use App\Models\User;
+use App\Notifications\QuestDisputeOpenedNotification;
 use App\Notifications\QuestDisputeUpdatedNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -60,17 +63,20 @@ class QuestDisputeWorkflowService
             throw ValidationException::withMessages(['quest' => [__('The dispute window after completion has closed.')]]);
         }
 
-        if ($this->hasBlockingOpenDispute($quest)) {
-            throw ValidationException::withMessages(['quest' => [__('This quest already has an open dispute.')]]);
+        if ($this->hasBlockingOpenDispute($quest, $quest->acceptedOffer)) {
+            throw ValidationException::withMessages(['quest' => [__('This contract already has an open dispute. Wait until it is closed before opening another.')]]);
         }
     }
 
-    public function hasBlockingOpenDispute(Quest $quest): bool
+    public function hasBlockingOpenDispute(Quest $quest, ?QuestOffer $offer = null): bool
     {
-        return QuestDispute::query()
-            ->where('quest_id', $quest->id)
-            ->whereNotIn('status', [QuestDisputeStatus::Resolved, QuestDisputeStatus::ClosedWithdrawn])
-            ->exists();
+        $query = QuestDispute::query()->where('quest_id', $quest->id);
+
+        if ($offer !== null) {
+            $query->where('quest_offer_id', $offer->id);
+        }
+
+        return $query->get()->contains(fn (QuestDispute $dispute): bool => $dispute->isActiveOnContract());
     }
 
     /**
@@ -95,11 +101,11 @@ class QuestDisputeWorkflowService
             throw ValidationException::withMessages(['reason' => [__('You cannot raise the dispute under this reason code.')]]);
         }
 
-        if ($reason === QuestDisputeReason::SilenceComms) {
+        if ($reason->requiresSilenceDays()) {
             $days = (int) ($structuredIntake['silence_days_observed'] ?? 0);
             $minDays = (int) config('disputes.silence_comms_min_days', 5);
             if ($days < $minDays) {
-                throw ValidationException::withMessages(['silence_days_observed' => [__('Document at least :n days without meaningful replies.', ['n' => $minDays])]]);
+                throw ValidationException::withMessages(['structured_intake.silence_days_observed' => [__('Document at least :n days without meaningful replies.', ['n' => $minDays])]]);
             }
         }
 
@@ -134,6 +140,9 @@ class QuestDisputeWorkflowService
         }
 
         return DB::transaction(function () use ($opener, $quest, $offer, $reason, $structuredIntake, $openingSummary, $other, $hours, $contract): QuestDispute {
+            $amountMinor = (int) ($offer->quoted_amount_minor ?? 0);
+            $autoAssign = app(DisputeAutoAssignmentService::class);
+
             $dispute = QuestDispute::query()->create([
                 'quest_id' => $quest->id,
                 'quest_offer_id' => $offer->id,
@@ -142,14 +151,20 @@ class QuestDisputeWorkflowService
                 'structured_intake' => $structuredIntake,
                 'phase' => QuestDisputePhase::SelfResolution,
                 'status' => QuestDisputeStatus::SelfResolving,
+                'management_status' => QuestDisputeManagementStatus::Open,
+                'severity' => $autoAssign->severityForAmount($amountMinor),
                 'tier' => 0,
                 'appeals_used' => 0,
-                'disputed_amount_minor' => (int) ($offer->quoted_amount_minor ?? 0),
+                'disputed_amount_minor' => $amountMinor,
                 'response_required_by' => now()->addHours($hours),
                 'ruling_required_by' => null,
                 'awaiting_user_id' => $other->id,
                 'opening_summary' => $openingSummary,
             ]);
+
+            $autoAssign->autoAssign($dispute->fresh());
+
+            app(DisputeNegotiationService::class)->initializePeerNegotiation($dispute->fresh());
 
             $this->log($dispute, $opener, 'dispute.opened', [
                 'reason' => $reason->value,
@@ -187,7 +202,10 @@ class QuestDisputeWorkflowService
                 app(\App\Services\Contracts\ContractLifecycleService::class)->markDisputed($contract, $dispute, $opener);
             }
 
-            $other->notify(new QuestDisputeUpdatedNotification($dispute, __('New dispute opened'), __('A structured dispute was opened on “:title”. Review the case and respond before the countdown expires.', ['title' => $quest->title])));
+            $otherRole = $this->partyFor($other, $quest) ?? 'party';
+            $other->notify(new QuestDisputeOpenedNotification($dispute, $opener, $otherRole));
+
+            app(DisputeSuperAdminAlertService::class)->notifyDisputeOpened($dispute, $opener);
 
             return $dispute->fresh();
         });
@@ -306,6 +324,7 @@ class QuestDisputeWorkflowService
 
             $this->log($dispute, $actor, 'dispute.settlement_accepted', ['offer_id' => $offer->id]);
             app(DisputeEscrowSettlementService::class)->executeAcceptedSettlement($offer->fresh());
+            $this->closePartySelfResolution($dispute->fresh(), 'settlement_accepted', $actor);
             $this->reconcileContractAfterDisputeClosed($dispute->fresh());
             $this->notifyBoth($dispute, __('Dispute resolved by settlement'), __('Parties agreed to a split. Escrow movement has been applied where funds were available.'));
         });
@@ -376,6 +395,7 @@ class QuestDisputeWorkflowService
                     'response_required_by' => null,
                     'ruling_required_by' => null,
                 ]);
+                $this->closePartySelfResolution($dispute->fresh(), 'mutual_resolve', $actor);
                 $this->reconcileContractAfterDisputeClosed($dispute->fresh());
                 $this->notifyBoth($dispute, __('Dispute closed mutually'), __('Both parties agreed to resolve without a ruling. Outstanding money movement still follows escrow activation.'));
             } else {
@@ -413,6 +433,20 @@ class QuestDisputeWorkflowService
                 $processed++;
             }
         }
+
+        $negotiation = app(DisputeNegotiationService::class);
+        \App\Models\DisputeNegotiationOffer::query()
+            ->where('status', \App\Enums\DisputeNegotiationOfferStatus::Pending)
+            ->whereNotNull('response_required_by')
+            ->where('response_required_by', '<', now())
+            ->each(function (\App\Models\DisputeNegotiationOffer $offer) use ($negotiation, &$processed): void {
+                $negotiation->expireStaleOffer($offer);
+                $processed++;
+            });
+
+        $enforcement = app(\App\Services\Disputes\DisputeEnforcementService::class);
+        $processed += $enforcement->processExpiredEnforcementWindows();
+        $processed += $enforcement->processExpiredMutualAppealWindows();
 
         return $processed;
     }
@@ -510,6 +544,29 @@ class QuestDisputeWorkflowService
         if ($contract !== null) {
             app(\App\Services\Contracts\ContractLifecycleService::class)->resolveDispute($contract);
         }
+    }
+
+    protected function closePartySelfResolution(QuestDispute $dispute, string $outcome, ?User $actor): void
+    {
+        $dispute->forceFill([
+            'management_status' => QuestDisputeManagementStatus::Closed,
+            'management_resolved_at' => now(),
+            'phase' => QuestDisputePhase::Closed,
+        ])->save();
+
+        $this->log($dispute, $actor, 'dispute.party_self_resolved', [
+            'resolution_outcome' => $outcome,
+            'final_client_share_percent' => $dispute->final_client_share_percent,
+        ]);
+
+        if ($dispute->assigned_staff_id) {
+            $staff = User::query()->find($dispute->assigned_staff_id);
+            if ($staff !== null) {
+                app(DisputeStaffAlertService::class)->notifyPartySelfResolved($dispute, $staff, $outcome);
+            }
+        }
+
+        app(DisputeSuperAdminAlertService::class)->notifyPartySelfResolved($dispute, $outcome);
     }
 
     public function log(QuestDispute $dispute, ?User $actor, string $action, array $properties = []): void

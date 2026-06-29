@@ -169,6 +169,15 @@ class FreelancerPortfolioController extends Controller
 
         ScanContentForModerationJob::dispatch(Portfolio::class, (int) $portfolio->id)->afterResponse();
 
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->recordModel(
+            $user,
+            $status === PortfolioStatus::Published ? 'portfolio.published' : 'portfolio.created',
+            $status === PortfolioStatus::Published ? 'Published portfolio item' : 'Created portfolio item',
+            $portfolio,
+            $portfolio->title,
+            request: $request,
+        );
+
         return redirect()->route('portfolio.show', $portfolio)->with('success', $msg);
     }
 
@@ -230,6 +239,7 @@ class FreelancerPortfolioController extends Controller
 
         $data = $request->validated();
         $status = $request->enum('status', PortfolioStatus::class);
+        $publishingNow = $portfolio->published_at === null && $status === PortfolioStatus::Published;
 
         DB::transaction(function () use ($portfolio, $data, $status, $request) {
             if (! empty($data['remove_file_ids'])) {
@@ -270,12 +280,32 @@ class FreelancerPortfolioController extends Controller
 
         ScanContentForModerationJob::dispatch(Portfolio::class, (int) $portfolio->id)->afterResponse();
 
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->recordModel(
+            $request->user(),
+            $publishingNow ? 'portfolio.published' : 'portfolio.updated',
+            $publishingNow ? 'Published portfolio item' : 'Updated portfolio item',
+            $portfolio,
+            $portfolio->title,
+            request: $request,
+        );
+
         return redirect()->route('portfolio.show', $portfolio)->with('success', __('Portfolio updated.'));
     }
 
     public function destroy(Request $request, Portfolio $portfolio): RedirectResponse
     {
         $this->authorize('delete', $portfolio);
+
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->record(
+            $request->user(),
+            'portfolio.deleted',
+            'Deleted portfolio item',
+            $portfolio->title,
+            Portfolio::class,
+            (int) $portfolio->id,
+            ['portfolio_slug' => $portfolio->slug],
+            $request,
+        );
 
         $portfolio->delete();
 
@@ -292,10 +322,10 @@ class FreelancerPortfolioController extends Controller
         $this->authorize('favorite', $portfolio);
 
         $notify = false;
+        $wasFavorited = $portfolio->favoritedBy()->where('user_id', $user->id)->exists();
 
-        DB::transaction(function () use ($portfolio, $user, &$notify) {
-            $exists = $portfolio->favoritedBy()->where('user_id', $user->id)->exists();
-            if ($exists) {
+        DB::transaction(function () use ($portfolio, $user, &$notify, $wasFavorited): void {
+            if ($wasFavorited) {
                 $portfolio->favoritedBy()->detach($user->id);
                 if ($portfolio->favorites_count > 0) {
                     $portfolio->decrement('favorites_count');
@@ -309,6 +339,15 @@ class FreelancerPortfolioController extends Controller
         });
 
         $portfolio->refresh();
+
+        app(\App\Services\UserActivity\UserActivityRecorder::class)->recordModel(
+            $user,
+            $wasFavorited ? 'portfolio.unfavorited' : 'portfolio.favorited',
+            $wasFavorited ? 'Removed portfolio like' : 'Liked portfolio',
+            $portfolio,
+            $portfolio->title,
+            request: $request,
+        );
 
         if ($notify) {
             $owner = $portfolio->user;

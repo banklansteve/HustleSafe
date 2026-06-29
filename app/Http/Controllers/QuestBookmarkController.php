@@ -28,6 +28,14 @@ class QuestBookmarkController extends Controller
 
             if ($bookmark->wasRecentlyCreated) {
                 $quest->increment('saves_count');
+                app(\App\Services\UserActivity\UserActivityRecorder::class)->recordModel(
+                    $user,
+                    'quest.bookmarked',
+                    'Saved quest',
+                    $quest,
+                    $quest->title.($quest->reference_code ? ' · '.$quest->reference_code : ''),
+                    request: $request,
+                );
             }
         } catch (QueryException $exception) {
             report($exception);
@@ -63,6 +71,17 @@ class QuestBookmarkController extends Controller
 
             if ($deleted > 0 && (int) $quest->saves_count > 0) {
                 $quest->decrement('saves_count');
+            }
+
+            if ($deleted > 0) {
+                app(\App\Services\UserActivity\UserActivityRecorder::class)->recordModel(
+                    $user,
+                    'quest.unbookmarked',
+                    'Removed saved quest',
+                    $quest,
+                    $quest->title.($quest->reference_code ? ' · '.$quest->reference_code : ''),
+                    request: $request,
+                );
             }
         } catch (QueryException $exception) {
             report($exception);

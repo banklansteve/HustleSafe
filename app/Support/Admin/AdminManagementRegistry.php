@@ -103,7 +103,9 @@ final class AdminManagementRegistry
             $sections[$sectionKey]['items'][] = [
                 'key' => $key,
                 'label' => $definition['label'],
-                'href' => route('admin.management.index', ['resource' => $key]),
+                'href' => isset($definition['custom_route'])
+                    ? route((string) $definition['custom_route'])
+                    : route('admin.management.index', ['resource' => $key]),
                 'indent' => (bool) ($definition['sidebar_indent'] ?? false),
                 'sort' => (int) ($definition['sidebar_sort'] ?? 100),
             ];

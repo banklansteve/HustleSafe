@@ -515,6 +515,7 @@ import {
     BriefcaseIcon,
     ChartBarSquareIcon,
     ChatBubbleLeftRightIcon,
+    ClockIcon,
     CreditCardIcon,
     ChevronLeftIcon,
     ChevronRightIcon,
@@ -874,6 +875,10 @@ function isManagementItemActive(item) {
         return true;
     }
 
+    if (item.key === 'activity_logs' && page.url.startsWith('/admin/user-activity-history')) {
+        return true;
+    }
+
     return currentManagementResource() === item.key;
 }
 
@@ -895,6 +900,7 @@ const navGroups = [
             { label: 'Insights', href: route('admin.insights.index'), icon: ChartBarSquareIcon, match: (p) => p.startsWith('/admin/insights') },
             { label: 'Lifecycle analytics', href: route('admin.lifecycle-analytics.index'), icon: ChartBarSquareIcon, match: (p) => p.startsWith('/admin/lifecycle-analytics') },
             { label: 'Live Activity', href: route('admin.live-activity.index'), icon: BoltIcon, match: (p) => p.startsWith('/admin/live-activity') },
+            { label: 'User activity history', href: route('admin.user-activity-history.index'), icon: ClockIcon, match: (p) => p.startsWith('/admin/user-activity-history') },
             { label: 'Alert Centre', href: route('admin.alerts.index'), icon: BellIcon, match: (p) => p.startsWith('/admin/alerts') },
             { label: 'Tasks', href: route('admin.tasks.index'), icon: ClipboardDocumentListIcon, match: (p) => p.startsWith('/admin/tasks') },
         ],
